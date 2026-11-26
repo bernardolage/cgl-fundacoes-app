@@ -1,28 +1,28 @@
-/* ====================================================================
-   Módulo: Contratos › Processos (fase 180f). Prefixo de IDs: prc-.
-   Processos judiciais e administrativos (número CNJ, vara/comarca, parte contrária, polo da CGL, assunto, contrato
-   ligado, valor da causa, situação) e os eventos de cada um (audiência, prazo, decisão).
-   Quem vê: jurídico, diretor e auditor (só leitura) = processo_pode_ler() no banco. Quem grava: jurídico e diretor,
-   sempre pelas RPCs processo_salvar/excluir e processo_evento_salvar/concluir/excluir.
-   D2: o valor da causa aparece por processo; a soma (KPI "Valor em causa") só para quem podeVerSomaContratos() — o banco
-   devolve vw_processos_resumo.valor_causa_total nulo para o jurídico.
-   Tela montada com os componentes do js/ui.js: painel (KPIs, agenda, abas de situação e tabela) e ficha com painel
-   primeiro (faixa de situação, KPIs, linha do tempo, abas Eventos | Dados | Histórico); o cadastro fica em "Editar".
-   Audiência e prazo pendentes também entram na agenda dos contratos (vw_contratos_agenda) e na Minha fila do jurídico
-   e do diretor (vw_sc_minha_fila_prc, js/dashboard.js).
-   ==================================================================== */
 
-let _prcRegistros = [];          // vw_processos
-let _prcResumo = null;           // vw_processos_resumo (uma linha)
-let _prcAgenda = [];             // vw_contratos_agenda, só audiência e prazo de processo
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _prcRegistros = [];
+let _prcResumo = null;
+let _prcAgenda = [];
 let _prcErro = null;
 let _prcBusca = "";
-let _prcSituacao = "abertos";    // abertos (ativo + suspenso) | ativo | suspenso | encerrados | todos
-let prcEditId = null;            // processo aberto na ficha (null = painel)
-let _prcEventos = [];            // eventos do processo aberto
+let _prcSituacao = "abertos";
+let prcEditId = null;
+let _prcEventos = [];
 let _prcAba = "eventos";
 let _prcTempoFiltro = "";
-let _prcOpcoes = null;           // { contratos: [[id, rótulo]], responsaveis: [[id, nome]] }
+let _prcOpcoes = null;
 
 const PRC_SITUACAO = { ativo: ["Ativo", "verde"], suspenso: ["Suspenso", "ambar"], arquivado: ["Arquivado", "cinza"], encerrado: ["Encerrado", "cinza"] };
 const PRC_POLO = { ativo: "CGL autora (polo ativo)", passivo: "CGL ré (polo passivo)", terceiro: "CGL terceira interessada" };
@@ -34,11 +34,11 @@ const PRC_ABAS_SIT = [["abertos", "Em andamento", s => s === "ativo" || s === "s
   ["suspenso", "Suspensos", s => s === "suspenso"], ["encerrados", "Arquivados e encerrados", s => s === "arquivado" || s === "encerrado"],
   ["todos", "Todos", () => true]];
 
-/* ---------- Permissões (espelham processo_pode_ler / processo_pode_escrever) ---------- */
+
 function podeVerProcessos(){ return !!usuarioAtual && ["diretor", "juridico", "auditor"].includes(usuarioAtual.cargo); }
 function prcPodeEditar(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "juridico"].includes(usuarioAtual.cargo); }
 
-/* ---------- Helpers ---------- */
+
 function prcTag(mapa, v){ const s = mapa[v] || [v || "—", "cinza"]; return `<span class="tag ${esc(s[1])}">${esc(s[0])}</span>`; }
 function prcHora(h){ return h ? String(h).slice(0, 5) : ""; }
 function prcQuando(data, hora){ return data ? dataBR(data) + (hora ? " " + prcHora(hora) : "") : "—"; }
@@ -47,7 +47,7 @@ function prcErroMsg(error){
   if(ehErroDePermissao(error)) return "Seu cargo não pode fazer isso nos processos.";
   return error.message || String(error);
 }
-/* troca entre o painel de contratos e o de processos (os dois ficam na seção Contratos) */
+
 function prcMostrar(ativo){
   const p = $("prc-painel"), c = $("con-painel");
   if(p) p.hidden = !ativo;
@@ -55,7 +55,7 @@ function prcMostrar(ativo){
 }
 function prcFechar(){ prcEditId = null; prcMostrar(false); }
 
-/* ---------- Carga ---------- */
+
 async function carregarProcessos(){
   _prcErro = null;
   const limite = dataLocalISO(new Date(Date.now() + 30 * 86400000));
@@ -70,7 +70,7 @@ async function carregarProcessos(){
   _prcAgenda = ra.error ? [] : (ra.data || []);
 }
 
-/* ---------- Painel ---------- */
+
 async function abrirProcessos(){
   if(!podeVerProcessos()) return;
   prcEditId = null;
@@ -79,7 +79,7 @@ async function abrirProcessos(){
   cont.innerHTML = uiPagina({ trilha: [{ texto: "Contratos", id: "contratos" }, { texto: "Processos" }], titulo: "Processos" })
     + uiCarregando("Carregando processos…");
   await carregarProcessos();
-  if(prcEditId) return;   // abriu uma ficha enquanto carregava
+  if(prcEditId) return;
   renderProcessos();
 }
 
@@ -93,7 +93,7 @@ function prcKpisHTML(){
     + uiKpi(String(r.audiencias_30d ?? 0), "Audiências", "nos próximos 30 dias")
     + uiKpi(String(r.prazos_7d ?? 0), "Prazos", "nos próximos 7 dias")
     + uiKpi(String(r.vencidos ?? 0), "Sem baixa", "audiência ou prazo com a data passada")
-    + `${/* html */ soma}</div>`;
+    + `${  soma}</div>`;
 }
 
 function prcAgendaHTML(){
@@ -158,7 +158,7 @@ function renderProcessos(){
       })}</div>`;
 }
 
-/* ---------- Ficha ---------- */
+
 async function abrirProcesso(id){
   if(!podeVerProcessos() || !id) return;
   prcEditId = id;
@@ -169,7 +169,7 @@ async function abrirProcesso(id){
   const [rp, re] = await Promise.all([
     sb.from("vw_processos").select("*").eq("id", id).maybeSingle(),
     sb.from("processo_eventos").select("*").eq("processo_id", id).order("data", { ascending: false }),
-    prcCarregarOpcoes()   // nomes dos responsáveis na tabela de eventos
+    prcCarregarOpcoes()
   ]);
   if(prcEditId !== id) return;
   if(rp.error || !rp.data){
@@ -276,11 +276,11 @@ function renderFichaProcesso(p, erroEventos){
         tipos: [{ id: "audiencia", rotulo: "Audiências", tom: "info" }, { id: "prazo", rotulo: "Prazos", tom: "aviso" }, { id: "decisao", rotulo: "Decisões", tom: "ok" }],
         filtro: _prcTempoFiltro, erro: erroEventos, vazio: "Nenhum evento registrado." }))
     + uiAbas(abas, { ativa: _prcAba, rotulo: "Abas do processo" })
-    + `<div class="prc-aba-corpo">${/* html */ corpo}</div>`;
+    + `<div class="prc-aba-corpo">${  corpo}</div>`;
   if(_prcAba === "historico" && typeof montarHistorico === "function") montarHistorico("processos", p.id, "prc-hist");
 }
 
-/* ---------- Opções dos formulários ---------- */
+
 async function prcCarregarOpcoes(){
   if(_prcOpcoes) return _prcOpcoes;
   const [rc, rp] = await Promise.all([
@@ -300,7 +300,7 @@ function prcNomeResp(id){
 }
 function prcOpcoesDe(mapa){ return Object.entries(mapa).map(([v, l]) => [v, Array.isArray(l) ? l[0] : l]); }
 
-/* ---------- Cadastro do processo ---------- */
+
 async function prcAbrirFormProcesso(p){
   const op = await prcCarregarOpcoes();
   const x = p || {};
@@ -332,7 +332,7 @@ async function prcAbrirFormProcesso(p){
   }, { largura: "g" });
 }
 
-/* ---------- Eventos ---------- */
+
 async function prcAbrirFormEvento(tipo, ev){
   const op = await prcCarregarOpcoes();
   const x = ev || {};
@@ -394,7 +394,7 @@ async function excluirProcesso(p){
   await abrirProcessos();
 }
 
-/* ---------- Entrada pela tela inicial (Minha fila: vw_sc_minha_fila_prc, registro = o processo) ---------- */
+
 async function prcAbrirDaInicio(id){
   if(!irParaSecao("contratos")) return;
   _prcAba = "eventos";
@@ -402,7 +402,7 @@ async function prcAbrirDaInicio(id){
   if(id) await abrirProcesso(id); else await abrirProcessos();
 }
 
-/* ---------- Eventos de tela ---------- */
+
 function prcProcessoAtual(){ return _prcRegistros.find(p => p.id === prcEditId) || null; }
 async function prcClique(e){
   const trilha = e.target.closest("[data-trilha]");
@@ -461,7 +461,7 @@ function ligarProcessos(){
   const btn = $("btn-con-processos");
   if(btn){
     btn.addEventListener("click", () => { _prcBusca = ""; abrirProcessos(); });
-    // o botão só aparece para quem lê processos; o usuário chega depois do carregamento do script
+
     const ajustar = () => { btn.hidden = !podeVerProcessos(); };
     ajustar();
     document.querySelector('nav button[data-secao="contratos"]')?.addEventListener("click", () => { ajustar(); prcFechar(); });

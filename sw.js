@@ -1,8 +1,8 @@
-/* Fase 129b: service worker do app do operador (escopo ./operador, nunca controla o index.html).
-   VERSAO é carimbada pelo scripts/publicar-app.sh; cada publicação abre um cache novo e apaga os antigos.
-   Rede primeiro (com prazo curto, o sinal da obra é fraco) e o cache como reserva: o app abre sem sinal
-   com o que ficou da última vez. Supabase e fontes são de outra origem e não passam por aqui. */
-const VERSAO = "c3d172a";
+
+
+
+
+const VERSAO = "5c59038";
 const CACHE = "cgl-campo-" + VERSAO;
 const ARQUIVOS = [
   "operador.html", "manifest.webmanifest", "css/estilo.css", "js/tema.js", "vendor/supabase-js-2.118.0.min.js",
@@ -31,7 +31,7 @@ self.addEventListener("fetch", (ev) => {
   if(req.method !== "GET") return;
   const url = new URL(req.url);
   if(url.origin !== self.location.origin) return;
-  // versao.json: sempre da rede (é ele que avisa da publicação nova)
+
   if(url.pathname.endsWith("/versao.json")) return;
   ev.respondWith((async () => {
     const cache = await caches.open(CACHE);
@@ -40,7 +40,7 @@ self.addEventListener("fetch", (ev) => {
       if(resp && resp.ok) cache.put(req, resp.clone());
       return resp;
     } catch(_){
-      // o HTML carimba ?v=<commit>: sem sinal, vale o arquivo guardado com ou sem o carimbo
+
       const guardado = await cache.match(req) || await cache.match(req, { ignoreSearch: true });
       if(guardado) return guardado;
       throw _;

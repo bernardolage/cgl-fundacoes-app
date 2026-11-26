@@ -1,20 +1,20 @@
-/* ====================================================================
-   Módulo: EPI por colaborador (fase 100, 21/10/2026 — chamados #97 e #100; spec docs/specs/fase-100-almoxarifado-epi.md)
-   - Assinatura do recebimento na tela (toque ou mouse): canvas → PNG → Blob com MIME explícito → bucket privado
-     epi-assinaturas/<funcionario_id>/<arquivo>.png → RPC epi_assinar (decisão 2 do Bernardo: D4Sign fora).
-   - Aba "EPI" da ficha do funcionário (NR-6): item, CA, data, quantidade, assinatura, troca prevista, devolução e
-     a ficha de EPI em PDF.
-   - Relatório "EPI por colaborador e por obra": visão no painel de Estoque (card #epi-card) e no painel de
-     Funcionários (visão "EPI", para o RH, que não tem Estoque no menu). Gasto por pessoa por mês com a média da
-     função, por obra, por item, trocas vencidas, saídas sem pessoa e a conferência das categorias; .xlsx.
-   - Card EPI da Sala de Comando (vw_sc_epi) e "Para regularizar" do SESMT (vw_sc_regularizar_sesmt, dashboard.js).
-   Quem vê (podeVerEpi = pode_ver_epi() no banco): diretor, admin, almoxarife, sesmt, rh, auditor e o módulo extra sesmt (fase 144-0). O encarregado
-   não vê (decisão 3); o auxiliar de almoxarifado entrega e colhe a assinatura no balcão, sem relatório (valores).
-   Tudo lê das views da fase 100: sem a migration (view inexistente) as telas mostram aviso, sem quebrar.
-   Fase 144-0b: o SESMT registra a entrega no balcão, só com EPI e uniforme (balSoEpi em estoque.js).
-   Prefixo dos IDs: epi-. Depende em tempo de execução de estoque.js (balCarregarFuncionarios, estPodeEditar),
-   funcionarios.js (funcEditId, abrirFuncionario, _depts) e core.js.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const EPI_CAT_LBL = { epi: "EPI", uniforme: "Uniforme" };
 const EPI_VISOES = [
@@ -24,14 +24,14 @@ const EPI_VISOES = [
 const EPI_MES_LBL = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 function podeVerEpi(){ return !!usuarioAtual && (["diretor", "admin", "almoxarife", "sesmt", "rh", "auditor"].includes(usuarioAtual.cargo) || temModuloExtra("sesmt")); }
-/* entrega, assinatura, devolução e "informar quem recebeu" (epi_pode_operar no banco: quem movimenta estoque + sesmt) */
+
 function epiPodeOperar(){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return false;
   return (typeof estPodeEditar === "function" && estPodeEditar()) || usuarioAtual.cargo === "sesmt" || temModuloExtra("sesmt");
 }
-/* marcar EPI/uniforme na conferência (epi_marcar_produtos) e CA/validade (produtos_write) */
+
 function epiPodeMarcar(){ return !!usuarioAtual && (["diretor", "admin", "almoxarife", "sesmt"].includes(usuarioAtual.cargo) || sstPodeOperar()); }
-/* fase 144-0: CA e validade também pelo SESMT, como o banco já permite (produto_sesmt_pode_editar: cargo sesmt ou extra produtos_sesmt) */
+
 function epiPodeEditarProduto(){ return !!usuarioAtual && !ehSomenteLeitura() && (["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios", "gestor_manutencao", "sesmt"].includes(usuarioAtual.cargo) || temModuloExtra("produtos_sesmt")); }
 function epiViewAusente(error){ return !!error && ["42P01", "PGRST205", "42703", "PGRST204"].includes(error.code); }
 const EPI_MSG_MIGRATION = "O controle de EPI por colaborador entra quando a migration da fase 100 for aplicada no banco.";
@@ -46,10 +46,10 @@ function epiMesesEntre(de, ate){
 function epiFimDoMes(chave){ const [a, m] = chave.split("-").map(Number); return dataLocalISO(new Date(a, m, 0, 12)); }
 function epiDestino(r){ return r.obra_codigo ? `Obra ${r.obra_codigo}` : r.equipamento_codigo ? `TAG ${r.equipamento_codigo}` : (r.centro_nome || "—"); }
 
-/* ====================================================================
-   Assinatura na tela
-   ==================================================================== */
-let _epiAss = null;   // { funcionarioId, ids, aoConcluir, riscos, desenhando }
+
+
+
+let _epiAss = null;
 function epiModalAssinatura(){
   let m = $("epi-ass-modal");
   if(m) return m;
@@ -90,8 +90,8 @@ function epiModalAssinatura(){
   m.querySelector("#btn-epi-ass-salvar").addEventListener("click", e => comBotaoTravado(e.currentTarget, epiSalvarAssinatura));
   return m;
 }
-/* o canvas é dimensionado ao abrir (largura real × devicePixelRatio). Fase 138: a assinatura é documento, não tela:
-   fundo pintado com --doc-papel e tinta --doc-tinta nos dois temas, para o PNG guardado sair branco com traço escuro */
+
+
 function epiLimparCanvas(){
   const cv = $("epi-ass-canvas"); if(!cv) return;
   const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
@@ -105,7 +105,7 @@ function epiLimparCanvas(){
   ctx.strokeStyle = tokens.getPropertyValue("--doc-tinta").trim() || "black";
   if(_epiAss) _epiAss.riscos = 0;
 }
-/* itens: [{ id (saída), descricao }]; aoConcluir(assinou: boolean) */
+
 function epiAbrirAssinatura({ funcionarioId, funcionarioNome, itens, aoConcluir }){
   if(!funcionarioId || !(itens || []).length) return;
   const m = epiModalAssinatura();
@@ -127,7 +127,7 @@ async function epiSalvarAssinatura(){
   const cv = $("epi-ass-canvas");
   const png = await new Promise(ok => cv.toBlob(ok, "image/png"));
   if(!png){ aviso("epi-ass-aviso", "Não foi possível gerar a imagem da assinatura.", "erro"); return; }
-  // regra de uploads (CLAUDE.md): MIME explícito, reembalado em Blob
+
   const blob = new Blob([png], { type: "image/png" });
   const path = `${_epiAss.funcionarioId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
   const up = await sb.storage.from("epi-assinaturas").upload(path, blob, { contentType: "image/png", upsert: false });
@@ -137,7 +137,7 @@ async function epiSalvarAssinatura(){
   aviso("app-aviso", "Assinatura registrada na ficha de EPI.", "ok");
   epiFecharAssinatura(true);
 }
-/* imagem da assinatura: URL assinada (bucket privado) ou data URL para o PDF */
+
 async function epiUrlAssinatura(path){
   if(!path) return null;
   const { data } = await sb.storage.from("epi-assinaturas").createSignedUrl(path, 600);
@@ -150,9 +150,9 @@ async function epiDataUrlAssinatura(path){
   return await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => ok(null); fr.readAsDataURL(data); });
 }
 
-/* ====================================================================
-   Aba EPI da ficha do funcionário
-   ==================================================================== */
+
+
+
 let _epiFicha = { funcionarioId: null, linhas: [] };
 function epiAplicarVisibilidadeFicha(){
   const b = document.querySelector('#func-notebook button[data-tab="epi"]');
@@ -171,8 +171,8 @@ async function epiCarregarFicha(){
   _epiFicha = { funcionarioId: id, linhas: data || [] };
   renderEpiFicha();
 }
-/* S71-f (#380): entrega de EPI pendente de assinatura = EPI (não uniforme), sem assinatura e não devolvida.
-   Mesmo critério do botão "Colher assinatura" e da ficha em PDF "só pendentes". */
+
+
 function epiPendenteAssinatura(r){ return !!r && r.categoria === "epi" && !r.assinatura_em && !r.epi_devolvido_em; }
 function epiFiltrarPendentes(L){ return (L || []).filter(epiPendenteAssinatura); }
 function renderEpiFicha(){
@@ -242,11 +242,11 @@ async function epiDevolver(r){
   await epiCarregarFicha();
 }
 
-/* Ficha de EPI em PDF (NR-6): cabeçalho com o logo, dados do colaborador, declaração, tabela com a assinatura de
-   cada entrega. Gerador de PDF: estilo inline (roda fora do CSS do app), sem cor própria (bordas em currentColor). */
+
+
 async function epiGerarFichaPdf(funcionarioId, { soPendentes = false, avisoId = "func-epi-aviso" } = {}){
   if(!funcionarioId) return;
-  // avisa no elemento da tela de onde veio; sem ele (ex.: relatório do SESMT), no aviso flutuante do js/ui.js
+
   const avisar = (msg, tipo) => { if(avisoId && $(avisoId)) aviso(avisoId, msg, tipo); else if(typeof uiAvisar === "function") uiAvisar(msg, tipo === "erro" ? "perigo" : tipo); };
   const [{ data: f }, { data: todas, error }] = await Promise.all([
     sb.from("funcionarios").select("nome,funcao,matricula,data_admissao,departamento_id").eq("id", funcionarioId).single(),
@@ -287,16 +287,16 @@ async function epiGerarFichaPdf(funcionarioId, { soPendentes = false, avisoId = 
   await pdfGerar(el, { filename: `ficha-epi-${nome}${soPendentes ? "-pendentes" : ""}-${hojeISO()}.pdf` });
 }
 
-/* ====================================================================
-   Relatório EPI por colaborador e por obra (Estoque › card EPI; Funcionários › visão EPI)
-   ==================================================================== */
+
+
+
 const _epiRel = { visao: "pessoa", de: null, ate: null, busca: "", dados: null, chave: null, extra: {}, linhasExport: [] };
 function epiRelPeriodoPadrao(){
   if(_epiRel.de) return;
   const hoje = hojeISO(), d = new Date(hoje + "T12:00:00"); d.setMonth(d.getMonth() - 5);
   _epiRel.ate = epiMesChave(hoje); _epiRel.de = epiMesChave(dataLocalISO(d));
 }
-/* desenha a casca (visões + filtros) no container e liga os eventos uma vez */
+
 function epiRenderRelatorio(alvoId){
   const cont = $(alvoId); if(!cont) return;
   if(!podeVerEpi()){ cont.innerHTML = `<p class="vazio">Só almoxarifado, SESMT, RH e diretoria veem o relatório de EPI.</p>`; return; }
@@ -317,7 +317,7 @@ function epiRenderRelatorio(alvoId){
     cont.dataset.epiLigado = "1";
     cont.addEventListener("click", e => epiRelClique(e, alvoId));
     cont.addEventListener("change", e => {
-      if(e.target.closest(".epi-cns")){ epiCnsMudou(e, alvoId); return; }   // fase 199a
+      if(e.target.closest(".epi-cns")){ epiCnsMudou(e, alvoId); return; }
       if(e.target.matches("[data-epi-de]")){ _epiRel.de = e.target.value || _epiRel.de; _epiRel.dados = null; epiRelCarregar(alvoId); }
       if(e.target.matches("[data-epi-ate]")){ _epiRel.ate = e.target.value || _epiRel.ate; _epiRel.dados = null; epiRelCarregar(alvoId); }
       if(e.target.matches("[data-epi-cat]")) epiConfMarcar(e.target, alvoId);
@@ -330,7 +330,7 @@ function epiRenderRelatorio(alvoId){
 }
 async function epiRelCarregar(alvoId){
   const cont = $(alvoId); const corpo = cont?.querySelector(".epi-rel-corpo"); if(!corpo) return;
-  // fase 199a: a aba Consumo tem período e filtros próprios; os do relatório antigo ficam escondidos nela
+
   const filtrosAntigos = cont.querySelector(".epi-rel > .serv-filtros"); if(filtrosAntigos) filtrosAntigos.hidden = _epiRel.visao === "consumo";
   if(_epiRel.visao === "consumo"){
     cont.querySelectorAll("[data-epi-visao]").forEach(b => b.classList.toggle("ativo", b.dataset.epiVisao === "consumo"));
@@ -370,7 +370,7 @@ function epiRelDesenhar(alvoId){
       const m = epiMesChave(r.data_entrega); g.porMes[m] = (g.porMes[m] || 0) + Number(r.valor || 0); g.total += Number(r.valor || 0); g.qtd++;
     });
     const lista = [...grupos.values()].sort((a, b) => b.total - a.total);
-    // média por função: total médio por pessoa da mesma função que recebeu algo no período
+
     const mediaFuncao = {};
     if(v === "pessoa"){ const agg = {}; lista.forEach(g => { const a = agg[g.funcao] || (agg[g.funcao] = { s: 0, n: 0 }); a.s += g.total; a.n++; }); Object.entries(agg).forEach(([k, a]) => { mediaFuncao[k] = a.n ? a.s / a.n : 0; }); }
     const semPessoa = v === "pessoa" ? L.filter(r => !r.funcionario_id).reduce((s, r) => s + Number(r.valor || 0), 0) : 0;
@@ -449,8 +449,8 @@ async function epiRelClique(e, alvoId){
   const bv = e.target.closest("[data-epi-visao]");
   if(bv){ _epiRel.visao = bv.dataset.epiVisao; _epiRel.dados = null; epiRelCarregar(alvoId); return; }
   if(e.target.closest("[data-epi-xlsx]")){ epiRelExportar(); return; }
-  if(e.target.closest(".epi-cns")){ epiCnsClique(e, alvoId); return; }   // fase 199a
-  // S71-f: o botão de pendentes fica dentro da linha que abre a ficha; checar antes dela
+  if(e.target.closest(".epi-cns")){ epiCnsClique(e, alvoId); return; }
+
   const bp = e.target.closest("[data-epi-pdf-pend]");
   if(bp){ e.stopPropagation(); comBotaoTravado(bp, () => epiGerarFichaPdf(bp.dataset.epiPdfPend, { soPendentes: true, avisoId: null })); return; }
   const tr = e.target.closest("[data-epi-func]");
@@ -470,11 +470,11 @@ function epiRelExportar(){
   XLSX.writeFile(wb, `epi-${_epiRel.visao}-${per}.xlsx`);
 }
 
-/* ---------- fase 199a: aba "Consumo" (vw_epi_consumo; spec docs/specs/fase-199-consumo-epi.md) ----------
-   Consumo de EPI e uniforme por máquina, pessoa e mês. A máquina e a obra vêm da saída ou da Alocação na data (D1, D2:
-   calculado no banco). Valor pela regra da vw_custos (D3); a sede aparece pelo centro de custo (D5). Componentes do
-   js/ui.js; prefixo epi-cns-. A busca redesenha só os resultados (o campo não perde o foco). */
-const EPI_CNS_FR = "ODOO-009588";   // macacão FR (#309)
+
+
+
+
+const EPI_CNS_FR = "ODOO-009588";
 const EPI_CNS_ABAS = [["maquina", "Por máquina"], ["pessoa", "Por pessoa"], ["mes", "Por mês"]];
 const EPI_CNS_COLS = "id,data_entrega,funcionario_id,funcionario_nome,funcao,produto_id,produto_codigo,produto_nome,categoria,quantidade,valor,maquina_id,maquina_codigo,obra_id,obra_codigo,centro_custo_id,centro_nome,situacao_alocacao";
 const EPI_CNS_FILTROS = { produto: "Produto", maquina: "Máquina", obra: "Obra", funcao: "Função", soAlocados: "Só alocados" };
@@ -483,7 +483,7 @@ const _epiCns = { de: null, ate: null, produto: "", maquina: "", obra: "", funca
 
 function epiCnsMesSoma(chave, n){ const [a, m] = chave.split("-").map(Number); const d = new Date(a, m - 1 + n, 1, 12); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function epiCnsMesTxt(chave){ const [a, m] = chave.split("-"); return `${EPI_MES_LBL[Number(m) - 1]}/${a.slice(2)}`; }
-/* grupo "máquina" da linha: a TAG; sem máquina, a sede pelo centro de custo, ou as linhas extras */
+
 function epiCnsGrupoMaq(r){
   if(r.maquina_id) return { id: "m:" + r.maquina_id, nome: r.maquina_codigo || "—", ordem: 0 };
   if(r.situacao_alocacao === "sede") return { id: "c:" + r.centro_custo_id, nome: "Sede · " + (r.centro_nome || "centro de custo"), ordem: 1 };
@@ -494,7 +494,7 @@ async function epiCnsCarregar(alvoId){
   const corpo = $(alvoId)?.querySelector(".epi-rel-corpo"); if(!corpo) return;
   if(!_epiCns.de){ _epiCns.de = _epiCns.ate = epiMesChave(hojeISO()); }
   if(_epiCns.de > _epiCns.ate){ corpo.innerHTML = uiErro("O início do período é depois do fim."); return; }
-  // o período, o mesmo tanto de meses antes (comparação dos KPIs) e os 6 meses até o fim (evolução e Por mês)
+
   const n = epiMesesEntre(_epiCns.de, _epiCns.ate).length;
   const ini = [epiCnsMesSoma(_epiCns.de, -n), epiCnsMesSoma(_epiCns.ate, -5)].sort()[0] + "-01", fim = epiFimDoMes(_epiCns.ate);
   const chave = ini + "|" + fim;
@@ -534,7 +534,7 @@ function epiCnsResumo(X){
   return { n: X.length, valor: soma(X, "valor"), pecas: soma(X, "quantidade"), pessoas,
     medio: pessoas ? soma(comPessoa, "valor") / pessoas : 0, cobertura: X.length ? X.filter(r => r.maquina_id).length / X.length : null };
 }
-/* opções dos selects a partir do que foi carregado (valor, rótulo), em ordem de rótulo */
+
 function epiCnsOpcoes(D, chave, rotulo){
   const m = new Map(); D.forEach(r => { const k = chave(r); if(k && !m.has(k)) m.set(k, rotulo(r)); });
   return [...m.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR", { numeric: true }));
@@ -570,7 +570,7 @@ function epiCnsTopo(){
 function epiCnsDesenhar(alvoId, soResultados){
   const corpo = $(alvoId)?.querySelector(".epi-rel-corpo"); if(!corpo || !_epiCns.dados) return;
   if(!soResultados || !corpo.querySelector(".epi-cns-res")){
-    corpo.innerHTML = `<div class="epi-cns" data-val-sens><div class="epi-cns-topo">${/* html */ epiCnsTopo()}</div><div class="epi-cns-res"></div></div>`;
+    corpo.innerHTML = `<div class="epi-cns" data-val-sens><div class="epi-cns-topo">${  epiCnsTopo()}</div><div class="epi-cns-res"></div></div>`;
   }
   corpo.querySelector(".epi-cns-res").innerHTML = epiCnsResultados();
 }
@@ -589,9 +589,9 @@ function epiCnsResultados(){
       ${uiKpi(num(a.pecas), "Peças", null, { delta: delta(a.pecas, b.pecas), melhor: "menor", texto: txtAnt })}
       ${uiKpi(String(a.pessoas), "Pessoas atendidas", null, { delta: delta(a.pessoas, b.pessoas), texto: txtAnt })}
       ${uiKpi(brl(a.medio), "Custo médio por pessoa", null, { delta: delta(a.medio, b.medio), melhor: "menor", texto: txtAnt })}
-      ${/* html */ kCob}
+      ${  kCob}
     </div>`;
-  // faixa: saídas com pessoa e sem alocação na data, e o saldo negativo do macacão FR
+
   const semAloc = L.filter(r => r.situacao_alocacao === "sem_alocacao").length;
   const frasesFaixa = [semAloc ? `${semAloc} saída(s) sem alocação na data` : "Toda saída com pessoa tem alocação ou centro de custo na data"];
   const sfr = _epiCns.saldoFR, prodFR = !_epiCns.produto || _epiCns.produto === "cat:epi" || (sfr && _epiCns.produto === "p:" + sfr.id);
@@ -602,9 +602,9 @@ function epiCnsResultados(){
   if(_epiCns.aba === "maquina") corpo = epiCnsPorMaquina(L, D);
   else if(_epiCns.aba === "pessoa") corpo = epiCnsPorPessoa(L, "Nenhuma saída com pessoa no período e nos filtros.");
   else corpo = epiCnsPorMes(D);
-  return `${/* html */ faixa}${/* html */ kpis}${/* html */ abas}<p class="ui-filtros-cont epi-cns-cont" role="status">${esc(L.length.toLocaleString("pt-BR"))} saída(s) no período</p>${/* html */ corpo}`;
+  return `${  faixa}${  kpis}${  abas}<p class="ui-filtros-cont epi-cns-cont" role="status">${esc(L.length.toLocaleString("pt-BR"))} saída(s) no período</p>${  corpo}`;
 }
-/* agrupa por máquina/destino: totais de L e, por mês, de D6 (só dos grupos que existem em L, ou de todos quando L é D6) */
+
 function epiCnsGrupos(L, D6){
   const g = new Map();
   const pega = r => { const x = epiCnsGrupoMaq(r); let o = g.get(x.id); if(!o){ o = { ...x, obras: new Set(), pessoas: new Set(), pecas: 0, valor: 0, porMes: {}, pecasMes: {} }; g.set(x.id, o); } return o; };
@@ -634,9 +634,9 @@ function epiCnsPorMaquina(L, D){
     rodape: { nome: "Total", pessoas: tot.pessoas, pecas: tot.pecas, valor: tot.valor }
   });
   const aberta = _epiCns.maqAberta && linhas.find(l => l.id === _epiCns.maqAberta);
-  const pessoas = aberta ? `<h4 class="epi-cns-sub">Pessoas em ${esc(aberta.nome)}</h4>${/* html */ epiCnsPorPessoa(L.filter(r => epiCnsGrupoMaq(r).id === aberta.id), "Nenhuma pessoa nesta linha.", true)}` : "";
+  const pessoas = aberta ? `<h4 class="epi-cns-sub">Pessoas em ${esc(aberta.nome)}</h4>${  epiCnsPorPessoa(L.filter(r => epiCnsGrupoMaq(r).id === aberta.id), "Nenhuma pessoa nesta linha.", true)}` : "";
   return `<p class="meta epi-cns-ajuda">Máquina e obra pela saída ou pela Alocação na data da entrega. Sem máquina, a saída vai para a sede (centro de custo) ou para "Sem alocação". Clique numa linha para ver as pessoas.</p>
-    <div class="epi-cns-clicavel" data-cns-tabela="maquina">${/* html */ tabela}</div>${/* html */ pessoas}`;
+    <div class="epi-cns-clicavel" data-cns-tabela="maquina">${  tabela}</div>${  pessoas}`;
 }
 function epiCnsPorPessoa(L, vazio, interna){
   const g = new Map();
@@ -667,7 +667,7 @@ function epiCnsPorPessoa(L, vazio, interna){
     ],
     linhas, chaveLinha: "id", vazio, rodape: { nome: "Total", pecas: tot.pecas, valor: tot.valor }
   });
-  return `<div class="epi-cns-clicavel" data-cns-tabela="pessoa" title="Clique para abrir a aba EPI da ficha">${/* html */ tabela}</div>`;
+  return `<div class="epi-cns-clicavel" data-cns-tabela="pessoa" title="Clique para abrir a aba EPI da ficha">${  tabela}</div>`;
 }
 function epiCnsPorMes(D){
   const m6 = epiMesesEntre(epiCnsMesSoma(_epiCns.ate, -5), _epiCns.ate);
@@ -685,7 +685,7 @@ function epiCnsPorMes(D){
   });
   return `<div class="epi-cns-grade-topo"><span class="meta">Últimos 6 meses até ${esc(epiCnsMesTxt(_epiCns.ate))}, com os filtros acima (o "De" não se aplica aqui).</span>
       <span class="epi-cns-grade-btns" role="group" aria-label="Unidade da grade"><button type="button" class="ui-btn${brlG ? " ui-btn-prim" : ""}" data-cns-grade="brl">R$</button><button type="button" class="ui-btn${brlG ? "" : " ui-btn-prim"}" data-cns-grade="pecas">Peças</button></span></div>
-    ${/* html */ tabela}`;
+    ${  tabela}`;
 }
 function epiCnsMudou(e, alvoId){
   const id = e.target.id;
@@ -750,18 +750,18 @@ async function epiConfSalvarProduto(inp){
   if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
   const r = (_epiRel.dados || []).find(x => x.id === id); if(r) Object.assign(r, reg);
 }
-/* abre a ficha do funcionário na aba EPI (de Estoque, do relatório ou da Sala de Comando) */
+
 async function epiAbrirFichaFuncionario(funcionarioId){
   if(!funcionarioId || typeof abrirFuncionario !== "function") return;
   if(typeof irParaSecao === "function" && !irParaSecao("funcionarios")) return;
   await abrirFuncionario(funcionarioId);
   if(typeof ativarTabFunc === "function"){ ativarTabFunc("epi"); epiCarregarFicha(); }
 }
-/* "Para regularizar" e card da Sala de Comando: abre o relatório na visão pedida. O RH não tem Estoque no menu:
-   vai para Funcionários › visão EPI. */
+
+
 function epiAbrirRelatorio(visao){
   if(visao) { _epiRel.visao = visao; _epiRel.dados = null; }
-  // #363: quem só opera EPI (SESMT) tem o relatório na aba SESMT › EPI; no Estoque fica só o aviso
+
   if(typeof balSoEpi === "function" && balSoEpi() && typeof sstAbrirEpi === "function"){
     sstAbrirEpi().then(() => $("epi-card")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     return;
@@ -779,7 +779,7 @@ function epiAbrirRelatorio(visao){
     if(typeof renderFuncionarios === "function") renderFuncionarios();
   }
 }
-/* card do Estoque e botão da visão EPI de Funcionários: só para quem vê */
+
 function epiAplicarVisibilidade(){
   const pode = podeVerEpi();
   const card = $("epi-card"); if(card) card.style.display = pode ? "" : "none";
@@ -800,15 +800,15 @@ if(document.readyState === "loading"){
   ligarEpi();
 }
 
-/* ====================================================================
-   Fase 202b (#196): EPI e uniforme nas obras (spec docs/specs/fase-202-epi-obra.md, prefixo epi-obr-).
-   Card "EPI nas obras" na aba SESMT › EPI: faixa de situação, Estoque por obra (inclusive obra sem saldo), ficha da obra
-   (produtos e histórico), Pendentes de apontamento, Enviar para obra, Consumo na obra (grade funcionário × produto ×
-   quantidade × máquina), Retorno à base e Inventário da obra (só sst_pode_operar, com a planilha de conferência do Odoo).
-   No produto de EPI, "Onde está" (aba Estoque). Tudo lê de vw_epi_saldo_local e movimentacoes_estoque; grava só pelas
-   RPCs da 202a (epi_transferir, epi_consumir_obra, epi_inventario_obra, estoque_saida_desfazer). O banco confere tudo de
-   novo: saldo da base e da obra, data, quem lança. Sem a migration, aviso e tela sem quebrar.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
 const EPI_OBR_ATIVAS = ["em_andamento", "planejada", "paralisada"];
 const EPI_OBR_STATUS = { em_andamento: "Em andamento", planejada: "Planejada", paralisada: "Paralisada", concluida: "Concluída", cancelada: "Cancelada" };
 const EPI_OBR_MSG_MIGRATION = "O saldo de EPI por obra entra quando a migration da fase 202a estiver no banco.";
@@ -821,7 +821,7 @@ function epiObrBrl(v){ return `<span data-val-sens>${uiFmt(v, "brl")}</span>`; }
 function epiObrDiaSP(iso){ return iso ? new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) : null; }
 function epiObrErroMsg(error){ return epiViewAusente(error) ? EPI_OBR_MSG_MIGRATION : (error && error.message) || "Não foi possível carregar."; }
 
-/* ---------- carga ---------- */
+
 async function epiObrCarregar(force){
   const alvo = $("epi-obr-conteudo"); if(!alvo) return;
   if(_epiObr.carregando) return;
@@ -841,14 +841,14 @@ async function epiObrCarregar(force){
   _epiObr.dados = { saldo: saldo.data, obras: obras.data, movs: movs.data };
   epiObrDesenhar();
 }
-/* produtos de EPI (da linha "base" da view: todos os EPI e uniformes), por id */
+
 function epiObrProdutos(){
   const m = new Map();
   for(const r of (_epiObr.dados?.saldo || [])) if(r.local === "base") m.set(r.produto_id, r);
   return m;
 }
 function epiObrSaldoObra(obraId){ return (_epiObr.dados?.saldo || []).filter(r => r.local === "obra" && r.obra_id === obraId && epiObrNum(r.quantidade) !== 0); }
-/* uma linha por obra: ativas sempre (mesmo sem saldo, #242) + concluídas e canceladas que ainda têm saldo */
+
 function epiObrLinhasObras(){
   const D = _epiObr.dados; if(!D) return [];
   const porObra = new Map();
@@ -856,7 +856,7 @@ function epiObrLinhasObras(){
     const a = porObra.get(r.obra_id) || { itens: 0, pecas: 0, valor: 0 };
     a.itens++; a.pecas += epiObrNum(r.quantidade); a.valor += epiObrNum(r.valor); porObra.set(r.obra_id, a);
   }
-  const ult = new Map();   // obra → { envio, consumo }
+  const ult = new Map();
   const desfeitas = new Set(D.movs.filter(m => m.estorno_de).map(m => m.estorno_de));
   for(const m of D.movs){
     if(m.estorno_de || desfeitas.has(m.id)) continue;
@@ -874,7 +874,7 @@ function epiObrLinhasObras(){
   }).sort((a, b) => (b.encerrada && b.pecas > 0) - (a.encerrada && a.pecas > 0) || String(b.codigo || "").localeCompare(String(a.codigo || "")));
 }
 
-/* ---------- desenho ---------- */
+
 function epiObrFaixa(){
   if(_epiObr.erro) return uiFaixaSituacao([], null, { erro: _epiObr.erro });
   const base = [...epiObrProdutos().values()].filter(r => epiObrNum(r.quantidade) < 0);
@@ -934,12 +934,12 @@ function epiObrDesenhar(){
       rodape: { codigo: `${L.length} obras`, itens: tot.itens, pecas: tot.pecas, valor: tot.valor }
     });
   }
-  alvo.innerHTML = epiObrTopo() + epiObrFaixa() + uiAbas(abas, { ativa: _epiObr.aba, rotulo: "EPI nas obras" }) + `<div class="epi-obr-corpo epi-cns-clicavel">${/* html */ corpo}</div>`;
+  alvo.innerHTML = epiObrTopo() + epiObrFaixa() + uiAbas(abas, { ativa: _epiObr.aba, rotulo: "EPI nas obras" }) + `<div class="epi-obr-corpo epi-cns-clicavel">${  corpo}</div>`;
 }
 function epiObrCelObra(o){
   const aviso = o.encerrada && o.pecas > 0 ? ` <span class="tag vermelho" title="Obra encerrada com EPI: apontar as entregas por funcionário ou retornar à base">${esc((EPI_OBR_STATUS[o.status] || o.status).toLowerCase())} com saldo</span>` : "";
   const sem = !o.pecas ? ` <span class="tag cinza">sem saldo</span>` : "";
-  return `${uiCodigo(o.codigo || "—")} ${esc(o.nome || "")}${/* html */ aviso}${/* html */ sem}`;
+  return `${uiCodigo(o.codigo || "—")} ${esc(o.nome || "")}${  aviso}${  sem}`;
 }
 function epiObrListaInventario(L){
   return `<p class="meta epi-obr-ajuda">Contagem física de EPI e uniforme numa obra. A planilha de conferência traz a posição do Odoo em cada obra, só para comparar: a posição do Odoo nunca vira saldo sozinha. Escolha a obra para lançar a contagem.</p>` + uiTabela({
@@ -951,7 +951,7 @@ function epiObrListaInventario(L){
   });
 }
 
-/* ---------- ficha da obra: produtos e histórico ---------- */
+
 async function epiObrAbrirObra(obraId){
   _epiObr.modo = "obra"; _epiObr.obraId = obraId; _epiObr.hist = null; _epiObr.histErro = null; _epiObr.form = null;
   epiObrDesenhar();
@@ -1004,7 +1004,7 @@ function epiObrDesenharObra(){
         { chave: "id", rotulo: "", html: m => podeDesfazer(m) ? `<button type="button" class="ui-btn" data-desfazer="${esc(m.id)}" title="Desfazer este consumo (até 10 minutos depois de lançar)">Desfazer</button>` : "" }
       ], linhas: _epiObr.hist, vazio: "Nenhum envio, consumo, retorno ou inventário nesta obra." });
   }
-  alvo.innerHTML = topo + faixa + `<h4 class="epi-cns-sub">Produtos na obra</h4>${/* html */ prods}<h4 class="epi-cns-sub">Histórico</h4>${/* html */ hist}`;
+  alvo.innerHTML = topo + faixa + `<h4 class="epi-cns-sub">Produtos na obra</h4>${  prods}<h4 class="epi-cns-sub">Histórico</h4>${  hist}`;
 }
 async function epiObrDesfazer(id, btn){
   const ok = await uiConfirmar({ titulo: "Desfazer consumo", texto: "O saldo volta para a obra e o custo sai da obra. Desfazer?", confirmar: "Desfazer", perigo: true });
@@ -1019,7 +1019,7 @@ async function epiObrDesfazer(id, btn){
   });
 }
 
-/* ---------- formulários: enviar, retornar, consumo, inventário ---------- */
+
 async function epiObrCadastros(){
   if(!_epiObr.funcs){
     const { data } = await lerTudo(() => sb.from("funcionarios").select("id,nome,matricula").eq("ativo", true));
@@ -1036,7 +1036,7 @@ async function epiObrCadastros(){
 }
 function epiObrFuncId(txt){ const t = String(txt || "").trim(); return (_epiObr.funcs || []).find(f => f.rotulo === t)?.id || null; }
 function epiObrProdRotulo(p){ return `${p.produto_codigo} · ${p.produto_nome}`; }
-/* abre o formulário; quem não opera o SESMT pode abrir para ver (o banco recusa ao gravar) */
+
 async function epiObrAbrirForm(modo, obraId){
   await epiObrCadastros();
   _epiObr.modo = modo;
@@ -1047,7 +1047,7 @@ async function epiObrAbrirForm(modo, obraId){
   epiObrDesenhar();
 }
 function epiObrLinhaVazia(){ return { func: "", produto: "", qtd: "", maq: "", maqAuto: false, obs: "" }; }
-/* retorno e inventário partem dos produtos que a obra tem no app */
+
 function epiObrPreencherDaObra(){
   const f = _epiObr.form; if(!f || !f.obra) return;
   f.itens = epiObrSaldoObra(f.obra).sort((a, b) => String(a.produto_nome).localeCompare(String(b.produto_nome), "pt-BR"))
@@ -1097,9 +1097,9 @@ function epiObrDesenharForm(){
     : m === "retornar" ? `<button type="button" class="ui-btn" data-acao="tudo" title="Preenche a quantidade com todo o saldo da obra">Retornar tudo</button>` : "";
   alvo.innerHTML = `<div class="lista-topo epi-obr-topo"><button type="button" class="ui-btn" data-acao="voltar">‹ EPI nas obras</button><h3>${esc(TIT[m])}</h3></div>
     <p class="meta epi-obr-ajuda">${esc(AJ[m])}</p>
-    <div class="epi-obr-campos">${/* html */ campos}</div>${/* html */ dlFunc}${/* html */ dlProd}${/* html */ planilha}
-    <div class="epi-obr-grade">${/* html */ grade}</div>
-    <div class="form-acoes compacta epi-obr-rodape"><span class="meta" data-val-sens>${esc(tot.txt)}</span>${/* html */ extra}
+    <div class="epi-obr-campos">${  campos}</div>${  dlFunc}${  dlProd}${  planilha}
+    <div class="epi-obr-grade">${  grade}</div>
+    <div class="form-acoes compacta epi-obr-rodape"><span class="meta" data-val-sens>${esc(tot.txt)}</span>${  extra}
       <button type="button" class="ui-btn ui-btn-prim" id="epi-obr-confirmar" data-acao="confirmar"${travar ? ' title="Só o SESMT lança: o banco recusa para este perfil"' : ""}>${esc(m === "inventario" ? "Lançar contagem" : m === "consumo" ? "Lançar consumo" : TIT[m])}</button></div>`;
 }
 function epiObrGradeItens(P){
@@ -1115,8 +1115,8 @@ function epiObrGradeItens(P){
       <td>${m === "retornar" ? "" : `<button type="button" class="ui-btn" data-remover-linha="${i}" aria-label="Remover linha">×</button>`}</td></tr>`;
   }).join("");
   const rotSaldo = m === "enviar" ? "Saldo na base" : "No app (obra)";
-  return `${/* html */ add}<div class="ui-tabela-rola"><table class="ui-tabela"><thead><tr><th>Código</th><th>Produto</th><th class="num">${esc(rotSaldo)}</th>${temOdoo ? '<th class="num">Odoo</th>' : ""}<th class="num">${esc(m === "inventario" ? "Contado" : "Quantidade")}</th><th></th></tr></thead>
-    <tbody>${/* html */ linhas || `<tr class="ui-tabela-estado"><td colspan="${temOdoo ? 6 : 5}">${uiVazio(m === "retornar" ? "A obra não tem saldo." : "Nenhum item. Adicione acima.")}</td></tr>`}</tbody></table></div>`;
+  return `${  add}<div class="ui-tabela-rola"><table class="ui-tabela"><thead><tr><th>Código</th><th>Produto</th><th class="num">${esc(rotSaldo)}</th>${temOdoo ? '<th class="num">Odoo</th>' : ""}<th class="num">${esc(m === "inventario" ? "Contado" : "Quantidade")}</th><th></th></tr></thead>
+    <tbody>${  linhas || `<tr class="ui-tabela-estado"><td colspan="${temOdoo ? 6 : 5}">${uiVazio(m === "retornar" ? "A obra não tem saldo." : "Nenhum item. Adicione acima.")}</td></tr>`}</tbody></table></div>`;
 }
 function epiObrGradeConsumo(){
   const f = _epiObr.form;
@@ -1129,16 +1129,16 @@ function epiObrGradeConsumo(){
     const saldo = it.produto ? epiObrSaldoNo(it.produto, f.obra) : null;
     const resta = saldo == null ? null : saldo - (usado[it.produto] || 0);
     return `<tr><td><label class="sr-only" for="epi-obr-c-func-${i}">Funcionário</label><input id="epi-obr-c-func-${i}" list="epi-obr-dl-func" data-linha="${i}" data-campo="func" value="${esc(it.func)}" placeholder="funcionário" autocomplete="off"></td>
-      <td><label class="sr-only" for="epi-obr-c-prod-${i}">Produto</label><select id="epi-obr-c-prod-${i}" data-linha="${i}" data-campo="produto">${/* html */ opProd(it.produto)}</select></td>
+      <td><label class="sr-only" for="epi-obr-c-prod-${i}">Produto</label><select id="epi-obr-c-prod-${i}" data-linha="${i}" data-campo="produto">${  opProd(it.produto)}</select></td>
       <td class="num"><label class="sr-only" for="epi-obr-c-q-${i}">Quantidade</label><input type="number" min="0" step="0.001" id="epi-obr-c-q-${i}" data-linha="${i}" data-campo="qtd" value="${esc(it.qtd)}"></td>
       <td class="num${resta != null && resta < 0 ? " epi-obr-neg" : ""}" id="epi-obr-c-r-${i}">${resta == null ? "—" : epiObrQtd(resta)}</td>
-      <td><label class="sr-only" for="epi-obr-c-maq-${i}">Máquina</label><select id="epi-obr-c-maq-${i}" data-linha="${i}" data-campo="maq" title="Máquina da entrega; sem ela, a da Alocação na data">${/* html */ opMaq(it.maq)}</select> <span class="meta" id="epi-obr-c-maqa-${i}"${it.maqAuto ? "" : " hidden"}>Alocação</span></td>
+      <td><label class="sr-only" for="epi-obr-c-maq-${i}">Máquina</label><select id="epi-obr-c-maq-${i}" data-linha="${i}" data-campo="maq" title="Máquina da entrega; sem ela, a da Alocação na data">${  opMaq(it.maq)}</select> <span class="meta" id="epi-obr-c-maqa-${i}"${it.maqAuto ? "" : " hidden"}>Alocação</span></td>
       <td><label class="sr-only" for="epi-obr-c-obs-${i}">Observação</label><input id="epi-obr-c-obs-${i}" data-linha="${i}" data-campo="obs" value="${esc(it.obs)}" placeholder="uso coletivo, tamanho…"></td>
       <td><button type="button" class="ui-btn" data-remover-linha="${i}" aria-label="Remover linha">×</button></td></tr>`;
   }).join("");
-  return `<div class="ui-tabela-rola"><table class="ui-tabela epi-obr-consumo"><thead><tr><th>Funcionário</th><th>Produto (saldo na obra)</th><th class="num">Qtd</th><th class="num">Resta</th><th>Máquina</th><th>Observação</th><th></th></tr></thead><tbody>${/* html */ linhas}</tbody></table></div>`;
+  return `<div class="ui-tabela-rola"><table class="ui-tabela epi-obr-consumo"><thead><tr><th>Funcionário</th><th>Produto (saldo na obra)</th><th class="num">Qtd</th><th class="num">Resta</th><th>Máquina</th><th>Observação</th><th></th></tr></thead><tbody>${  linhas}</tbody></table></div>`;
 }
-/* custo pela linha da view: valor ÷ quantidade (custo_ultimo do produto); sem saldo em lugar nenhum, sem custo na prévia */
+
 function epiObrCusto(prodId){
   const r = (_epiObr.dados?.saldo || []).find(x => x.produto_id === prodId && epiObrNum(x.quantidade) !== 0);
   return r ? epiObrNum(r.valor) / epiObrNum(r.quantidade) : 0;
@@ -1152,7 +1152,7 @@ function epiObrTotais(){
     : `${L.length} ${L.length === 1 ? "linha" : "linhas"} · ${pecas.toLocaleString("pt-BR")} peças · ${valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
   return { pecas, valor, linhas: L.length, itens: L, txt };
 }
-/* lê os campos do topo do formulário para o estado (antes de redesenhar) */
+
 function epiObrLerCampos(){
   const f = _epiObr.form; if(!f) return;
   if($("epi-obr-f-obra")) f.obra = $("epi-obr-f-obra").value;
@@ -1161,7 +1161,7 @@ function epiObrLerCampos(){
   if($("epi-obr-f-obs")) f.obs = $("epi-obr-f-obs").value;
   if($("epi-obr-f-motivo")) f.motivo = $("epi-obr-f-motivo").value;
 }
-/* D8 da spec: sem máquina informada, a da Alocação na data, se for desta obra (o banco aplica a mesma regra ao gravar) */
+
 async function epiObrMaquinaDaAlocacao(i){
   const f = _epiObr.form; const it = f && f.itens[i]; if(!it) return;
   const fid = epiObrFuncId(it.func);
@@ -1169,12 +1169,12 @@ async function epiObrMaquinaDaAlocacao(i){
   const { data, error } = await sb.rpc("epi_alocacao_na_data", { p_funcionario: fid, p_data: f.data || hojeISO() });
   if(error || _epiObr.form !== f) return;
   const a = (data || []).find(x => x.obra_id === f.obra);
-  if(it.maq && !it.maqAuto) return;   // a pessoa escolheu outra máquina enquanto a Alocação era lida
+  if(it.maq && !it.maqAuto) return;
   it.maq = a?.equipamento_id || ""; it.maqAuto = !!a?.equipamento_id;
   const sel = $("epi-obr-c-maq-" + i); if(sel) sel.value = it.maq;
   const tag = $("epi-obr-c-maqa-" + i); if(tag) tag.hidden = !it.maqAuto;
 }
-/* sem redesenhar (a grade é de digitação rápida, o foco não pode pular): "Resta" de cada linha e o total do rodapé */
+
 function epiObrAtualizarParcial(){
   const f = _epiObr.form; if(!f) return;
   if(_epiObr.modo === "consumo"){
@@ -1234,7 +1234,7 @@ async function epiObrConfirmar(btn){
     await epiObrAbrirObra(obra);
   });
 }
-/* planilha de conferência (scripts/epi-odoo/5-posicao-por-obra.js): aba com o código da obra; Código, Odoo, Contado */
+
 async function epiObrLerPlanilha(file){
   const f = _epiObr.form; if(!file || !f || typeof XLSX === "undefined") return;
   const o = (_epiObr.dados?.obras || []).find(x => x.id === f.obra) || {};
@@ -1267,7 +1267,7 @@ function epiObrAplicarPlanilha(){
   f.planilha.resumo = `aba ${f.planilha.aba}: ${f.planilha.linhas.length} linha(s), ${novos} produto(s) acrescentado(s), ${contados} contado(s) preenchido(s)${faltam.length ? `; sem par no app: ${faltam.slice(0, 5).join(", ")}${faltam.length > 5 ? "…" : ""}` : ""}`;
 }
 
-/* ---------- eventos ---------- */
+
 function epiObrClique(e){
   const el = e.target;
   const aba = el.closest("[data-aba]");
@@ -1328,7 +1328,7 @@ function epiObrMudou(e){
   epiObrAtualizarParcial();
 }
 
-/* ---------- "Onde está" no produto de EPI (aba Estoque da ficha do produto) ---------- */
+
 async function epiObrOndeEsta(produtoId){
   const alvo = $("epi-obr-onde"); if(!alvo) return;
   alvo.hidden = true; alvo.innerHTML = "";
@@ -1337,7 +1337,7 @@ async function epiObrOndeEsta(produtoId){
   if(typeof prodEditId !== "undefined" && prodEditId !== produtoId) return;
   if(error){ if(!epiViewAusente(error)){ alvo.innerHTML = uiSecao("", "Onde está", uiErro(error.message)); alvo.hidden = false; } return; }
   const base = (data || []).find(r => r.local === "base");
-  if(!base) return;   // não é EPI nem uniforme
+  if(!base) return;
   const obras = (data || []).filter(r => r.local === "obra").sort((a, b) => epiObrNum(b.quantidade) - epiObrNum(a.quantidade));
   const emObras = obras.reduce((s, r) => s + epiObrNum(r.quantidade), 0);
   const corpo = `<div class="epi-obr-onde-rv">${uiRotuloValor("Base (SESMT)", `<span class="${epiObrNum(base.quantidade) < 0 ? "epi-obr-neg" : ""}">${epiObrQtd(base.quantidade)}</span>`)}${uiRotuloValor("Em obras", epiObrQtd(emObras))}${uiRotuloValor("Total", epiObrQtd(epiObrNum(base.quantidade) + emObras))}</div>`
@@ -1349,7 +1349,7 @@ async function epiObrOndeEsta(produtoId){
   alvo.hidden = false;
 }
 
-/* card na aba SESMT › EPI: visível para quem vê EPI; fica depois dos cards que vêm do Estoque */
+
 function epiObrRender(){
   const card = $("epi-obr-card"); if(!card) return;
   const pode = podeVerEpi();

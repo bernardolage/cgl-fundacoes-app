@@ -1,17 +1,17 @@
-/* ====================================================================
-   Módulo: Funcionários — Fase 19
-   Foto, departamento hierárquico, tipo_contrato, CNH, documentos
-   com validade, contato de emergência, supervisor.
-   ==================================================================== */
+
+
+
+
+
 
 let _funcs           = [];
 let _funcView        = "lista";
 let _depts           = [];
 let _supervisores    = [];
-let _funcDeptFiltro  = null;   // null = todos; uuid = dept + filhos
+let _funcDeptFiltro  = null;
 let funcEditId       = null;
-// Fase 62: bucket funcionarios-fotos é privado; foto_url guarda o path e a exibição usa URL assinada (1 h)
-let _funcFotoUrls    = {};     // path → { url, t }
+
+let _funcFotoUrls    = {};
 
 const FUNC_STAGES = ["ativo","afastado","ferias","demitido"];
 
@@ -26,13 +26,13 @@ const TIPO_CONTRATO_META = {
 const DOC_TIPO_LABEL = {
   aso:"ASO", nr35:"NR-35", nr18:"NR-18", nr10:"NR-10",
   nr33:"NR-33", cipa:"CIPA", cnh:"CNH", crea:"CREA", cau:"CAU", outro:"Outro",
-  // fase 93a: PDFs de admissão gerados pelo app (js/rh_documentos.js); ficam no bloco próprio da aba Documentos
+
   admissao_ficha:"Ficha cadastral (RG 5.17)", admissao_contrato:"Documentos admissionais (RG 5.4)",
   admissao_contrato_ajudante:"Documentos admissionais — ajudante (RG 5.5)", admissao_prorrogacao:"Prorrogação de experiência (RG 5.6)",
   admissao_contrato_trabalho:"Contrato de trabalho (RG 5.7)",
-  admissao_contrato_pj:"Contrato PJ"   // lote S56c (#188): anexado, só RH e diretoria leem
+  admissao_contrato_pj:"Contrato PJ"
 };
-/* fase 93a: campos sensíveis novos da ficha de registro — id do input → coluna de funcionarios_sensiveis */
+
 const FUNC_SENS_CAMPOS_93A = [
   ["func-pis","pis"],["func-rg-orgao","rg_orgao_emissor"],["func-ctps","ctps"],["func-ctps-serie","ctps_serie"],
   ["func-titulo-eleitor","titulo_eleitor"],["func-zona","zona_eleitoral"],["func-secao","secao_eleitoral"],["func-reservista","reservista"],
@@ -43,7 +43,7 @@ const FUNC_SENS_CAMPOS_93A = [
 ];
 const FUNC_SENS_BOOL_93A = [["func-estr-casado","estrangeiro_casado_brasileira"],["func-estr-naturalizado","estrangeiro_naturalizado"],["func-estr-filhos","estrangeiro_filhos_brasileiros"]];
 
-/* ---------- utilitários ---------- */
+
 function iniciais(nome){
   if(!nome) return "?";
   const p = nome.trim().split(/\s+/);
@@ -77,14 +77,14 @@ function deptNome(id){
 
 function cnhStatus(validade){
   if(!validade) return "";
-  const dias = Math.floor((new Date(String(validade).slice(0,10) + "T00:00:00") - new Date()) / 864e5); // fuso local
+  const dias = Math.floor((new Date(String(validade).slice(0,10) + "T00:00:00") - new Date()) / 864e5);
   if(dias < 0)   return `<span class="tag vermelho" title="${dataBR(validade)}">CNH vencida</span>`;
   if(dias <= 90) return `<span class="tag ambar" title="${dataBR(validade)}">CNH vence em ${dias}d</span>`;
   return "";
 }
 
-/* lote S56c (#188): vigência do contrato PJ — tag no padrão da CNH (30 dias âmbar, 15 dias e vencido vermelho,
-   iguais aos ramos 91/92 de vw_sc_regularizar_rh) e campos visíveis só com tipo de contrato PJ */
+
+
 function pjVigenciaStatus(f){
   if(!f || f.tipo_contrato !== "pj" || !f.pj_vigencia_fim) return "";
   const fim = String(f.pj_vigencia_fim).slice(0, 10);
@@ -94,23 +94,23 @@ function pjVigenciaStatus(f){
   if(dias <= 30) return ` <span class="tag ambar" title="Contrato PJ vence em ${dataBR(fim)}">contrato vence em ${dias}d</span>`;
   return "";
 }
-let _funcTemPjVig = false;   // a coluna funcionarios.pj_vigencia_fim já existe (select("*") da ficha)
+let _funcTemPjVig = false;
 function funcPjVigVisibilidade(){
   const pj = $("func-tipo-contrato")?.value === "pj";
   document.querySelectorAll("#func-ficha .func-pj-vig").forEach(el => { el.style.display = pj ? "" : "none"; });
-  // botão "Anexar contrato PJ" do bloco de admissão (js/rh_documentos.js), só se o bloco já é deste funcionário
+
   if(typeof rhdRender === "function" && typeof _rhdFuncId !== "undefined" && funcEditId && _rhdFuncId === funcEditId && $("func-rh-docs")?.innerHTML) rhdRender();
 }
 
-/* foto_url antiga (URL pública completa) ou path dentro do bucket → path */
+
 function funcFotoPath(v){
   if(!v) return null;
   const m = String(v).match(/\/funcionarios-fotos\/([^?#]+)/);
   return m ? decodeURIComponent(m[1]) : String(v);
 }
-/* Lote S43 (L6): a URL assinada valia 1 h e a lista redesenhava com link vencido depois de 1 h na mesma tela
-   (12 GET 400 no storage em 16/10). Agora assina por 12 h (bucket privado, URL só na memória da aba), guarda
-   `expira_em` por path, renova quando faltar menos de 5 min e, se a imagem falhar, assina de novo uma vez. */
+
+
+
 const FUNC_FOTO_ASSINA_S = 12 * 3600;
 const FUNC_FOTO_MARGEM_MS = 5 * 60 * 1000;
 function funcFotoUrl(v){
@@ -120,7 +120,7 @@ function funcFotoUrl(v){
 function funcFotosVencidas(lista){
   return (lista || []).some(f => { const p = funcFotoPath(f.foto_url); return p && !funcFotoUrl(p); });
 }
-/* Assina em lote (uma chamada) as fotos da lista que ainda não têm URL válida */
+
 async function funcAssinarFotos(lista){
   const paths = [...new Set(lista.map(f => funcFotoPath(f.foto_url)).filter(p => p && !funcFotoUrl(p)))];
   if(!paths.length) return;
@@ -129,7 +129,7 @@ async function funcAssinarFotos(lista){
   const expira_em = Date.now() + FUNC_FOTO_ASSINA_S * 1000;
   (data || []).forEach(d => { if(d.signedUrl && d.path) _funcFotoUrls[d.path] = { url: d.signedUrl, expira_em }; });
 }
-/* onerror do avatar: URL vencida ou revogada → assina de novo uma vez; na segunda falha, iniciais */
+
 async function funcFotoFalhou(img){
   const path = img.dataset.path, wrap = img.parentElement;
   const iniciaisTxt = img.dataset.ini || "";
@@ -140,7 +140,7 @@ async function funcFotoFalhou(img){
   const url = funcFotoUrl(path);
   if(url) img.src = url; else if(wrap) wrap.textContent = iniciaisTxt;
 }
-// fase 99a: a CSP não roda onerror inline; o erro de imagem não borbulha, então escuta na captura
+
 document.addEventListener("error", (e) => { const t = e.target; if(t && t.tagName === "IMG" && t.dataset.falha === "func-foto") funcFotoFalhou(t); }, true);
 
 function avatarHtml(f, sz=40){
@@ -152,7 +152,7 @@ function avatarHtml(f, sz=40){
   return `<div class="func-kan-avatar" style="${style}">${esc(iniciais(f.nome))}</div>`;
 }
 
-/* ---------- selects fixos ---------- */
+
 function funcMontarSelectsFixos(){
   const selStatus = $("func-status");
   if(selStatus) selStatus.innerHTML = opcoesStatus("funcionario");
@@ -172,7 +172,7 @@ function funcMontarSelectsFixos(){
         `<option value="${esc(v)}">${esc(m.label)}</option>`).join("");
 }
 
-/* ---------- departamentos ---------- */
+
 async function funcCarregarDepts(){
   const { data } = await sb.from("departamentos").select("id,nome,parent_id,ordem").eq("ativo",true).order("ordem");
   _depts = data || [];
@@ -193,7 +193,7 @@ function funcPopularSelectDept(){
     items.map(i => `<option value="${esc(i.id)}">${esc(i.label)}</option>`).join("");
 }
 
-/* ---------- supervisores ---------- */
+
 async function funcCarregarSupervisores(){
   const { data } = await sb.from("profiles").select("id,nome").eq("ativo",true).order("nome");
   _supervisores = data || [];
@@ -203,7 +203,7 @@ async function funcCarregarSupervisores(){
     _supervisores.map(s => `<option value="${esc(s.id)}">${esc(s.nome)}</option>`).join("");
 }
 
-/* ---------- sidebar de departamentos ---------- */
+
 function funcRenderizarSidebarDept(){
   const tree = $("func-dept-tree");
   if(!tree) return;
@@ -236,25 +236,25 @@ function funcRenderizarSidebarDept(){
   tree.innerHTML = html;
 }
 
-/* ---------- dados sensíveis (fase 35) ----------
-   CPF, RG, nascimento, salário, endereço e contato de emergência saíram de
-   funcionarios e vivem em funcionarios_sensiveis: RLS só diretor e rh, e toda
-   leitura passa por fn_funcionario_sensivel() (fica em registros_log). Para os
-   demais cargos os campos nem aparecem na ficha. */
+
+
+
+
+
 function funcVeSensivel(){
   return !!(usuarioAtual && ["diretor", "rh"].includes(usuarioAtual.cargo));
 }
-/* Lote S51 (#141, Bernardo 26/10/2026): o admin (administrativo) vê a aba Apropriações só com os totais por obra e
-   competência e roda a apuração (js/apropriacoes.js, renderFuncApropTotais); ficha sensível, valores por funcionário,
-   lançamentos, parâmetros, fechar competência e a carga da ficha continuam diretoria e RH. Espelha
-   fn_apropriacao_totais_obra() e fn_apropriar_competencia() do banco. O auditor continua sem a aba. */
+
+
+
+
 function funcVeApropriacao(){
   return funcVeSensivel() || !!(usuarioAtual && usuarioAtual.cargo === "admin");
 }
 function funcAplicarVisibilidadeSensivel(){
   const ve = funcVeSensivel();
   document.querySelectorAll(".func-sens").forEach(el => { el.style.display = ve ? "" : "none"; });
-  const veAprop = funcVeApropriacao();   // lote S51
+  const veAprop = funcVeApropriacao();
   document.querySelectorAll(".func-aprop").forEach(el => { el.style.display = veAprop ? "" : "none"; });
   const av = $("func-sens-aviso"); if(av) av.style.display = ve ? "none" : "";
 }
@@ -281,22 +281,22 @@ async function funcSalvarSensivel(funcId){
     contato_emergencia_nome: v("func-emerg-nome"), contato_emergencia_tel: v("func-emerg-tel"), contato_emergencia_parentesco: v("func-emerg-parentesco"),
     horas_semanais: n("func-horas-semanais")
   };
-  // fase 93a: ficha de registro (texto) e estrangeiro (sim/não/—)
+
   FUNC_SENS_CAMPOS_93A.forEach(([id, k]) => { reg[k] = v(id); });
   FUNC_SENS_BOOL_93A.forEach(([id, k]) => { const x = $(id)?.value ?? ""; reg[k] = x === "" ? null : x === "true"; });
   const { error } = await sb.from("funcionarios_sensiveis").upsert(reg, { onConflict: "funcionario_id" });
   return error;
 }
 
-/* ---------- carga principal ---------- */
+
 async function carregarFuncionarios(){
   funcMontarSelectsFixos();
-  // Estado de origem (logística) usa a mesma lista de UF do endereço
+
   if($("func-estado-origem") && $("func-uf") && !$("func-estado-origem").options.length) $("func-estado-origem").innerHTML = $("func-uf").innerHTML;
   funcAplicarVisibilidadeSensivel();
-  if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 93b: aba Acesso só rh/admin/diretor
-  if(typeof epiAplicarVisibilidade === "function") epiAplicarVisibilidade();                 // fase 100: visão e aba EPI
-  if(typeof funcLotAplicarVisibilidade === "function") funcLotAplicarVisibilidade();         // fase 151: Conferir alocação
+  if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();
+  if(typeof epiAplicarVisibilidade === "function") epiAplicarVisibilidade();
+  if(typeof funcLotAplicarVisibilidade === "function") funcLotAplicarVisibilidade();
   const [{ data, error }] = await Promise.all([
     sb.from("funcionarios")
       .select("id,nome,matricula,funcao,data_admissao,status,ativo,telefone,foto_url,departamento_id,tipo_contrato,cnh_validade,categoria_operacional,especialidade,coringa")
@@ -305,12 +305,12 @@ async function carregarFuncionarios(){
     _supervisores.length ? Promise.resolve() : funcCarregarSupervisores(),
   ]);
   _funcs = error ? [] : (data || []);
-  funcPreencherDatalistFuncoes();   // lote S48 (#115): o campo Função da ficha sugere as funções existentes
+  funcPreencherDatalistFuncoes();
   await funcAssinarFotos(_funcs);
   renderFuncionarios();
 }
 
-/* ---------- filtros ---------- */
+
 function funcFiltrados(){
   const termo  = ($("func-busca")?.value||"").trim().toLowerCase();
   const fStat  = $("func-f-status")?.value||"";
@@ -329,9 +329,9 @@ function funcFiltrados(){
   });
 }
 
-/* ---------- render ---------- */
+
 function renderFuncionarios(){
-  // lote S43 (L6): URL assinada vencida (ou a menos de 5 min do fim) é renovada antes de redesenhar a lista
+
   if(funcFotosVencidas(_funcs)){ funcAssinarFotos(_funcs).then(renderFuncionariosAgora, renderFuncionariosAgora); return; }
   renderFuncionariosAgora();
 }
@@ -345,8 +345,8 @@ function renderFuncionariosAgora(){
   else if(_funcView==="logistica") renderFuncLogistica();
   else if(_funcView==="he"){ funcPreencherCompetencias(); renderFuncHE(); }
   else if(_funcView==="aprop") renderFuncAprop();
-  else if(_funcView==="promocoes") renderFuncPromocoes();   // fase 93a: plano de cargos
-  else if(_funcView==="epi" && typeof epiRenderRelatorio === "function") epiRenderRelatorio("func-conteudo");   // fase 100: EPI por colaborador
+  else if(_funcView==="promocoes") renderFuncPromocoes();
+  else if(_funcView==="epi" && typeof epiRenderRelatorio === "function") epiRenderRelatorio("func-conteudo");
   else                     renderFuncLista(dados);
 }
 
@@ -400,11 +400,11 @@ function renderFuncKanban(dados){
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
 }
 
-/* ---------- painel / ficha ---------- */
+
 function mostrarPainelFunc(){
   $("func-painel").style.display = "";
   $("func-ficha").style.display = "none";
-  if($("func-adm")) $("func-adm").style.display = "none";   // fase 93a: admissão em etapas
+  if($("func-adm")) $("func-adm").style.display = "none";
   funcEditId = null;
 }
 
@@ -423,14 +423,14 @@ function novoFuncionario(){
   if($("func-ciclo-baixada")) $("func-ciclo-baixada").value = 90;
   $("func-status").value         = "ativo";
   $("func-tipo-contrato").value  = "clt";
-  funcPjVigVisibilidade();   // lote S56c (#188)
+  funcPjVigVisibilidade();
   $("func-departamento").value   = "";
   $("func-supervisor").value     = "";
   $("func-cnh-categoria").value  = "";
   $("func-ativo").checked        = true;
-  // Folha e benefícios (RH): limpa o bloco inteiro, para nada do funcionário aberto antes ir para o novo
+
   $("func-folha-rh")?.querySelectorAll("input").forEach(el => { el.value = ""; });
-  // fase 93a: dados civis e jornada (RH) idem; aba Funções e PDFs de admissão vazios até salvar
+
   ["func-civil-rh", "func-jornada-rh"].forEach(id => $(id)?.querySelectorAll("input, select").forEach(el => { el.value = ""; }));
   $("func-funcoes-lista").innerHTML = ""; $("func-funcoes-prox").innerHTML = ""; $("func-ff-form").style.display = "none";
   if($("func-rh-docs")) $("func-rh-docs").innerHTML = "";
@@ -440,15 +440,15 @@ function novoFuncionario(){
   $("func-doc-form").style.display = "none";
   $("func-sb-docs").style.display = "none";
   $("func-sb-vencendo").style.display = "none";
-  if($("func-sb-caixa")) $("func-sb-caixa").style.display = "none";   // fase 190a
-  if($("func-sb-ferramentas")) $("func-sb-ferramentas").style.display = "none";   // fase 191a
+  if($("func-sb-caixa")) $("func-sb-caixa").style.display = "none";
+  if($("func-sb-ferramentas")) $("func-sb-ferramentas").style.display = "none";
   abrirFichaFuncVisual({ nome:"(novo)", status:"ativo", ativo:true });
 }
 
 async function abrirFuncionario(id){
   funcEditId = id;
   const { data, error } = await sb.from("funcionarios").select("*").eq("id",id).single();
-  if(funcEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
+  if(funcEditId !== id) return;
   if(error){ aviso("app-aviso","Erro ao abrir funcionário: "+error.message,"erro"); return; }
 
   $("func-nome").value        = data.nome||"";
@@ -477,7 +477,7 @@ async function abrirFuncionario(id){
   $("func-obs").value         = data.observacoes||"";
   $("func-ativo").checked     = data.ativo!==false;
   $("func-tipo-contrato").value  = data.tipo_contrato||"clt";
-  // lote S56c (#188): vigência do contrato PJ (colunas novas; banco sem a migration → campos vazios)
+
   if($("func-pj-vig-inicio")) $("func-pj-vig-inicio").value = (data.pj_vigencia_inicio||"").slice(0,10);
   if($("func-pj-vig-fim"))    $("func-pj-vig-fim").value    = (data.pj_vigencia_fim||"").slice(0,10);
   _funcTemPjVig = Object.prototype.hasOwnProperty.call(data, "pj_vigencia_fim");
@@ -489,12 +489,12 @@ async function abrirFuncionario(id){
   $("func-emerg-nome").value     = sens.contato_emergencia_nome||"";
   $("func-emerg-tel").value      = sens.contato_emergencia_tel||"";
   $("func-emerg-parentesco").value = sens.contato_emergencia_parentesco||"";
-  // fase 93a: ficha de registro, jornada e estrangeiro
+
   FUNC_SENS_CAMPOS_93A.forEach(([id, k]) => { const el = $(id); if(el) el.value = (sens[k] ?? "").toString().slice(0, k === "estrangeiro_chegada_brasil" ? 10 : undefined); });
   FUNC_SENS_BOOL_93A.forEach(([id, k]) => { const el = $(id); if(el) el.value = sens[k] == null ? "" : String(sens[k]); });
   if($("func-horas-semanais")) $("func-horas-semanais").value = sens.horas_semanais ?? "";
   $("func-ff-form").style.display = "none"; $("func-funcoes-lista").innerHTML = ""; $("func-funcoes-prox").innerHTML = "";
-  // logística (Planejamento Logística / RG 8.1)
+
   if($("func-estado-origem")) $("func-estado-origem").value = data.estado_origem||"";
   if($("func-categoria"))     $("func-categoria").value     = data.categoria_operacional||"";
   if($("func-especialidade")) $("func-especialidade").value = data.especialidade||"";
@@ -507,14 +507,14 @@ async function abrirFuncionario(id){
   $("btn-excluir-func").style.display = "";
   $("func-doc-form").style.display = "none";
   await carregarDocsFuncionario();
-  if(typeof eccSmartFuncionario === "function") eccSmartFuncionario(id);   // fase 190a: smart-button "Caixa"
-  if(typeof frmSmartFuncionario === "function") frmSmartFuncionario(id);   // fase 191a: smart-button "Ferramentas"
+  if(typeof eccSmartFuncionario === "function") eccSmartFuncionario(id);
+  if(typeof frmSmartFuncionario === "function") frmSmartFuncionario(id);
   abrirFichaFuncVisual(data);
 }
 
 function abrirFichaFuncVisual(f){
   $("func-painel").style.display = "none";
-  if($("func-adm")) $("func-adm").style.display = "none";   // fase 93a
+  if($("func-adm")) $("func-adm").style.display = "none";
   $("func-ficha").style.display  = "";
 
   $("func-ficha-nome").textContent      = f.nome||"(novo)";
@@ -522,18 +522,18 @@ function abrirFichaFuncVisual(f){
   $("func-ficha-depto-chip").textContent     = deptNome(f.departamento_id);
   $("func-ficha-matricula-chip").textContent = f.matricula||"—";
   $("func-ficha-admissao-chip").textContent  = dataBR(f.data_admissao);
-  $("func-ficha-contrato-chip").innerHTML    = tagContrato(f.tipo_contrato) + pjVigenciaStatus(f);   // lote S56c (#188)
+  $("func-ficha-contrato-chip").innerHTML    = tagContrato(f.tipo_contrato) + pjVigenciaStatus(f);
   $("func-ficha-status-chip").innerHTML      = tagStatus("funcionario",f.status);
 
   atualizarStatusbarFunc(f.status);
   ativarTabFunc("pessoais");
-  if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();   // fase 100: almoxarife vê a aba Acesso só no setor dele
-  if(typeof epiAplicarVisibilidadeFicha === "function") epiAplicarVisibilidadeFicha();       // fase 100: aba EPI (js/epi.js)
-  if(typeof sstFichaFuncAplicarVisibilidade === "function") sstFichaFuncAplicarVisibilidade();   // fase 109a: aba Segurança (js/sesmt.js)
-  if(typeof funcLotAplicarVisibilidade === "function") funcLotAplicarVisibilidade();   // fase 151: aba Linha do tempo
+  if(typeof funcAcessoAplicarVisibilidade === "function") funcAcessoAplicarVisibilidade();
+  if(typeof epiAplicarVisibilidadeFicha === "function") epiAplicarVisibilidadeFicha();
+  if(typeof sstFichaFuncAplicarVisibilidade === "function") sstFichaFuncAplicarVisibilidade();
+  if(typeof funcLotAplicarVisibilidade === "function") funcLotAplicarVisibilidade();
 }
 
-/* ---------- foto ---------- */
+
 async function funcCarregarFoto(fotoUrl, nome){
   const preview = $("func-foto-preview");
   if(!preview) return;
@@ -550,13 +550,13 @@ async function funcCarregarFoto(fotoUrl, nome){
 
 async function uploadFotoFuncionario(file){
   if(!funcEditId){ aviso("app-aviso","Salve o funcionário antes de adicionar foto.","aviso"); return; }
-  // Extensão entra no caminho do storage: só letras/dígitos (1-5), senão cai em "jpg"
+
   const ext  = (String(file.name.split(".").pop()||"").toLowerCase().match(/^[a-z0-9]{1,5}$/)||[])[0] || "jpg";
   const path = `${funcEditId}/foto.${ext}`;
   const { error: upErr } = await sb.storage.from("funcionarios-fotos")
     .upload(path, file, { upsert:true, contentType:file.type });
   if(upErr){ aviso("app-aviso","Erro no upload: "+upErr.message,"erro"); return; }
-  // Fase 62: grava só o path; a exibição gera URL assinada
+
   const { error: upd } = await sb.from("funcionarios")
     .update({ foto_url: path }).eq("id", funcEditId);
   if(upd){ aviso("app-aviso","Foto salva mas não vinculada: "+upd.message,"erro"); return; }
@@ -566,13 +566,13 @@ async function uploadFotoFuncionario(file){
   aviso("app-aviso","Foto atualizada.","ok");
 }
 
-/* ---------- smart buttons ---------- */
+
 async function carregarDocsFuncionario(){
   if(!funcEditId){ $("func-docs-lista").innerHTML=""; return; }
   const { data, error } = await sb.from("funcionario_documentos")
     .select("*").eq("funcionario_id",funcEditId).order("validade");
   if(error){ $("func-docs-lista").innerHTML=`<p class="vazio">Erro ao carregar.</p>`; return; }
-  // fase 93a: os PDFs de admissão (admissao_*) têm bloco próprio (js/rh_documentos.js); a lista geral fica com os demais
+
   const docs = (data||[]).filter(d => !/^admissao_/.test(String(d.tipo || "")));
   if(typeof rhdCarregar === "function") rhdCarregar(funcEditId);
 
@@ -580,7 +580,7 @@ async function carregarDocsFuncionario(){
   const em90 = new Date(hoje); em90.setDate(em90.getDate()+90);
   const alertas = docs.filter(d => {
     if(!d.validade) return false;
-    // "T00:00:00" força fuso local; "YYYY-MM-DD" puro é UTC (= 21h do dia anterior no BR)
+
     return new Date(String(d.validade).slice(0,10) + "T00:00:00") <= em90;
   }).length;
 
@@ -609,7 +609,7 @@ function renderDocsFuncionario(docs){
   const linhas = docs.map(d => {
     let valCls="", valTxt = dataBR(d.validade)||"—";
     if(d.validade){
-      const v = new Date(String(d.validade).slice(0,10) + "T00:00:00"); // fuso local
+      const v = new Date(String(d.validade).slice(0,10) + "T00:00:00");
       if(v<hoje)       { valCls="func-doc-vencido";  valTxt+=" ⚠️"; }
       else if(v<=em90) { valCls="func-doc-vencendo"; valTxt+=" ⚠️"; }
       else               valCls="func-doc-ok";
@@ -629,7 +629,7 @@ function renderDocsFuncionario(docs){
       <th>Tipo</th><th>Descrição</th><th>Número</th>
       <th>Emissão</th><th>Validade</th><th></th>
     </tr></thead><tbody>${linhas}</tbody></table></div>`;
-  // data-id + listener (era onclick inline com interpolação — único do app)
+
   cont.querySelectorAll(".func-doc-del").forEach(b => {
     b.addEventListener("click", () => excluirDocFuncionario(b.dataset.id));
   });
@@ -662,7 +662,7 @@ async function excluirDocFuncionario(id){
   await carregarDocsFuncionario();
 }
 
-/* ---------- statusbar / tabs ---------- */
+
 function atualizarStatusbarFunc(st){
   const bar = $("func-statusbar");
   if(!bar) return;
@@ -682,19 +682,19 @@ function ativarTabFunc(nome){
     t.classList.toggle("ativa", t.dataset.tab===nome));
 }
 
-/* ---------- salvar / excluir ---------- */
-/* ---------- Homônimos (regra do Bernardo, 11/09/2026) ----------
-   Nome igual a outro funcionário não entra, a não ser com CPF diferente. O CPF vive
-   em funcionarios_sensiveis (só diretor/rh leem), então quem não vê CPF não consegue
-   provar que é outra pessoa e o cadastro é recusado com orientação. Isso também protege
-   o casamento por nome do import de RDO (fn_funcionario_por_nome e o preview),
-   que com homônimos vira chute. */
+
+
+
+
+
+
+
 function funcNormalizarNome(s){
   return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().toUpperCase();
 }
-/* lote S48 (#115): fun\u00e7\u00e3o padronizada ao salvar \u2014 sem acento, espa\u00e7os simples, iniciais mai\u00fasculas, conectores
-   (de, da, do, das, dos, e, em) min\u00fasculos, numeral romano e sigla curta em mai\u00fasculas ("Operador de Maquinas Junior",
-   "Ajudante de Equipamentos II", "PJ"). Mesma regra da carga 20261022_loteS48_b (docs/cargas/funcoes-padronizadas-2026-10.md). */
+
+
+
 const FUNC_CONECTORES = new Set(["de", "da", "do", "das", "dos", "e", "em"]);
 function funcPadronizarFuncao(s){
   const t = String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
@@ -725,10 +725,10 @@ async function funcBloqueiaHomonimo(nome){
     if(!cpfOutro) return `Já existe funcionário com este nome (${f.nome}) e ele está sem CPF no cadastro. Preencha o CPF dele primeiro para o sistema conseguir distinguir os dois.`;
     if(cpfOutro === cpfNovo) return `${f.nome} já está cadastrado com este mesmo CPF — é a mesma pessoa. Abra o cadastro dele em vez de criar outro.`;
   }
-  return null; // homônimo legítimo: CPFs diferentes
+  return null;
 }
 
-/* Fase 142 (UX-01): uma gravação por vez; quem chega com outra em andamento espera a mesma. */
+
 let _funcSalvando = null;
 function salvarFuncionario(novoStatus){
   if(!_funcSalvando) _funcSalvando = funcSalvarAgora(novoStatus).finally(() => { _funcSalvando = null; });
@@ -743,7 +743,7 @@ async function funcSalvarAgora(novoStatus){
   const reg = {
     nome:            $("func-nome").value.trim(),
     matricula:       $("func-matricula").value.trim()||null,
-    funcao:          funcPadronizarFuncao($("func-funcao").value),   // lote S48 (#115)
+    funcao:          funcPadronizarFuncao($("func-funcao").value),
     status:          novoStatus||$("func-status").value||"ativo",
     data_admissao:   $("func-admissao").value||null,
     data_demissao:   $("func-demissao").value||null,
@@ -763,7 +763,7 @@ async function funcSalvarAgora(novoStatus){
     ciclo_baixada_dias:   $("func-ciclo-baixada")?.value!=="" ? Number($("func-ciclo-baixada").value) : 90,
     observacao_logistica: $("func-obs-logistica")?.value.trim()||null,
   };
-  // lote S56c (#188): vigência do contrato PJ, só com tipo PJ (CLT não mexe nas datas guardadas)
+
   if(reg.tipo_contrato === "pj"){
     const ini = $("func-pj-vig-inicio")?.value || null, fim = $("func-pj-vig-fim")?.value || null;
     if(ini && fim && fim < ini){ aviso("app-aviso", "O fim da vigência do contrato PJ não pode ser antes do início.", "erro"); ativarTabFunc("profissional"); return; }
@@ -782,7 +782,7 @@ async function funcSalvarAgora(novoStatus){
     return;
   }
   funcEditId = result.data.id;
-  // dados sensíveis (só diretor/rh; o upsert respeita o RLS)
+
   const errSens = await funcSalvarSensivel(funcEditId);
   if(errSens){
     const ms = (errSens.message||"").toLowerCase();
@@ -792,7 +792,7 @@ async function funcSalvarAgora(novoStatus){
   $("btn-excluir-func").style.display = "";
   $("func-status").value = result.data.status;
   aviso("app-aviso","Funcionário salvo.","ok");
-  _funcLog = null; // vista Logística recarrega
+  _funcLog = null;
   await carregarFuncionarios();
   await abrirFuncionario(funcEditId);
 }
@@ -809,7 +809,7 @@ async function excluirFuncionario(){
   mostrarPainelFunc();
 }
 
-/* ---------- listeners ---------- */
+
 function ligarFuncionarios(){
   document.querySelectorAll("#func-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {
@@ -821,7 +821,7 @@ function ligarFuncionarios(){
   });
 
   $("func-he-competencia")?.addEventListener("change", renderFuncionarios);
-  $("func-tipo-contrato")?.addEventListener("change", funcPjVigVisibilidade);   // lote S56c (#188)
+  $("func-tipo-contrato")?.addEventListener("change", funcPjVigVisibilidade);
   ["func-busca","func-f-status","func-f-contrato"].forEach(id => {
     const el=$(id);
     if(el) el.addEventListener(id==="func-busca"?"input":"change", id==="func-busca" ? debounce(renderFuncionarios) : renderFuncionarios);
@@ -848,12 +848,12 @@ function ligarFuncionarios(){
     b.addEventListener("click", () => {
       ativarTabFunc(b.dataset.tab);
       if(b.dataset.tab==="documentos" && funcEditId) carregarDocsFuncionario();
-      if(b.dataset.tab==="funcoes" && funcEditId) funcCarregarFuncoes(funcEditId);   // fase 93a
-      if(b.dataset.tab==="linhatempo" && funcEditId) funcLtCarregar(funcEditId);   // fase 151
+      if(b.dataset.tab==="funcoes" && funcEditId) funcCarregarFuncoes(funcEditId);
+      if(b.dataset.tab==="linhatempo" && funcEditId) funcLtCarregar(funcEditId);
     });
   });
 
-  // fase 93a: aba Funções (histórico + plano de cargos) e admissão em etapas
+
   $("btn-func-ff-novo")?.addEventListener("click", () => {
     if(!funcEditId){ aviso("func-funcoes-aviso", "Salve o funcionário primeiro.", "aviso"); return; }
     $("func-ff-funcao").value = ""; $("func-ff-data").value = hojeISO(); $("func-ff-motivo").value = "promocao_plano"; $("func-ff-obs").value = "";
@@ -897,7 +897,7 @@ function ligarFuncionarios(){
     $("func-doc-form").style.display = "none";
   });
 
-  // fase 109a: os documentos de segurança (NR, ASO, CNH…) vivem na aba Segurança; Documentos fica com os PDFs de admissão do RH
+
   const sstAba = () => { ativarTabFunc("seguranca"); if(typeof sstFichaFuncCarregar === "function") sstFichaFuncCarregar(); };
   $("func-sb-docs")?.addEventListener("click", sstAba);
   $("func-sb-vencendo")?.addEventListener("click", sstAba);
@@ -912,15 +912,15 @@ if(document.readyState==="loading"){
   ligarFuncionarios();
 }
 
-/* ====================================================================
-   Vista LOGÍSTICA (fase 35 · SPEC tela 1): onde cada um está, TAG, próxima baixada
-   com semáforo — fonte vw_funcionarios_logistica (próxima = último retorno + ciclo,
-   ou data acordada). Vista HORAS EXTRAS (tela 3): horas por colaborador × obra na
-   competência, a partir de rdo_equipe. É o "HORAS EXTRAS – mês" da RG 8.1.3.
-   ==================================================================== */
+
+
+
+
+
+
 let _funcLog = null;
 let _funcHE  = { comp: null, dados: null };
-let _funcLogFiltro = "";   // fase 151: vencida, a_vencer, em_baixada
+let _funcLogFiltro = "";
 const FUNC_AVAL_LBL = { novato: "Novato", bom: "Bom", muito_bom: "Muito bom", excelente: "Excelente", atencao: "Atenção" };
 
 async function renderFuncLogistica(){
@@ -932,7 +932,7 @@ async function renderFuncLogistica(){
     if(error){ cont.innerHTML = `<p class="vazio">Erro ao carregar: ${esc(error.message)}</p>`; return; }
     _funcLog = data || [];
   }
-  // fase 151: Categoria e Frente saem da vista (continuam na ficha); o âmbar segue empresa_config.baixada_aviso_dias
+
   const termo = ($("func-busca")?.value || "").trim().toLowerCase();
   const fStatus = $("func-f-status")?.value || "", fContr = $("func-f-contrato")?.value || "";
   const avisoDias = _funcLog[0]?.baixada_aviso_dias ?? 10;
@@ -973,8 +973,8 @@ async function renderFuncLogistica(){
         <td style="white-space:nowrap;">${esc(f.obra_atual ? f.obra_atual + (f.cidade_atual ? " · " + f.cidade_atual : "") : "—")}</td>
         ${veAval ? `<td>${esc(FUNC_AVAL_LBL[f.avaliacao] || "—")}</td>` : ""}
         <td>${f.ultimo_retorno_baixada ? dataBR(f.ultimo_retorno_baixada) : "—"}</td>
-        <td>${f.proxima_baixada && !f.em_baixada ? dataBR(f.proxima_baixada) + " " : ""}${/* html */ sem(f)}${f.baixada_acordada ? ` <span class="tag azul" title="${esc(f.acordo_em ? "Acordada em " + dataBR(String(f.acordo_em).slice(0, 10)) + (f.acordo_motivo ? ": " + f.acordo_motivo : "") : "Data acordada (carga antiga)")}">acordada</span>` : ""}</td>
-        <td>${/* html */ tagStatus("funcionario", f.status)}</td><td class="meta">${esc(f.observacao_logistica || "")}</td>
+        <td>${f.proxima_baixada && !f.em_baixada ? dataBR(f.proxima_baixada) + " " : ""}${  sem(f)}${f.baixada_acordada ? ` <span class="tag azul" title="${esc(f.acordo_em ? "Acordada em " + dataBR(String(f.acordo_em).slice(0, 10)) + (f.acordo_motivo ? ": " + f.acordo_motivo : "") : "Data acordada (carga antiga)")}">acordada</span>` : ""}</td>
+        <td>${  tagStatus("funcionario", f.status)}</td><td class="meta">${esc(f.observacao_logistica || "")}</td>
         ${pode ? `<td style="white-space:nowrap;">${f.status === "demitido" ? "" : `<button type="button" class="btn-sec btn-sm func-log-mov">Movimentar</button>
           <button type="button" class="btn-sec btn-sm func-log-bx">${f.em_baixada ? "Registrar retorno" : "Baixada"}</button>
           <button type="button" class="btn-sec btn-sm func-log-ac" title="Combinar com a pessoa a data da próxima baixada, com motivo (lote S61)">Acordar data</button>
@@ -989,7 +989,7 @@ async function renderFuncLogistica(){
     if(b.classList.contains("func-log-mov")) funcMovAbrir(f.id, f.nome);
     else if(b.classList.contains("func-log-bx")) funcBxAbrir(f.id, f.nome, f.baixada_aberta_id || null);
     else if(b.classList.contains("func-log-upd")) funcUpdAbrir(f.id, f.nome);
-    else if(b.classList.contains("func-log-ac")) funcAcAbrir(f);   // lote S61 (#269)
+    else if(b.classList.contains("func-log-ac")) funcAcAbrir(f);
   }));
 }
 
@@ -1013,18 +1013,18 @@ async function renderFuncHE(){
     cont.innerHTML = `<p class="vazio">Apurando ${esc(comp)}…</p>`;
     const ini = comp + "-01";
     const fim = dataLocalISO(new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0));
-    // fase 103 (#23): status_dia da linha (ausência não conta como dia); sem a migration a consulta repete sem a coluna
+
     const ler = (comStatus) => sb.from("rdo_equipe")
       .select(`funcionario_id,nome_avulso,funcao_no_dia,hora_entrada,hora_saida,horas_normais,horas_50,horas_100,horas_noturnas,${comStatus ? "status_dia," : ""}rdo:rdo_id!inner(data,obra_id)`)
       .gte("rdo.data", ini).lte("rdo.data", fim).limit(5000);
     let { data, error } = await ler(true);
     if(error && /status_dia/i.test(error.message || "")) ({ data, error } = await ler(false));
     if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
-    // fase 103: contagem do mês por status vem de vw_rh_horas_mes (horas liberadas para a folha; a view é do RH e da
-    // diretoria). Para os demais cargos, ou sem a migration, as colunas não aparecem.
+
+
     let status = null;
     if(["diretor", "rh"].includes(usuarioAtual?.cargo)){
-      // lote S54 (#178): + dias_folga_meio_periodo; antes da migration S54 a view não tem a coluna e a consulta repete sem ela
+
       const lerSt = (comMeio) => sb.from("vw_rh_horas_mes").select(`funcionario_id,obra_id,dias_falta,dias_folga,${comMeio ? "dias_folga_meio_periodo," : ""}dias_dsr,dias_atestado,dias_viagem,dias_treinamento`).eq("competencia", ini).limit(5000);
       let r = await lerSt(true);
       if(r.error && /dias_folga_meio_periodo/i.test(r.error.message || "")) r = await lerSt(false);
@@ -1034,24 +1034,24 @@ async function renderFuncHE(){
   }
   const nomeDe = (r) => r.funcionario_id ? ((_funcs.find(f => f.id === r.funcionario_id) || {}).nome || "?") : (r.nome_avulso || "—");
   const presenca = (r) => { if(!r.hora_entrada || !r.hora_saida) return 0; const [h1, m1] = r.hora_entrada.split(":").map(Number), [h2, m2] = r.hora_saida.split(":").map(Number); let d = (h2 * 60 + m2) - (h1 * 60 + m1); if(d < 0) d += 1440; return d / 60; };
-  const AUSENCIAS = ["falta", "folga", "dsr", "atestado"];   // fase 103: não contam como dia trabalhado
+  const AUSENCIAS = ["falta", "folga", "dsr", "atestado"];
   const g = new Map();
   let nAus = 0;
   _funcHE.dados.forEach(r => {
     const k = nomeDe(r) + "|" + (r.rdo?.obra_id || "");
     if(!g.has(k)) g.set(k, { nome: nomeDe(r), fid: r.funcionario_id || null, obra: mapaObras[r.rdo?.obra_id] || "—", obra_id: r.rdo?.obra_id || null, dias: new Set(), pres: 0, hn: 0, h50: 0, h100: 0, hnot: 0 });
     const a = g.get(k);
-    if(AUSENCIAS.includes(r.status_dia)){ nAus++; return; }   // ausência: sem horas e sem dia
+    if(AUSENCIAS.includes(r.status_dia)){ nAus++; return; }
     a.dias.add(r.rdo?.data); a.pres += presenca(r);
     a.hn += Number(r.horas_normais) || 0; a.h50 += Number(r.horas_50) || 0; a.h100 += Number(r.horas_100) || 0; a.hnot += Number(r.horas_noturnas) || 0;
   });
-  // fase 103: colunas por status (vw_rh_horas_mes, liberadas), no fim da tabela e do CSV; lote S54 (#178): "Folga ½" só
-  // quando a view já tem a coluna (a folga de meio período conta como dia)
+
+
   const temMeio = !!_funcHE.status && [..._funcHE.status.values()].some(v => Object.prototype.hasOwnProperty.call(v, "dias_folga_meio_periodo"));
   const COLS_ST = _funcHE.status ? [["dias_falta", "Faltas"], ["dias_folga", "Folgas"]].concat(temMeio ? [["dias_folga_meio_periodo", "Folga ½"]] : []).concat([["dias_dsr", "DSR"], ["dias_atestado", "Atestados"], ["dias_viagem", "Viagem"], ["dias_treinamento", "Treinamento"]]) : [];
   const st = (a, c) => Number(_funcHE.status?.get(`${a.fid}|${a.obra_id || ""}`)?.[c] || 0);
   const termo = ($("func-busca")?.value || "").trim().toLowerCase();
-  const linhas = [...g.values()].filter(a => a.dias.size > 0 || COLS_ST.some(([c]) => st(a, c) > 0))   // fase 103: só ausência pendente não vira linha
+  const linhas = [...g.values()].filter(a => a.dias.size > 0 || COLS_ST.some(([c]) => st(a, c) > 0))
     .filter(a => !termo || `${a.nome} ${a.obra}`.toLowerCase().includes(termo))
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR") || a.obra.localeCompare(b.obra, "pt-BR"));
   const f1 = (v) => Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
@@ -1078,16 +1078,16 @@ async function renderFuncHE(){
   });
 }
 
-/* ====================================================================
-   Fase 93a (chamados #69 e #70): aba FUN\u00c7\u00d5ES da ficha (hist\u00f3rico de fun\u00e7\u00e3o +
-   pr\u00f3xima mudan\u00e7a pelo plano de cargos), vista FUN\u00c7\u00d5ES do painel
-   (vw_rh_promocoes com sem\u00e1foro) e ADMISS\u00c3O EM ETAPAS (dados pessoais \u2192
-   documentos \u2192 contrato \u2192 benef\u00edcios), que grava funcionarios +
-   funcionarios_sensiveis + admissoes e gera os PDFs (js/rh_documentos.js).
-   ==================================================================== */
+
+
+
+
+
+
+
 const FUNC_FF_MOTIVO = { admissao: "Admiss\u00e3o", promocao_plano: "Promo\u00e7\u00e3o pelo plano", mudanca: "Mudan\u00e7a de fun\u00e7\u00e3o", correcao: "Corre\u00e7\u00e3o" };
-let _funcPlano = null;                               // plano_cargos (cache da sess\u00e3o)
-let _funcPromo = { dados: null, filtro: "todas" };   // vista Fun\u00e7\u00f5es: todas | 60dias | vencidas | no_prazo
+let _funcPlano = null;
+let _funcPromo = { dados: null, filtro: "todas" };
 let _admEtapa  = 1;
 
 async function funcCarregarPlano(){
@@ -1097,10 +1097,10 @@ async function funcCarregarPlano(){
   funcPreencherDatalistFuncoes();
   return _funcPlano;
 }
-/* sugest\u00f5es de fun\u00e7\u00e3o: as do plano de cargos + as j\u00e1 usadas no cadastro */
+
 function funcPreencherDatalistFuncoes(){
   const dl = $("func-funcoes-datalist"); if(!dl) return;
-  // lote S48 (#115): só a grafia padronizada entra na lista, para não nascer variante nova
+
   const nomes = new Set();
   const add = (n) => { const p = funcPadronizarFuncao(n); if(p) nomes.add(p); };
   (_funcPlano || []).forEach(p => { add(p.funcao_origem); add(p.funcao_destino); });
@@ -1114,7 +1114,7 @@ function funcPromoTag(p){
   return `<span class="tag verde">em ${esc(p.dias_restantes)} d</span>`;
 }
 
-/* ---------- aba Fun\u00e7\u00f5es ---------- */
+
 async function funcCarregarFuncoes(id){
   const cont = $("func-funcoes-lista"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando\u2026</p>`;
@@ -1148,7 +1148,7 @@ async function funcCarregarFuncoes(id){
 }
 async function funcSalvarFuncao(){
   if(!funcEditId) return;
-  const funcao = funcPadronizarFuncao($("func-ff-funcao").value), data = $("func-ff-data").value;   // lote S48 (#115)
+  const funcao = funcPadronizarFuncao($("func-ff-funcao").value), data = $("func-ff-data").value;
   if(!funcao || !data){ aviso("func-funcoes-aviso", "Informe a fun\u00e7\u00e3o e a data.", "erro"); return; }
   const reg = { funcionario_id: funcEditId, funcao, data_inicio: data, motivo: $("func-ff-motivo").value, observacoes: $("func-ff-obs").value.trim() || null };
   const { error } = await sb.from("funcionario_funcoes").insert(reg);
@@ -1166,7 +1166,7 @@ async function funcExcluirFuncao(id){
   if(error){ aviso("func-funcoes-aviso", "Erro ao apagar: " + error.message, "erro"); return; }
   await funcAtualizarFuncaoEspelho();
 }
-/* a fun\u00e7\u00e3o da ficha \u00e9 espelho da \u00faltima linha do hist\u00f3rico (gatilho): rel\u00ea o cadastro e os chips */
+
 async function funcAtualizarFuncaoEspelho(){
   await funcCarregarFuncoes(funcEditId);
   const { data: f } = await sb.from("funcionarios").select("funcao").eq("id", funcEditId).single();
@@ -1178,7 +1178,7 @@ async function funcAtualizarFuncaoEspelho(){
   _funcPromo.dados = null;
 }
 
-/* ---------- vista Fun\u00e7\u00f5es do painel (plano de cargos) ---------- */
+
 const FUNC_PROMO_FILTROS = { todas: "todas", vencidas: "vencidas", "60dias": "em 60 dias", no_prazo: "no prazo" };
 async function renderFuncPromocoes(){
   const cont = $("func-conteudo"); if(!cont) return;
@@ -1222,7 +1222,7 @@ async function renderFuncPromocoes(){
     document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);
   });
 }
-/* Sala de Comando \u2192 vista Fun\u00e7\u00f5es j\u00e1 filtrada (vencidas | 60dias) */
+
 function funcAbrirPromocoes(preset){
   _funcView = "promocoes"; _funcPromo.filtro = preset || "todas"; _funcPromo.dados = null;
   document.querySelectorAll("#func-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === "promocoes"));
@@ -1230,7 +1230,7 @@ function funcAbrirPromocoes(preset){
   renderFuncionarios();
 }
 
-/* ---------- admiss\u00e3o em etapas ---------- */
+
 const ADM_PADROES = { "adm-nacionalidade": "Brasileira", "adm-banco": "Ita\u00fa", "adm-prazo": "45", "adm-prorrogacao": "45",
   "adm-horario": "de 7:00 \u00e0s 17:00 (seg a quin) 7:00 \u00e0s 16:00 (sex)", "adm-intervalo": "(uma) hora", "adm-horas-semanais": "44",
   "adm-forma-pagamento": "Mensalista", "adm-tipo-contrato": "clt", "adm-tipo-documento": "padrao" };
@@ -1280,7 +1280,7 @@ function funcAdmValidar(e){
   }
   return null;
 }
-/* decis\u00e3o 2: experi\u00eancia 45 + 45; 1\u00ba vencimento = admiss\u00e3o + prazo \u2212 1 (o dia da admiss\u00e3o conta); 2\u00ba = 1\u00ba + prorroga\u00e7\u00e3o */
+
 function funcAdmCalcVencimentos(forcar){
   const d = $("adm-data")?.value; if(!d) return;
   const prazo = Number($("adm-prazo").value || 0), pror = Number($("adm-prorrogacao").value || 0);
@@ -1295,7 +1295,7 @@ function funcAdmSugerirModelo(){
 function funcAdmResumo(){
   const v = (id) => esc(($(id)?.value || "").trim() || "\u2014");
   const sal = $("adm-salario").value;
-  const item = (r, val) => `<div><span class="meta">${esc(r)}</span><br><strong>${/* html */ val}</strong></div>`;
+  const item = (r, val) => `<div><span class="meta">${esc(r)}</span><br><strong>${  val}</strong></div>`;
   $("adm-resumo").innerHTML = `<strong>Resumo da admiss\u00e3o</strong>
     <div class="grade" style="margin-top:8px;">
       ${item("Nome", v("adm-nome"))}${item("Fun\u00e7\u00e3o", v("adm-funcao"))}${item("Admiss\u00e3o", dataBR($("adm-data").value) || "\u2014")}
@@ -1313,7 +1313,7 @@ async function funcAdmConcluir(){
   const n = (id) => ($(id)?.value ?? "") === "" ? null : Number($(id).value);
   const b = (id) => { const x = $(id)?.value ?? ""; return x === "" ? null : x === "true"; };
   const nome = v("adm-nome"), cpf = ($("adm-cpf").value || "").replace(/\D/g, "");
-  // hom\u00f4nimo: a mesma regra da ficha (nome igual s\u00f3 com CPF diferente)
+
   for(const f of _funcs.filter(f => funcNormalizarNome(f.nome) === funcNormalizarNome(nome))){
     const s = await funcCarregarSensivel(f.id); const c = String(s?.cpf || "").replace(/\D/g, "");
     if(!c){ aviso("adm-aviso", `J\u00e1 existe funcion\u00e1rio com este nome (${f.nome}) sem CPF no cadastro. Preencha o CPF dele primeiro.`, "erro"); return; }
@@ -1340,7 +1340,7 @@ async function funcAdmConcluir(){
   };
   const r2 = await sb.from("funcionarios_sensiveis").upsert(sens, { onConflict: "funcionario_id" });
   if(r2.error){
-    // hotfix 224b: desfaz o cadastro e fica no assistente; abrir a ficha vazia obrigava a digitar tudo de novo
+
     const base = /cpf/i.test(r2.error.message) ? "J\u00e1 existe um funcion\u00e1rio com este CPF." : "Os dados sens\u00edveis foram recusados: " + r2.error.message;
     const desfez = await sb.from("funcionarios").delete().eq("id", id);
     if(desfez.error){
@@ -1381,34 +1381,34 @@ async function funcAdmConcluir(){
 
 }
 
-/* ====================================================================
-   Fase 93b (20/10/2026): aba ACESSO — login do funcionário criado pelo RH, com o CPF como usuário.
-   Decisão 6 do Bernardo (19/10): operadores, encarregados, ajudantes, soldadores e mecânicos entram no app
-   para lançar horas de viagem, assinar documentos e, depois, contribuir no RDO. A Jucirlene (rh), além de
-   admin e diretor, cria o login aqui: a edge function convidar-usuario (ações *_login_funcionario) lê o CPF
-   em funcionarios_sensiveis com service_role, cria o usuário no Auth com o e-mail técnico
-   <cpf>@funcionarios.cglfundacoes.com.br e a senha digitada, e grava profiles.login_cpf / senha_provisoria /
-   funcionario_id. O CPF nunca passa por aqui: a tela diz "login: CPF do funcionário" e só. Cargo pela função
-   do cadastro (tabela CARGO_POR_FUNCAO na function) ou escolhido no select. Desativar o funcionário (status
-   Demitido, data de demissão ou inativo) desativa o login por gatilho no banco.
-   Bloco independente do resto do arquivo: só a linha de plumbing em carregarFuncionarios() o chama.
-   Fase 143 (04/11/2026): o caminho principal é o link de primeiro acesso, enviado por WhatsApp sem integração; a senha provisória
-   continua como segunda opção, para quem não tem celular.
-   Hotfix 147 (chamado #147, decisão do Bernardo de 23/10): o que aparece do funcionário é a função cadastrada pelo RH;
-   o cargo de permissão do login chama-se "Perfil de acesso" nas telas (o enum e o nome `cargo` no código não mudam).
-   ==================================================================== */
-const FUNC_ACESSO_CARGOS = { operador: "Operador", encarregado: "Encarregado", mecanico: "Mecânico", auxiliar_almoxarifado: "Auxiliar de almoxarifado" };
-/* fase 143: link = situação do link pendente, lida da function; gerado = link que acabou de sair, só em memória e só nesta tela */
-let _funcAcesso = { funcionarioId: null, perfil: null, modo: null, link: null, gerado: null };   // modo: null | "senha" (formulário de senha aberto)
 
-/* Fase 100 (chamado #102) e hotfix 145 (chamado #145): criadores de login com setor. Cada um cria o login e define
-   nova senha só da equipe dele; não desativa nem reativa (RH e administração), não vê o CPF e não passa por MFA.
-   - almoxarife (Julio, fase 100): funcionário de departamento "Almoxarif…" (o próprio ou o pai), cargo travado em
-     Auxiliar de almoxarifado.
-   - gestor_manutencao (Bruno, hotfix 145): funcionário de departamento "MANUTENÇÃO" (o próprio ou o pai), menos o
-     subdepartamento Almoxarife (continua com o Julio e o RH; a exclusão vale só para o departamento do próprio
-     funcionário), cargos Mecânico, Operador ou Encarregado.
-   Nome do departamento comparado sem acento e em maiúsculas. A function convidar-usuario confere tudo de novo. */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const FUNC_ACESSO_CARGOS = { operador: "Operador", encarregado: "Encarregado", mecanico: "Mecânico", auxiliar_almoxarifado: "Auxiliar de almoxarifado" };
+
+let _funcAcesso = { funcionarioId: null, perfil: null, modo: null, link: null, gerado: null };
+
+
+
+
+
+
+
+
+
 const FUNC_ACESSO_CRIADORES = {
   almoxarife: {
     setor: /ALMOXARIF/, exclui: null, cargos: ["auxiliar_almoxarifado"],
@@ -1419,13 +1419,13 @@ const FUNC_ACESSO_CRIADORES = {
     ajuda: "A equipe da manutenção tem o perfil <em>Mecânico</em> (soldadores, mecânicos e apontadores), <em>Operador</em> (operadores e ajudantes) ou <em>Encarregado</em> (encarregados), pela função do cadastro; outra função pede o perfil aqui, só entre esses três."
   },
 };
-/* cópia de CARGO_POR_FUNCAO da function convidar-usuario (mesma ordem): no front só serve para o select do criador
-   com setor saber se o cargo automático é um dos dele; quem decide é a function */
+
+
 const FUNC_ACESSO_CARGO_POR_FUNCAO = [
   [/ALMOXARIF/, "auxiliar_almoxarifado"],
   [/ENCARREGAD/, "encarregado"],
   [/SOLDADOR|MECANIC/, "mecanico"],
-  [/APONTADOR/, "mecanico"],   // hotfix 147: Apontador de Produção faz as rotinas do Mecânico (OS, checklist, horímetro)
+  [/APONTADOR/, "mecanico"],
   [/OPERADOR|AJUDANTE/, "operador"],
 ];
 function funcAcessoNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); }
@@ -1434,15 +1434,15 @@ function funcAcessoCargoPelaFuncao(funcao){
   const regra = FUNC_ACESSO_CARGO_POR_FUNCAO.find(([re]) => re.test(f));
   return regra ? regra[1] : null;
 }
-/* "mecânico, operador ou encarregado": rótulos dos cargos em minúsculas, para as mensagens */
+
 function funcAcessoListaCargos(cargos, conjuncao){
   const r = (cargos || []).map(c => (FUNC_ACESSO_CARGOS[c] || c).toLowerCase());
   return r.length > 1 ? r.slice(0, -1).join(", ") + " " + conjuncao + " " + r[r.length - 1] : (r[0] || "");
 }
-/* criador com setor do usuário logado (almoxarife, gestor de manutenção) ou null (rh/admin/diretor e os demais) */
-/* fase 93d (28/10/2026, decisão do Bernardo): acesso extra "login_funcionario" (Isaque, testando o diário do operador): cria o
-   login e define nova senha de operador, encarregado e mecânico em qualquer setor; não desativa nem reativa; sem MFA (não vê o
-   CPF). O cargo vale primeiro; a function convidar-usuario confere de novo (extra vigente: temModuloExtra). */
+
+
+
+
 const FUNC_ACESSO_CRIADOR_EXTRA = {
   setor: null, exclui: null, cargos: ["operador", "encarregado", "mecanico"],
   ajuda: "Com o acesso extra de login de funcionário você cria o login com o perfil <em>Operador</em>, <em>Encarregado</em> ou <em>Mecânico</em>, de qualquer setor; desativar e reativar ficam com o RH e a administração."
@@ -1455,9 +1455,9 @@ function funcAcessoCriador(){
 }
 function funcAcessoNoSetor(cr){
   if(!cr) return false;
-  if(!cr.setor) return true;   // fase 93d: criador pelo acesso extra não tem setor
+  if(!cr.setor) return true;
   let d = (_depts || []).find(x => x.id === ($("func-departamento")?.value || ""));
-  if(d && cr.exclui && cr.exclui.test(funcAcessoNorm(d.nome))) return false;   // hotfix 145: o Almoxarife da MANUTENÇÃO não é do gestor
+  if(d && cr.exclui && cr.exclui.test(funcAcessoNorm(d.nome))) return false;
   for(let nivel = 0; d && nivel < 2; nivel++){
     if(cr.setor.test(funcAcessoNorm(d.nome))) return true;
     d = d.parent_id ? _depts.find(x => x.id === d.parent_id) : null;
@@ -1487,7 +1487,7 @@ async function funcAcessoCarregar(){
     .select("id,nome,cargo,ativo,login_cpf,senha_provisoria,created_at")
     .eq("funcionario_id", funcEditId).maybeSingle();
   if(error){
-    // 42703: a migration da 93b ainda não está no banco
+
     cont.innerHTML = `<p class="vazio">${esc(error.code === "42703" ? "O login por CPF ainda não está liberado neste banco (migration da fase 93b pendente)." : "Não foi possível ler o login: " + error.message)}</p>`;
     return;
   }
@@ -1497,7 +1497,7 @@ async function funcAcessoCarregar(){
   funcAcessoLerLink(funcEditId);
 }
 
-/* fase 143: situação do link, pela function (a tabela é fechada). Falhou? A aba segue sem o chip. */
+
 async function funcAcessoLerLink(id){
   const p = _funcAcesso.perfil;
   _funcAcesso.link = null;
@@ -1522,13 +1522,13 @@ function funcAcessoSenhaHtml(idSufixo, rotuloBotao, idBotao){
     <div class="form-acoes compacta"><button type="button" class="btn" id="${esc(idBotao)}">${esc(rotuloBotao)}</button>${_funcAcesso.modo === "senha" ? ' <button type="button" class="btn-sec" id="btn-func-acesso-cancelar">Cancelar</button>' : ""}</div>`;
 }
 
-/* ---------- fase 143: link de primeiro acesso ---------- */
+
 function funcAcessoMensagem(g){
   const [dia, hora] = dataHoraBR(g.expira_em).split(" ");
   const ola = g.primeiro_nome ? `Olá, ${g.primeiro_nome}.` : "Olá.";
   return `${ola} Para criar sua senha do sistema da CGL, abra este link, que vale até ${dia} às ${hora}: ${g.link}. Depois, entre com seu CPF, só números, e a senha que você criou.`;
 }
-/* telefone da ficha com o 55 do Brasil; sem número aproveitável, o WhatsApp pede o contato */
+
 function funcAcessoTelefoneWhats(){
   const d = String($("func-telefone")?.value || "").replace(/\D/g, "").replace(/^0+/, "");
   if(d.length === 10 || d.length === 11) return "55" + d;
@@ -1559,7 +1559,7 @@ function funcAcessoLinkChip(){
   if(l?.situacao === "vencido") return ` <span class="tag vermelho">Link vencido</span>`;
   return "";
 }
-/* cargo escolhido na tela: "" = automático pela função; null = faltou escolher (já avisou). A function confere de novo. */
+
 function funcAcessoCargoEscolhido(){
   const cr = funcAcessoCriador();
   const cargo = $("func-acesso-cargo")?.value || "";
@@ -1631,17 +1631,17 @@ function renderFuncAcesso(){
   const p = _funcAcesso.perfil;
   const opera = funcAcessoPodeOperar();
   const funcAtivo = ($("func-status")?.value || "ativo") !== "demitido" && !$("func-demissao")?.value && ($("func-ativo")?.checked !== false);
-  const cr = funcAcessoCriador();   // fase 100 / hotfix 145: almoxarife e gestor de manutenção, só a equipe deles
+  const cr = funcAcessoCriador();
   if(!p){
     const funcao = $("func-funcao")?.value || "";
     let selCargo;
     if(cr && cr.cargos.length === 1){
-      // fase 100: o almoxarife não escolhe (Auxiliar de almoxarifado)
+
       selCargo = `<div class="campo"><label>Perfil de acesso</label><input value="${esc(FUNC_ACESSO_CARGOS[cr.cargos[0]] || cr.cargos[0])}" disabled />
           <div class="meta">Compras, fornecedores e outros perfis: a administração troca depois, na tela Usuários.</div></div>`;
     } else if(cr){
-      // hotfix 145: o gestor de manutenção escolhe só entre os perfis dele; função sem perfil automático (ex.:
-      // Técnico de Produção) ou com um perfil que não é dele exige a escolha (funcAcessoCriar não manda vazio)
+
+
       const auto = funcAcessoCargoPelaFuncao(funcao);
       const autoOk = !!auto && cr.cargos.includes(auto);
       selCargo = `<div class="campo"><label>Perfil de acesso${autoOk ? "" : " *"}</label>
@@ -1651,7 +1651,7 @@ function renderFuncAcesso(){
           ${cr.cargos.map(v => `<option value="${esc(v)}">${esc(FUNC_ACESSO_CARGOS[v] || v)}</option>`).join("")}</select>
         <div class="meta">${autoOk ? "" : `A função ${esc(funcao || "—")} não tem perfil automático: escolha ${esc(funcAcessoListaCargos(cr.cargos, "ou"))}. `}Outros perfis: a administração troca depois, na tela Usuários.</div></div>`;
     } else {
-      // hotfix 147: o automático mostra o perfil que a função dá, quando a regra conhece a função
+
       const auto = funcAcessoCargoPelaFuncao(funcao);
       selCargo = `<div class="campo"><label>Perfil de acesso</label>
         <select id="func-acesso-cargo"><option value="">Automático pela função (${esc(funcao || "—")})${auto ? ": " + esc(FUNC_ACESSO_CARGOS[auto]) : ""}</option>
@@ -1659,8 +1659,8 @@ function renderFuncAcesso(){
     }
     cont.innerHTML = `<div class="meta bloco" style="margin-bottom:12px;"><span class="tag cinza">Sem login</span> Este funcionário ainda não entra no sistema.</div>
       ${!funcAtivo ? `<p class="vazio">Funcionário inativo ou demitido não recebe login.</p>` : !opera ? `<p class="vazio">Usuário de revisão não cria login.</p>` : `
-      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ? /* html */ cr.ajuda : "Operadores e ajudantes têm o perfil <em>Operador</em>, encarregados o perfil <em>Encarregado</em>, soldadores, mecânicos e apontadores o perfil <em>Mecânico</em>, o pessoal do almoxarifado o perfil <em>Auxiliar de almoxarifado</em>; outra função pede o perfil aqui. Nas telas aparece a função do cadastro; o perfil decide o que ele acessa."}</p>
-      <div class="grade">${/* html */ selCargo}</div>
+      <p class="meta bloco" style="margin-bottom:8px;"><strong>Login:</strong> o CPF do funcionário (só números), que precisa estar preenchido em Dados pessoais${cr ? " (pelo RH)" : ""}. ${cr ?   cr.ajuda : "Operadores e ajudantes têm o perfil <em>Operador</em>, encarregados o perfil <em>Encarregado</em>, soldadores, mecânicos e apontadores o perfil <em>Mecânico</em>, o pessoal do almoxarifado o perfil <em>Auxiliar de almoxarifado</em>; outra função pede o perfil aqui. Nas telas aparece a função do cadastro; o perfil decide o que ele acessa."}</p>
+      <div class="grade">${  selCargo}</div>
       ${_funcAcesso.modo === "senha" ? funcAcessoSenhaHtml("", "🔑 Criar login", "btn-func-acesso-criar") : `
       <p class="meta bloco">O funcionário cria a própria senha pelo link, que você envia por WhatsApp. Vale 72 horas e uma vez só. Sem celular, use a senha provisória.</p>
       <div class="form-acoes compacta">
@@ -1669,13 +1669,13 @@ function renderFuncAcesso(){
       </div>`}`}`;
     return;
   }
-  // fase 100 / hotfix 145: o criador com setor só mexe em login com os cargos que ele dá e não desativa/reativa
+
   const operaEste = opera && (!cr || cr.cargos.includes(p.cargo));
   const situacao = p.ativo === false ? `<span class="tag vermelho">Login desativado</span>`
-    : p.senha_provisoria ? `<span class="tag ambar">Senha provisória</span> <span class="tag verde">Login ativo</span>${/* html */ funcAcessoLinkChip()}`
-    : `<span class="tag verde">Login ativo</span>${/* html */ funcAcessoLinkChip()}`;
+    : p.senha_provisoria ? `<span class="tag ambar">Senha provisória</span> <span class="tag verde">Login ativo</span>${  funcAcessoLinkChip()}`
+    : `<span class="tag verde">Login ativo</span>${  funcAcessoLinkChip()}`;
   const linkPendente = _funcAcesso.link?.situacao === "pendente";
-  cont.innerHTML = `${/* html */ funcAcessoLinkGeradoHtml()}<div class="odoo-contexto" style="margin:0 0 12px;">
+  cont.innerHTML = `${  funcAcessoLinkGeradoHtml()}<div class="odoo-contexto" style="margin:0 0 12px;">
       <div class="chip"><span>Situação</span><strong>${situacao}</strong></div>
       <div class="chip"><span>Login</span><strong>CPF do funcionário</strong></div>
       <div class="chip"><span>Função</span><strong>${esc(($("func-funcao")?.value || "").trim() || "—")}</strong></div>
@@ -1700,7 +1700,7 @@ function renderFuncAcesso(){
         </div>`}`;
 }
 
-/* chama a edge function convidar-usuario (mesmo caminho da tela Usuários); erro vira exceção com a mensagem da function */
+
 async function funcAcessoChamar(payload){
   const { data:{ session } } = await sb.auth.getSession();
   const resp = await fetch(`${SUPABASE_URL}/functions/v1/convidar-usuario`, {
@@ -1713,7 +1713,7 @@ async function funcAcessoChamar(payload){
   return body;
 }
 
-/* lê e valida o par de senhas do formulário; devolve a senha ou null (com aviso) */
+
 function funcAcessoLerSenha(sufixo){
   const s1 = $(`func-acesso-senha${sufixo}`)?.value || "", s2 = $(`func-acesso-senha2${sufixo}`)?.value || "";
   if(s1.length < 8){ aviso("func-acesso-aviso", "A senha precisa de pelo menos 8 caracteres.", "erro"); return null; }
@@ -1726,8 +1726,8 @@ async function funcAcessoCriar(){
   if(!funcAcessoPodeOperar() || !funcEditId) return;
   const senha = funcAcessoLerSenha("");
   if(!senha) return;
-  // fase 100: cargo travado para o almoxarife; hotfix 145: o gestor de manutenção escolhe entre os cargos dele e,
-  // quando o cargo automático pela função não é um deles, a escolha é obrigatória (não vai vazio para a function)
+
+
   const cargo = funcAcessoCargoEscolhido();
   if(cargo === null) return;
   try {
@@ -1778,11 +1778,11 @@ async function funcAcessoReativar(comSenha){
 }
 
 function ligarFuncAcesso(){
-  // a aba carrega a cada clique (o funcionário aberto pode ter mudado); nada muda em abrirFuncionario()
+
   document.querySelector('#func-notebook button[data-tab="acesso"]')?.addEventListener("click", () => {
     const av = $("func-acesso-aviso"); if(av){ av.textContent = ""; av.className = "aviso"; }
     _funcAcesso.modo = null;
-    _funcAcesso.gerado = null;   // fase 143: o link gerado não volta a aparecer
+    _funcAcesso.gerado = null;
     funcAcessoCarregar();
   });
   $("func-acesso-conteudo")?.addEventListener("click", (e) => {

@@ -1,10 +1,10 @@
-/* ====================================================================
-   App do operador (fase 129b) — op_dia.js
-   Telas: Minha máquina (2), Meu dia (3), Enviar o dia (10), Meus dias (11), Eu (12) e o menu Mais.
-   ==================================================================== */
 
-/* ---------- 2. Minha máquina ---------- */
-let _maquinas = null;   // última lista (também guardada em cache para abrir sem sinal)
+
+
+
+
+
+let _maquinas = null;
 OP.telas.maquina = async function(){
   const box = $("op-maquina-conteudo");
   const ehEnc = OP.perfil?.cargo !== "operador";
@@ -31,7 +31,7 @@ OP.telas.maquina = async function(){
   }
   box.innerHTML = _maquinas.map(m => {
     const hoje = (m.diarios_hoje || []);
-    const turno = m.turno_ontem || "diurno";   // fase 155a: o turno só aparece em obra de dois turnos (m.dois_turnos); nas outras o dia abre diurno
+    const turno = m.turno_ontem || "diurno";
     const pend = m.pendencia
       ? `<p class="op-alerta op-alerta-perigo">⚠ ${m.pendencia === "rdo_tipo_nao_confirmado" ? "Máquina sem tipo de serviço" : "Máquina sem obra nesta data"}: fale com a engenharia.</p>` : "";
     const diarios = hoje.map(d => `<li>${d.turno === "noturno" ? "🌙 Noturno" : "☀ Diurno"} · ${d.status === "finalizado" ? "🔒 Finalizado" : d.enviado_em ? "📤 Enviado" : "✏ Rascunho"}</li>`).join("");
@@ -68,7 +68,7 @@ async function abrirDia(equipamentoId, confirmada){
   irPara("dia");
 }
 
-/* ---------- 3. Meu dia ---------- */
+
 function situacaoDoDia(r){
   if(!r) return { cls: "", txt: "" };
   if(r.status === "finalizado") return { cls: "op-alerta-neutro", txt: "🔒 Finalizado pela engenharia (só leitura)" };
@@ -90,7 +90,7 @@ OP.telas.dia = async function(){
   const par = paradaAberta();
   const ed = diaEditavel();
   const tipoRT = ehRaizOuTrado(r.tipo_servico);
-  // fase 179 (D1): 3 opções; a ativa mostra o valor mais fino quando há (nublado, chuva forte)
+
   const chipsTempo = (campo) => CLIMA_3_OPCOES.map(([v, rot, padrao]) => {
     const at = CLIMA_3[r[campo]] === v;
     const det = at && r[campo] !== padrao ? ` (${(ROTULO_TEMPO[r[campo]] || "").toLowerCase()})` : "";
@@ -126,10 +126,10 @@ OP.telas.dia = async function(){
   opDiaEstadoCarregar("op-dia-estado");
 };
 
-/* ---------- Fase 179: estado do dia e "Por que não produziu?" ----------
-   O estado vem da vw_rdo_dia (conta do servidor: o que ainda está na fila do aparelho entra depois de subir). Sem sinal, a
-   linha não aparece. No envio de um dia sem estaca e sem parada, a pergunta abre com os motivos de parada: escolher lança a
-   parada do turno pela rdo_campo_parada_lancar (com as respostas sugeridas da fase 166 à vista); Pular envia assim mesmo. */
+
+
+
+
 async function opDiaEstadoCarregar(idEl){
   const rdo = OP.rdoId;
   if(!$(idEl) || !rdo || !navigator.onLine) return;
@@ -142,11 +142,11 @@ async function opDiaEstadoCarregar(idEl){
   alvo.title = "Conta do servidor: o que ainda está no aparelho entra depois de subir.";
   alvo.hidden = false;
 }
-let _envPerg = null;   // { motivo, resp: { paralisado, em_razao_cliente }, desc, fim, obs, pronto }
+let _envPerg = null;
 function diaSemEstacaNemParada(){
   return !numerosDoDia(OP.snap).estacas && !(OP.snap.paradas || []).length;
 }
-/* período do turno para a parada da pergunta: a primeira entrada da equipe, senão a jornada da obra, até o fim do expediente */
+
 function periodoDoTurno(fim){
   const ent = (OP.snap.equipe || []).map(e => hhmm(e.hora_entrada)).filter(Boolean).sort()[0];
   return { ini: ent || hhmm(OP.snap.jornada?.entrada) || "07:00", fim: fim || horaAgora(15) };
@@ -201,7 +201,7 @@ async function gravarCabecalho(campos){
   renderTelaAtual();
 }
 
-/* ---------- 10. Enviar o dia ---------- */
+
 OP.telas.enviar = async function(){
   const s = OP.snap, r = s.rdo, box = $("op-enviar-conteudo");
   const n = numerosDoDia(s);
@@ -209,7 +209,7 @@ OP.telas.enviar = async function(){
   const ruins = _filaCache.filter(o => o.rdo_id === OP.rdoId && (o.situacao === "rejeitada" || o.situacao === "conflito"));
   const enviando = _filaCache.some(o => o.rdo_id === OP.rdoId && o.rpc === "rdo_campo_enviar" && o.situacao === "pendente");
   const bloqueios = [], avisos = [];
-  if(_envPerg && (_envPerg.rdo !== OP.rdoId || !diaSemEstacaNemParada())) _envPerg = null;   // fase 179: outro dia, ou o dia já tem estaca ou parada
+  if(_envPerg && (_envPerg.rdo !== OP.rdoId || !diaSemEstacaNemParada())) _envPerg = null;
   if(paradaAberta()) bloqueios.push("Há uma parada em andamento: encerre antes de enviar.");
   if(ruins.length) bloqueios.push(`${ruins.length} registro(s) recusado(s): resolva em Eu › Pendências.`);
   if(r.status === "finalizado") bloqueios.push("O dia já foi finalizado pela engenharia.");
@@ -245,12 +245,12 @@ OP.telas.enviar = async function(){
       <p class="op-meta">Depois de enviar, o dia fica só leitura no celular até a engenharia devolver ou finalizar.</p>
       <button type="button" class="op-btn" data-ir="dia">Salvar e enviar depois</button>
     </section>` : ""}`;
-  opDiaEstadoCarregar("op-env-estado");   // fase 179
+  opDiaEstadoCarregar("op-env-estado");
 };
 
 async function enviarDia(){
-  // fase 179 (D6): dia sem estaca e sem parada pergunta o motivo antes; nunca bloqueia (Pular envia)
-  if(_envPerg && _envPerg.rdo !== OP.rdoId) _envPerg = null;   // pergunta de outro dia
+
+  if(_envPerg && _envPerg.rdo !== OP.rdoId) _envPerg = null;
   if(diaSemEstacaNemParada() && !(_envPerg && _envPerg.pronto)){
     if(!_envPerg) _envPerg = { rdo: OP.rdoId, motivo: null, resp: { paralisado: null, em_razao_cliente: null }, desc: "", fim: null, obs: null, pronto: false };
     guardarCamposEnvio();
@@ -268,13 +268,13 @@ async function enviarDia(){
   irPara("dia");
 }
 
-/* ---------- 11. Meus dias (últimos 30, devolvidos primeiro) ---------- */
+
 let _filtroDias = "pendentes";
 OP.telas.dias = async function(){
   const box = $("op-dias-conteudo");
   let lista = null;
   if(navigator.onLine){
-    // fase 159a: a lista vem pronta da RPC campo_meus_dias (com obra, máquina e resumo). Sem a migration, a leitura antiga.
+
     const rd = await sb.rpc("campo_meus_dias", { p_dias: 30 });
     if(!rd.error) lista = rd.data || [];
     else if(!opRpcAusente(rd.error)){ box.innerHTML = `<div class="op-vazio">⚠ ${esc(mensagemDoBanco(rd.error))}</div>`; return; }
@@ -329,7 +329,7 @@ async function abrirDiaExistente(rdoId){
   irPara("dia");
 }
 
-/* ---------- 12. Eu ---------- */
+
 OP.telas.eu = async function(){
   const box = $("op-eu-conteudo");
   await atualizarFaixaFila();
@@ -381,7 +381,7 @@ OP.telas.eu = async function(){
 async function pendenciaTentar(seq, manter){
   const o = (await lerFila()).find(x => x.seq === seq);
   if(!o) return;
-  // nova operação no fim da fila, com novo op_id (a recusada fica registrada em campo_ops)
+
   await idbDel("outbox", seq);
   const args = Object.assign({}, o.args, { p_op: novoId(), p_em_aparelho: new Date().toISOString() });
   if(manter && "p_anteriores" in args) args.p_anteriores = o.servidor || null;
@@ -404,7 +404,7 @@ async function pendenciaDescartar(seq){
   renderTelaAtual();
 }
 
-/* ---------- Mais ---------- */
+
 OP.telas.mais = async function(){
   const s = OP.snap;
   const tipoRT = s && ehRaizOuTrado(s.rdo?.tipo_servico);
@@ -418,7 +418,7 @@ OP.telas.mais = async function(){
     `<button type="button" class="op-item-menu" data-ir="${esc(t)}"><span aria-hidden="true">${esc(ic)}</span>${esc(rot)}</button>`).join("");
 };
 
-/* ---------- Eventos (delegação: a CSP não roda handler inline) ---------- */
+
 document.addEventListener("click", async (ev) => {
   const el = ev.target.closest("button, a");
   if(!el || el.disabled) return;
@@ -427,11 +427,11 @@ document.addEventListener("click", async (ev) => {
   if(d.abrir){ el.disabled = true; try { await abrirDia(d.abrir, d.confirmada === "1"); } finally { el.disabled = false; } return; }
   if(d.abrirRdo){ await abrirDiaExistente(d.abrirRdo); return; }
   if(d.filtroDias){ _filtroDias = d.filtroDias; renderTelaAtual(); return; }
-  if(d.tempo){   // fase 179: tocar a opção ativa limpa; outra opção grava o padrão dela (a mesma opção mantém o valor gravado)
+  if(d.tempo){
     const atual = OP.snap.rdo[d.tempo];
     await gravarCabecalho({ [d.tempo]: CLIMA_3[atual] === d.valor ? "" : climaGravar(d.valor, atual) }); return;
   }
-  if(d.envMotivo && _envPerg){   // fase 179: o motivo refaz a sugestão das duas respostas, à vista do operador
+  if(d.envMotivo && _envPerg){
     guardarCamposEnvio();
     _envPerg.motivo = d.envMotivo; _envPerg.resp = paradaSugestao(d.envMotivo);
     renderTelaAtual(); return;
@@ -448,7 +448,7 @@ document.addEventListener("click", async (ev) => {
     case "op-btn-cab-salvar": await gravarCabecalho({ local: $("op-local").value, observacoes: $("op-obs").value }); avisar("Guardado.", "ok"); break;
     case "op-fim-agora": $("op-fim-exp").value = horaAgora(15); break;
     case "op-btn-enviar": await enviarDia(); break;
-    case "op-btn-env-lancar": el.disabled = true; try { await lancarParadaSemProducao(); } finally { el.disabled = false; } break;   // fase 179
+    case "op-btn-env-lancar": el.disabled = true; try { await lancarParadaSemProducao(); } finally { el.disabled = false; } break;
     case "op-btn-env-pular": if(_envPerg){ guardarCamposEnvio(); _envPerg.pronto = true; } await enviarDia(); break;
     case "op-btn-sync": OP.forcarFotos = false; agendarDrenagem(0); avisar("Enviando…"); break;
     case "op-btn-sair": await sair(); break;

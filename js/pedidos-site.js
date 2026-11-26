@@ -1,20 +1,20 @@
-/* ====================================================================
-   Módulo: Pedidos do site (fase 195c) — prefixo psi-
-   1. Aba "Pedidos do site" em Orçamentos: os pedidos que chegam pelo chat do site (site_pedidos, fase 195a), com o
-      prazo prometido ao cliente em contagem regressiva, filtros, ficha com as respostas e os anexos (bucket privado
-      site-pedidos, por URL assinada), "Criar orçamento", "Descartar" e "Marcar spam".
-   2. KPIs do tempo até formalizar (vw_site_pedidos_tempo): mediana e 90% em horas úteis até a primeira proposta
-      enviada, % do selo cumprido, recebidos e % que virou orçamento, contra os 30 dias anteriores.
-   3. "Enviar pelo WhatsApp" na ficha do orçamento: baixa o PDF da proposta (o mesmo do envio pela orcamento@), abre o
-      wa.me com a mensagem padrão e, se o comercial confirmar, registra o envio (registrar_envio_whatsapp).
-   Leitura: pode_ler_comercial() no banco (psiPodeLer no front). Mudar status e criar orçamento: quem edita orçamento.
-   A pendência da tela inicial vem de vw_sc_acoes_psi (js/dashboard.js).
-   ==================================================================== */
 
-/* Mensagem padrão do WhatsApp que acompanha a proposta (dado 6 da spec; rascunho para o Bernardo aprovar no PR).
-   Mesmo tom do e-mail da orcamento@ (fase 192). Marcas trocadas na hora:
-   {saudacao} = "Bom dia, Fulano!" (ou "Boa tarde!" sem nome); {proposta} = "a proposta comercial 8833/2026" ou
-   "a proposta revisada 8833/2026 Rev 01"; {para_obra} = " para <obra ou cidade>" (vazio quando o orçamento não diz). */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const PSI_WHATSAPP_MSG = [
   "{saudacao}",
   "",
@@ -41,7 +41,7 @@ const PSI_ANEXO = { ficha_cadastral: "Ficha cadastral", sondagem: "Sondagem", pr
 const PSI_FALTOU = { servico: "serviço", ficha_cadastral: "ficha cadastral", projeto: "projeto (ou quantidade, diâmetro e profundidade)",
   tipo_obra: "tipo de obra", equipamento: "equipamento", periodo: "período", operador: "operador", volume: "volume de concreto",
   tipo_pedido: "tipo do pedido", cidade: "cidade", inicio: "início da obra", contato: "contato" };
-/* rótulos das respostas: os mesmos da site-orcamento (supabase/functions/site-orcamento/nucleo.mjs) */
+
 const PSI_RESPOSTA = { F1a: "Empresa ou planta", F1b: "Exige integração de segurança", F1c: "Horário restrito, noite ou fim de semana",
   F2: "Quantidade de estacas", F3: "Diâmetro (mm)", F4: "Profundidade média", F5: "Projeto", F6: "Sondagem",
   F6a: "SPT acima de 35 ou rocha", F7: "Terreno pronto", F8: "Restrições no local", L1: "Equipamento", L2: "Período",
@@ -51,7 +51,7 @@ const PSI_VALOR = { sim: "Sim", nao: "Não", nao_sei: "Não sabe", ate_20: "até
   em_elaboracao: "Em elaboração", nao_existe: "Não existe ainda", pe_direito: "Pé-direito baixo ou área coberta",
   vibracao: "Vizinho sensível a vibração ou barulho", espaco: "Espaço apertado", nenhuma: "Nenhuma", compressor: "Compressor",
   gerador: "Gerador", ambos: "Os dois", dias: "Alguns dias", semanas: "Semanas", meses: "Meses" };
-/* status na lista: a cor sai desta lista fechada, nunca do banco */
+
 const PSI_STATUS = { novo: ["Novo", "ambar"], em_analise: ["Em análise", "azul"], virou_orcamento: ["Orçamento criado", "azul"],
   descartado: ["Descartado", "cinza"], spam: ["Spam", "cinza"], formalizado: ["Proposta enviada", "verde"] };
 const PSI_FILTRO_STATUS = [["abertos", "A formalizar"], ["formalizados", "Proposta enviada"], ["descartado", "Descartados"], ["spam", "Spam"]];
@@ -61,23 +61,23 @@ const PSI_COLS = "id,protocolo,status,enviado_em,servico,tipo_pedido,data_entreg
 const PSI_COLS_TEMPO = "id,orcamento_numero,orcamento_criado_em,proposta_enviada_em,proposta_canal,formalizado," +
   "horas_uteis_orcamento,horas_uteis_proposta,horas_corridas_proposta,cumpriu_prazo";
 
-let _psiRegistros = [];   // pedidos enviados (site_pedidos) com o tempo da vw_site_pedidos_tempo em ._t
-let _psiErro = null;      // mensagem do erro da última leitura
+let _psiRegistros = [];
+let _psiErro = null;
 let _psiCarregado = false;
 let _psiFiltro = { status: "abertos", tipo: "", busca: "" };
-let _psiPendente = null;  // pedido do "Criar orçamento" até o orçamento ser salvo: { id, protocolo, whatsapp }
+let _psiPendente = null;
 let _psiRelogio = null;
 
-/* ---------------------------------------------------------------- acesso */
-/* espelha pode_ler_comercial() do banco: comercial, financeiro, auditor, diretor (has_role) e o módulo extra "orcamentos" */
+
+
 function psiPodeLer(){
   if(!usuarioAtual) return false;
   return ["diretor", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
 }
-/* mudar status e criar orçamento: quem grava orçamento (orcPodeEditar: diretor, comercial, extra "orcamentos"; nunca o auditor) */
+
 function psiPodeOperar(){ return typeof orcPodeEditar === "function" && orcPodeEditar(); }
 
-/* ---------------------------------------------------------------- formatação */
+
 const psiRot = (mapa, v) => (v != null && v !== "" ? (mapa[v] || String(v)) : "");
 function psiDataHora(iso){ return iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : ""; }
 function psiHoras(h){
@@ -90,13 +90,13 @@ function psiDuracao(ms){
   if(d) return `${d} d ${h} h`;
   return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
 }
-/* número de WhatsApp: 55 + DDD + número (10 ou 11 dígitos), ou null */
+
 function psiNormalizarWhatsapp(v){
   let d = String(v || "").replace(/\D/g, "");
   if(d.length === 10 || d.length === 11) d = "55" + d;
   return /^55\d{10,11}$/.test(d) ? d : null;
 }
-/* "5531999990000" -> "(31) 99999-0000" */
+
 function psiFoneBR(v){
   const d = String(v || "").replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
   if(d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
@@ -116,7 +116,7 @@ function psiTamanho(n){
 }
 const psiAberto = (p) => PSI_ABERTOS.includes(p.status) && !(p._t && p._t.formalizado);
 
-/* prazo prometido: texto e tom da contagem regressiva (pedido sem selo: "2 dias úteis", sem contagem) */
+
 function psiPrazo(p, agora){
   if(!p.selo_mesmo_dia || !p.prazo_prometido) return { texto: "Sem selo · 2 dias úteis", tom: "neutro" };
   const prazo = new Date(p.prazo_prometido).getTime();
@@ -150,7 +150,7 @@ function psiInicio(p){
 }
 const psiNumAnexos = (p) => Number(p.site_pedido_anexos && p.site_pedido_anexos[0] && p.site_pedido_anexos[0].count) || 0;
 
-/* ordem da fila: selo com o prazo mais perto; concorrência com entrega em até 3 dias; o resto, do mais novo ao mais antigo */
+
 function psiGrupoOrdem(p){
   if(!psiAberto(p)) return 2;
   if(p.selo_mesmo_dia && p.prazo_prometido) return 0;
@@ -178,7 +178,7 @@ function psiFiltrados(){
   });
 }
 
-/* ---------------------------------------------------------------- KPIs */
+
 function psiMediana(v){ return psiPercentil(v, 0.5); }
 function psiPercentil(v, p){
   const s = v.filter(x => x != null && Number.isFinite(Number(x))).map(Number).sort((a, b) => a - b);
@@ -218,7 +218,7 @@ function psiKpisHTML(){
   const ctx90 = atual.selo >= 30 && n90 != null
     ? `Frase para o site: "em até ${n90} horas úteis"`
     : `${atual.propostas} proposta(s) nos últimos 30 dias`;
-  return `<div class="ui-kpis psi-kpis">${/* html */ [
+  return `<div class="ui-kpis psi-kpis">${  [
     uiKpi(psiHoras(atual.mediana), rot[0], "horas úteis, últimos 30 dias", cmp(atual.mediana, ant.mediana, "menor")),
     uiKpi(psiHoras(atual.p90), rot[1], ctx90, cmp(atual.p90, ant.p90, "menor")),
     uiKpi(pctSelo == null ? null : Math.round(pctSelo * 100) + "%", rot[2], `${atual.seloOk} de ${atual.seloAval} no prazo (últimos 30 dias)`, cmp(pctSelo, pctSeloAnt, "maior")),
@@ -227,8 +227,8 @@ function psiKpisHTML(){
   ].join("")}</div>`;
 }
 
-/* ---------------------------------------------------------------- aba na tela de Orçamentos */
-/* chamada pelo renderOrcamentos (js/orcamentos.js): mostra ou esconde a aba e carrega quando ela abre */
+
+
 function psiMostrarAba(ativa){
   const pode = psiPodeLer();
   const btn = $("orc-view-psi");
@@ -240,7 +240,7 @@ function psiMostrarAba(ativa){
   if(naAba) carregarPedidosSite();
   else psiPararRelogio();
 }
-/* contador no botão da aba: pedidos novos ou em análise (o banco só devolve a quem lê comercial) */
+
 async function psiAtualizarBadge(){
   const b = $("psi-badge");
   if(!b || !psiPodeLer()) return;
@@ -292,22 +292,22 @@ function renderPedidosSite(){
   const fs = _psiFiltro;
   const rotStatus = (PSI_FILTRO_STATUS.find(x => x[0] === fs.status) || [])[1] || "";
   cont.innerHTML = `<div class="psi-painel">
-    ${/* html */ psiKpisHTML()}
+    ${  psiKpisHTML()}
     <div class="psi-controles">
-      ${/* html */ uiCampo({ id: "psi-f-status", rotulo: "Status", tipo: "select", placeholder: "Todos", valor: fs.status, opcoes: PSI_FILTRO_STATUS })}
-      ${/* html */ uiCampo({ id: "psi-f-tipo", rotulo: "Tipo do pedido", tipo: "select", placeholder: "Todos os tipos", valor: fs.tipo, opcoes: Object.entries(PSI_TIPO) })}
+      ${  uiCampo({ id: "psi-f-status", rotulo: "Status", tipo: "select", placeholder: "Todos", valor: fs.status, opcoes: PSI_FILTRO_STATUS })}
+      ${  uiCampo({ id: "psi-f-tipo", rotulo: "Tipo do pedido", tipo: "select", placeholder: "Todos os tipos", valor: fs.tipo, opcoes: Object.entries(PSI_TIPO) })}
     </div>
-    ${/* html */ uiFiltros({ id: "psi-busca", busca: fs.busca, placeholder: "Buscar protocolo, nome, empresa ou cidade",
+    ${  uiFiltros({ id: "psi-busca", busca: fs.busca, placeholder: "Buscar protocolo, nome, empresa ou cidade",
       filtros: [{ id: "status", rotulo: "Status", valor: rotStatus }, { id: "tipo", rotulo: "Tipo", valor: psiRot(PSI_TIPO, fs.tipo) }],
       total: _psiErro ? null : lista.length, unidade: ["pedido", "pedidos"], erro: _psiErro })}
-    <div class="psi-tabela">${/* html */ uiTabela({ colunas, linhas: lista, chaveLinha: "id", erro: _psiErro,
+    <div class="psi-tabela">${  uiTabela({ colunas, linhas: lista, chaveLinha: "id", erro: _psiErro,
       vazio: fs.status === "abertos" ? "Nenhum pedido do site esperando proposta." : "Nenhum pedido do site neste filtro." })}</div>
   </div>`;
   if(focoBusca){ const i = $("psi-busca"); if(i){ i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
   psiLigarRelogio();
 }
 
-/* a contagem regressiva anda sozinha a cada minuto enquanto a aba está aberta (só troca o texto dos prazos) */
+
 function psiLigarRelogio(){
   if(_psiRelogio) return;
   _psiRelogio = setInterval(() => {
@@ -325,7 +325,7 @@ function psiLigarRelogio(){
 }
 function psiPararRelogio(){ if(_psiRelogio){ clearInterval(_psiRelogio); _psiRelogio = null; } }
 
-/* ---------------------------------------------------------------- ficha do pedido */
+
 async function abrirPedidoSite(id){
   if(!id || !psiPodeLer()) return;
   const [{ data: p, error }, anx] = await Promise.all([
@@ -335,7 +335,7 @@ async function abrirPedidoSite(id){
   if(error || !p){ uiAvisar("Não foi possível abrir o pedido: " + (error ? error.message : "não encontrado"), "perigo"); return; }
   const local = _psiRegistros.find(x => x.id === id);
   p._t = local ? local._t : null;
-  // primeira abertura por quem opera: o pedido sai de "novo" (deixa de contar como "sem resposta" na tela inicial)
+
   if(p.status === "novo" && psiPodeOperar()){
     const { data: dSt, error: eSt } = await sb.from("site_pedidos").update({ status: "em_analise", atualizado_em: new Date().toISOString() }).eq("id", id).eq("status", "novo").select("id");
     if(!eSt && dSt && dSt.length){ p.status = "em_analise"; if(local) local.status = "em_analise"; }
@@ -353,7 +353,7 @@ async function abrirPedidoSite(id){
   else if(acao === "abrir_orc" && p.orcamento_id && typeof abrirOrcamento === "function"){ mostrarPainelOrc(); await abrirOrcamento(p.orcamento_id); }
   else if(acao === "descartar") await psiMudarStatus(p, "descartado");
   else if(acao === "spam") await psiMudarStatus(p, "spam");
-  else if(local) renderPedidosSite();   // o status pode ter mudado para "em análise"
+  else if(local) renderPedidosSite();
 }
 
 function psiFichaHTML(p, anexos, erroAnexos){
@@ -365,25 +365,25 @@ function psiFichaHTML(p, anexos, erroAnexos){
     p.canal_proposta ? `Proposta por ${psiRot(PSI_CANAL, p.canal_proposta)}` : ""
   ], prazo.tom === "neutro" ? "info" : prazo.tom);
   const pedido = `<div class="psi-grade">
-    ${/* html */ uiRotuloValor("Protocolo", uiCodigo(p.protocolo || "—"))}
-    ${/* html */ rv("Recebido em", psiDataHora(p.enviado_em))}
-    ${/* html */ rv("Serviço", psiRot(PSI_SERVICO, p.servico))}
-    ${/* html */ rv("Tipo do pedido", psiRot(PSI_TIPO, p.tipo_pedido))}
+    ${  uiRotuloValor("Protocolo", uiCodigo(p.protocolo || "—"))}
+    ${  rv("Recebido em", psiDataHora(p.enviado_em))}
+    ${  rv("Serviço", psiRot(PSI_SERVICO, p.servico))}
+    ${  rv("Tipo do pedido", psiRot(PSI_TIPO, p.tipo_pedido))}
     ${p.tipo_pedido === "concorrencia" ? rv("Entregar a proposta até", psiConcorrencia(p)) : ""}
     ${p.licitacao_publica != null ? rv("Licitação pública", p.licitacao_publica ? `Sim${p.edital ? " · edital " + p.edital : ""}` : "Não") : ""}
-    ${/* html */ rv("Quem pede", psiRot(PSI_SOLICITANTE, p.solicitante_tipo))}
-    ${/* html */ rv("Tipo de obra", psiRot(PSI_SEGMENTO, p.segmento))}
-    ${/* html */ rv("Cidade/UF", [p.cidade, p.uf].filter(Boolean).join("/"))}
-    ${/* html */ rv("Início", psiInicio(p))}
+    ${  rv("Quem pede", psiRot(PSI_SOLICITANTE, p.solicitante_tipo))}
+    ${  rv("Tipo de obra", psiRot(PSI_SEGMENTO, p.segmento))}
+    ${  rv("Cidade/UF", [p.cidade, p.uf].filter(Boolean).join("/"))}
+    ${  rv("Início", psiInicio(p))}
   </div>`;
   const contato = `<div class="psi-grade">
-    ${/* html */ rv("Nome", p.nome)}
-    ${/* html */ rv("Empresa", p.empresa)}
-    ${/* html */ uiRotuloValor("CNPJ", p.cnpj ? uiCodigo(typeof _orcCliMascara === "function" ? _orcCliMascara(p.cnpj) : p.cnpj) : "")}
-    ${/* html */ rv("E-mail", p.email)}
-    ${/* html */ rv("Telefone", psiFoneBR(p.telefone))}
-    ${/* html */ rv("WhatsApp", psiFoneBR(p.whatsapp))}
-    ${/* html */ rv("Receber a proposta por", psiRot(PSI_CANAL, p.canal_proposta))}
+    ${  rv("Nome", p.nome)}
+    ${  rv("Empresa", p.empresa)}
+    ${  uiRotuloValor("CNPJ", p.cnpj ? uiCodigo(typeof _orcCliMascara === "function" ? _orcCliMascara(p.cnpj) : p.cnpj) : "")}
+    ${  rv("E-mail", p.email)}
+    ${  rv("Telefone", psiFoneBR(p.telefone))}
+    ${  rv("WhatsApp", psiFoneBR(p.whatsapp))}
+    ${  rv("Receber a proposta por", psiRot(PSI_CANAL, p.canal_proposta))}
   </div>`;
   const resp = p.respostas && typeof p.respostas === "object" ? p.respostas : {};
   const chaves = Object.keys(PSI_RESPOSTA).filter(k => resp[k] != null && resp[k] !== "")
@@ -401,24 +401,24 @@ function psiFichaHTML(p, anexos, erroAnexos){
   const t = p._t;
   const tempo = !t ? uiVazio("Ainda sem orçamento.")
     : `<div class="psi-grade">
-      ${/* html */ rv("Orçamento", t.orcamento_numero || "")}
-      ${/* html */ rv("Orçamento criado em", psiDataHora(t.orcamento_criado_em))}
-      ${/* html */ rv("Até o orçamento", psiHoras(t.horas_uteis_orcamento) ? psiHoras(t.horas_uteis_orcamento) + " úteis" : "")}
-      ${/* html */ rv("Primeira proposta enviada", t.proposta_enviada_em ? `${psiDataHora(t.proposta_enviada_em)} · ${t.proposta_canal === "whatsapp" ? "WhatsApp" : "E-mail"}` : "")}
-      ${/* html */ rv("Até a proposta", psiHoras(t.horas_uteis_proposta) ? `${psiHoras(t.horas_uteis_proposta)} úteis (${psiHoras(t.horas_corridas_proposta)} corridas)` : "")}
+      ${  rv("Orçamento", t.orcamento_numero || "")}
+      ${  rv("Orçamento criado em", psiDataHora(t.orcamento_criado_em))}
+      ${  rv("Até o orçamento", psiHoras(t.horas_uteis_orcamento) ? psiHoras(t.horas_uteis_orcamento) + " úteis" : "")}
+      ${  rv("Primeira proposta enviada", t.proposta_enviada_em ? `${psiDataHora(t.proposta_enviada_em)} · ${t.proposta_canal === "whatsapp" ? "WhatsApp" : "E-mail"}` : "")}
+      ${  rv("Até a proposta", psiHoras(t.horas_uteis_proposta) ? `${psiHoras(t.horas_uteis_proposta)} úteis (${psiHoras(t.horas_corridas_proposta)} corridas)` : "")}
     </div>`;
   return `<div class="psi-ficha">
-    ${/* html */ faixa}
-    ${/* html */ uiSecao("documento", "Pedido", pedido)}
-    ${/* html */ uiSecao("equipe", "Contato", contato)}
-    ${/* html */ uiSecao("nota", "Respostas", respostas, chaves.length ? String(chaves.length) : "")}
-    ${/* html */ uiSecao("check", "Mesmo dia", selo)}
-    ${/* html */ uiSecao("documento", "Anexos", listaAnexos, anexos && anexos.length ? String(anexos.length) : "")}
-    ${/* html */ uiSecao("relogio", "Tempo até formalizar", tempo)}
+    ${  faixa}
+    ${  uiSecao("documento", "Pedido", pedido)}
+    ${  uiSecao("equipe", "Contato", contato)}
+    ${  uiSecao("nota", "Respostas", respostas, chaves.length ? String(chaves.length) : "")}
+    ${  uiSecao("check", "Mesmo dia", selo)}
+    ${  uiSecao("documento", "Anexos", listaAnexos, anexos && anexos.length ? String(anexos.length) : "")}
+    ${  uiSecao("relogio", "Tempo até formalizar", tempo)}
   </div>`;
 }
 
-/* anexo: URL assinada de 10 minutos no bucket privado (a policy só deixa quem lê comercial) */
+
 async function psiAbrirAnexo(caminho){
   const { data, error } = await sb.storage.from(PSI_BUCKET).createSignedUrl(caminho, 600);
   if(error || !data?.signedUrl){ uiAvisar("Não foi possível abrir o anexo: " + (error ? error.message : "sem link"), "perigo"); return; }
@@ -444,18 +444,18 @@ async function psiMudarStatus(p, status){
   await carregarPedidosSite();
 }
 
-/* ---------------------------------------------------------------- Criar orçamento */
-/* abre o orçamento NOVO preenchido com o pedido; nada é gravado até Salvar. Ao salvar, salvarOrcamento grava o
-   whatsapp_cliente e chama psiLigarOrcamento (pedido ligado por orcamento_id, status "virou_orcamento"). */
+
+
+
 async function psiCriarOrcamento(p, anexos){
   if(!psiPodeOperar() || typeof novoOrcamento !== "function") return;
   if(!irParaSecao("orcamentos")) return;
-  await carregarOrcamentos();   // catálogo e número sugerido
-  novoOrcamento();              // limpa o pendente anterior (orcLimparAssistente)
+  await carregarOrcamentos();
+  novoOrcamento();
   const set = (id, v) => { const el = $(id); if(el && v != null && v !== "") el.value = v; };
   const setSel = (id, v) => { const el = $(id); if(el && v != null && [...el.options].some(o => o.value === String(v))) el.value = String(v); };
   const r = p.respostas || {};
-  // cliente pelo CNPJ; sem cadastro, o cadastro rápido abre com o que o pedido tem
+
   let clienteId = null;
   if(p.cnpj){
     const docs = [p.cnpj, typeof _orcCliMascara === "function" ? _orcCliMascara(p.cnpj) : p.cnpj];
@@ -479,7 +479,7 @@ async function psiCriarOrcamento(p, anexos){
   const temAnexo = (t) => anexos.some(a => a.tipo === t);
   if($("orc-proj-forn")) $("orc-proj-forn").checked = temAnexo("projeto");
   if($("orc-sond-forn")) $("orc-sond-forn").checked = temAnexo("sondagem");
-  // o que houver de estacas vai para o simulador de prazo (aba Proposta), que o comercial confere
+
   if(typeof r.F2 === "number") set("orc-sim-estacas", r.F2);
   if(Array.isArray(r.F3) && typeof r.F3[0] === "number") set("orc-sim-diametro", r.F3[0]);
   if(typeof r.F4 === "number") set("orc-sim-prof", r.F4);
@@ -497,7 +497,7 @@ async function psiCriarOrcamento(p, anexos){
   }
   uiAvisar(`Orçamento preenchido com o pedido ${p.protocolo || ""}: confira os dados e os itens e clique em Salvar. Nada foi gravado.`, "aviso");
 }
-/* chamadas pelo js/orcamentos.js */
+
 function psiPedidoPendente(){ return _psiPendente; }
 function psiLimparPendente(){ _psiPendente = null; }
 async function psiLigarOrcamento(pedido, orcId){
@@ -508,7 +508,7 @@ async function psiLigarOrcamento(pedido, orcId){
   return error ? `O pedido ${pedido.protocolo || ""} não foi ligado ao orçamento (${error.message}).` : null;
 }
 
-/* abre a aba a partir da tela inicial (pendência vw_sc_acoes_psi); com id, abre também a ficha do pedido */
+
 async function psiAbrirDaInicio(id){
   if(!irParaSecao("orcamentos")) return;
   if(typeof mostrarPainelOrc === "function") mostrarPainelOrc();
@@ -517,8 +517,8 @@ async function psiAbrirDaInicio(id){
   if(id){ await carregarPedidosSite(); abrirPedidoSite(id); }
 }
 
-/* ---------------------------------------------------------------- Enviar pelo WhatsApp (ficha do orçamento) */
-/* botão ao lado do "Enviar proposta": só com o orçamento salvo; destacado quando o pedido do site pediu WhatsApp */
+
+
 async function psiAtualizarBotaoWhatsapp(){
   const b = $("btn-orc-whatsapp");
   if(!b) return;
@@ -536,7 +536,7 @@ function psiMensagemWhatsapp(o){
   const h = new Date().getHours();
   const primeiro = String(o.contato_nome || "").trim().split(/\s+/)[0] || "";
   const nome = primeiro ? primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase() : "";
-  const saud = (h < 12 ? "Bom dia" : "Boa tarde") + (nome ? `, ${nome}!` : "!");   // como o e-mail da orcamento@
+  const saud = (h < 12 ? "Bom dia" : "Boa tarde") + (nome ? `, ${nome}!` : "!");
   const partes = typeof orcNumeroPartes === "function" ? orcNumeroPartes(o.numero, o.data_orcamento) : null;
   const numero = partes && partes.num ? `${partes.num}/${partes.ano}` : String(o.numero || "");
   const rev = String(o.numero_revisao || "00").trim();
@@ -554,15 +554,15 @@ async function psiEnviarWhatsapp(){
     .select("id,numero,numero_revisao,data_orcamento,tipo_proposta,contato_nome,contato_telefone,whatsapp_cliente,referencia_obra,local_execucao,clientes(nome,nome_fantasia)")
     .eq("id", orcId).single();
   if(error){ uiAvisar("Não foi possível abrir o envio: " + error.message, "perigo"); return; }
-  // sem whatsapp_cliente, sugere o telefone do contato quando é celular (11 dígitos); o comercial confere
+
   const telContato = String(o.contato_telefone || "").replace(/\D/g, "");
   const sugerido = o.whatsapp_cliente || (telContato.length === 11 || (telContato.length === 13 && telContato.startsWith("55")) ? telContato : "");
   const corpo = `<div class="psi-wa">
-    ${/* html */ uiCampo({ id: "psi-wa-numero", rotulo: "WhatsApp do cliente", tipo: "tel", valor: sugerido ? psiFoneBR(sugerido) : "", obrigatorio: true,
+    ${  uiCampo({ id: "psi-wa-numero", rotulo: "WhatsApp do cliente", tipo: "tel", valor: sugerido ? psiFoneBR(sugerido) : "", obrigatorio: true,
       placeholder: "(31) 99999-0000", ajuda: o.whatsapp_cliente ? "Número gravado no orçamento." : "Confira o número: DDD e celular." })}
-    ${/* html */ uiCampo({ id: "psi-wa-msg", rotulo: "Mensagem", tipo: "textarea", valor: psiMensagemWhatsapp(o) })}
+    ${  uiCampo({ id: "psi-wa-msg", rotulo: "Mensagem", tipo: "textarea", valor: psiMensagemWhatsapp(o) })}
     <p class="psi-wa-passos">Ao clicar em "Baixar PDF e abrir o WhatsApp", o PDF da proposta é baixado no computador e o WhatsApp abre numa aba nova com a mensagem. Anexe o PDF na conversa e envie; depois volte aqui para confirmar.</p>
-    <div id="psi-wa-status">${/* html */ uiCarregando("Gerando o PDF da proposta…")}</div>
+    <div id="psi-wa-status">${  uiCarregando("Gerando o PDF da proposta…")}</div>
   </div>`;
   const d = document.createElement("dialog");
   d.className = "ui-modal";
@@ -575,9 +575,9 @@ async function psiEnviarWhatsapp(){
   const btnAbrir = q('[data-acao="abrir"]');
   btnAbrir.disabled = true;
   let pdfBlob = null, aberto = false, numeroUsado = null;
-  // lote S71-e (#378): o mesmo nome do botão PDF ("<num>-<ano> - <CLIENTE> - <TIPO>.pdf")
+
   const nomePdf = propostaNomeArquivo(o, o.clientes);
-  // o PDF sai já na abertura (o mesmo do envio pela orcamento@): o clique baixa e abre o WhatsApp no mesmo gesto
+
   gerarPropostaPdfBlob(orcId).then(b => {
     pdfBlob = b;
     if(!d.isConnected) return;
@@ -610,7 +610,7 @@ async function psiEnviarWhatsapp(){
   const ok = await uiConfirmar({ titulo: "Envio pelo WhatsApp", texto: `A proposta foi enviada pelo WhatsApp para ${psiFoneBR(numeroUsado)}?`,
     confirmar: "Sim, foi enviada", cancelar: "Não" });
   if(!ok){ uiAvisar("Nada foi registrado. Quando enviar, use o botão de novo e confirme.", "info"); return; }
-  // guarda o PDF enviado junto dos da orcamento@ (falha aqui não impede o registro)
+
   let caminho = `${orcId}/${Date.now()}-whatsapp.pdf`;
   const up = await sb.storage.from("orcamentos-envio").upload(caminho, new Blob([pdfBlob], { type: "application/pdf" }), { contentType: "application/pdf", upsert: false });
   if(up.error){ console.warn("Envio pelo WhatsApp: PDF não guardado:", up.error.message); caminho = null; }
@@ -621,7 +621,7 @@ async function psiEnviarWhatsapp(){
   if(typeof carregarOrcamentos === "function") carregarOrcamentos();
 }
 
-/* ---------------------------------------------------------------- eventos */
+
 function ligarPedidosSite(){
   const cont = $("psi-conteudo");
   if(cont){
@@ -645,7 +645,7 @@ function ligarPedidosSite(){
       if(tr) abrirPedidoSite(tr.dataset.id);
     });
   }
-  // anexos dentro da ficha (o <dialog> é montado pelo uiModal): delegação no documento
+
   document.addEventListener("click", ev => {
     const b = ev.target.closest("[data-psi-anexo]");
     if(b) comBotaoTravado(b, () => psiAbrirAnexo(b.dataset.psiAnexo));

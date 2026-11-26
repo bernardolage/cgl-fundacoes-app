@@ -1,22 +1,22 @@
-/* ====================================================================
-   NCM (fase 105a, 22/10/2026) — tabela de apoio e o bloco "Fiscal" das fichas de produto, equipamento e acessório.
 
-   FISCAL_NCM é uma TIPI reduzida: só os capítulos que a CGL usa (25 areia/cimento, 39 caixa d'água, 40 borracha, 72 aço,
-   73 tubos e obras de ferro, 82 ferramentas de perfuração, 84 máquinas e 84.31 partes, 85 geradores e quadros, 87
-   veículos). Montada de memória da TIPI, sem consulta ao texto vigente: o contador confirma.
-   Códigos de 4 e 6 dígitos são posições/subposições, para orientar a busca: escolhê-los põe o começo do código no
-   campo e falta completar os dígitos pela TIPI ou pela nota de compra do bem. Os de 8 dígitos são os itens mais usados.
-   A classificação vale a da nota de compra; na dúvida, o contador confirma (docs/cargas/ncm-equipamentos.md).
-   O campo aceita qualquer NCM de 8 dígitos digitado (com ou sem pontos), mesmo fora da tabela.
 
-   Bloco Fiscal: fiscalItemMontar(pref) desenha os campos em #<pref>-fiscal (NCM com busca, unidade comercial, valor
-   unitário para remessa com o sugerido por fiscal_valor_remessa()); fiscalItemPreencher(pref, tipo, registro) carrega;
-   fiscalItemValores(pref) devolve { ncm, unidade_comercial, valor_remessa } para o salvar do módulo, { erro } ou null
-   (null = banco ainda sem as colunas da migration 20261022_fase105a: o módulo não manda os campos).
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const FISCAL_NCM = [
-  // ---- 25: areia, brita, bentonita, cal, cimento ----
+
   ["2505", "Areias naturais"],
   ["25051000", "Areias siliciosas e areias quartzosas"],
   ["25059000", "Outras areias naturais (areia de construção)"],
@@ -27,9 +27,9 @@ const FISCAL_NCM = [
   ["25232910", "Cimento Portland comum"],
   ["25232990", "Outros cimentos Portland (CP II, CP III, CP V…)"],
   ["25239000", "Outros cimentos hidráulicos"],
-  // ---- 39: plástico (só a caixa d'água dos acessórios de raiz) ----
+
   ["39251000", "Reservatórios de plástico acima de 300 l (caixa d'água)"],
-  // ---- 40: borracha ----
+
   ["4009", "Tubos de borracha vulcanizada (mangueiras, mangotes)"],
   ["400911", "Mangueira de borracha sem reforço, sem acessórios"],
   ["400921", "Mangueira reforçada com metal, sem acessórios"],
@@ -37,13 +37,13 @@ const FISCAL_NCM = [
   ["400931", "Mangueira reforçada com têxtil, sem acessórios"],
   ["400932", "Mangueira reforçada com têxtil, com acessórios"],
   ["40169990", "Outras obras de borracha vulcanizada (amortecedor, vedação)"],
-  // ---- 72: aço ----
+
   ["7213", "Fio-máquina de ferro ou aço não ligado"],
   ["72131000", "Fio-máquina com nervuras da laminação"],
   ["7214", "Barras de ferro ou aço não ligado"],
   ["72142000", "Barras com nervuras (vergalhão CA-50)"],
   ["7217", "Fios de ferro ou aço não ligado (CA-60, arame)"],
-  // ---- 73: tubos e obras de ferro ou aço ----
+
   ["7304", "Tubos sem costura, de ferro ou aço"],
   ["730439", "Tubo sem costura, seção circular, aço não ligado (camisa, tubo de secante)"],
   ["730459", "Tubo sem costura, seção circular, outras ligas de aço"],
@@ -61,11 +61,11 @@ const FISCAL_NCM = [
   ["73089090", "Outras construções e partes, de ferro ou aço"],
   ["73181500", "Parafusos e pinos, mesmo com porcas"],
   ["73269090", "Outras obras de ferro ou aço"],
-  // ---- 82: ferramentas intercambiáveis de perfuração ----
+
   ["8207", "Ferramentas intercambiáveis (perfuração e sondagem)"],
   ["82071300", "Ferramenta de perfuração/sondagem com parte operante de ceramais (coroa, bit, tricone de metal duro)"],
   ["82071900", "Outras ferramentas de perfuração/sondagem, incluídas as partes"],
-  // ---- 84: máquinas ----
+
   ["8413", "Bombas para líquidos"],
   ["84134000", "Bombas para concreto"],
   ["841350", "Outras bombas volumétricas alternativas (pistão: argamassa, injeção)"],
@@ -96,13 +96,13 @@ const FISCAL_NCM = [
   ["847439", "Outras máquinas de misturar"],
   ["847910", "Máquinas para obras públicas e construção civil"],
   ["848340", "Engrenagens, caixas de transmissão e redutores (caixa redutora)"],
-  // ---- 85: geradores e quadros ----
+
   ["8502", "Grupos geradores"],
   ["850211", "Grupo gerador diesel até 75 kVA"],
   ["850212", "Grupo gerador diesel de 75 a 375 kVA"],
   ["850213", "Grupo gerador diesel acima de 375 kVA"],
   ["853710", "Quadros e painéis elétricos até 1.000 V"],
-  // ---- 87: veículos ----
+
   ["8704", "Veículos para transporte de mercadorias (caminhões)"],
   ["870421", "Veículo de carga diesel, PBT até 5 t (furgão, Sprinter)"],
   ["870422", "Caminhão diesel, PBT acima de 5 t até 20 t"],
@@ -119,7 +119,7 @@ function ncmFormatar(v){
   if(d.length <= 6) return `${d.slice(0, 4)}.${d.slice(4)}`;
   return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
 }
-/* descrição do código ou da subposição/posição mais próxima da tabela de apoio */
+
 function ncmDescricao(v){
   const d = ncmDigitos(v);
   for(const n of [8, 6, 4]){ if(d.length >= n && _ncmMapa[d.slice(0, n)]) return _ncmMapa[d.slice(0, n)]; }
@@ -136,13 +136,13 @@ function ncmBuscar(termo){
     .slice(0, 25);
 }
 
-/* ---------- bloco Fiscal das fichas ---------- */
+
 const FISCAL_ITEM_ORIGEM = { informado: "informado", avaliacao: "avaliação de mercado (Patrimônio)", aquisicao: "valor de aquisição", preco_referencia: "preço de referência do modelo", custo: "último custo" };
 const FISCAL_ITEM_TABELA = { equipamento: "equipamentos", acessorio: "acessorios", produto: "produtos" };
-const _fiscalItem = {};   // por prefixo: { disponivel, tipo, id }
+const _fiscalItem = {};
 
-/* A sugestão que vem do valor de aquisição do bem só aparece para quem lê esse valor (diretoria, financeiro e auditor). Com o
-   banco atualizado a função fiscal_valor_remessa já não devolve esse degrau a quem não lê; a tela não depende disso. */
+
+
 function fiscalSugestaoVisivel(s){ return !s || (s.origem === "aquisicao" && !(typeof podeVerValorBem === "function" && podeVerValorBem())) ? null : s; }
 
 function fiscalItemMontar(pref){
@@ -195,18 +195,18 @@ function fiscalItemMontar(pref){
   inp.addEventListener("blur", () => { setTimeout(fechar, 150); if(ncmDigitos(inp.value).length === 8) inp.value = ncmFormatar(inp.value); descrever(); });
 }
 
-/* Valor para remessa de MÁQUINA (hotfix 11/11/2026): é o valor contábil (da contabilidade); só a diretoria e o financeiro definem
-   (gatilho no banco recusa os outros).
-   Na ficha do equipamento o campo fica desabilitado para quem não grava, nunca vai no update de equipamentos e é gravado pela
-   RPC equipamentos_definir_valor_remessa (o financeiro não altera o cadastro da máquina). Acessório e produto não mudam. */
+
+
+
+
 const FISCAL_VREM_TITLE_GRAVA = "Valor contábil (da contabilidade) da máquina, declarado na NF-e de remessa. Sem valor contábil, digite o valor a declarar. Só a diretoria e o financeiro definem; cada alteração fica registrada.";
 const FISCAL_VREM_TITLE_LE = "Valor contábil (da contabilidade) da máquina, declarado na NF-e de remessa. Só a diretoria e o financeiro definem; se estiver vazio, peça a eles.";
 const FISCAL_VREM_ROTULO = { equipamento: "Valor para remessa (R$): valor contábil (da contabilidade)" };
 function fiscalRemessaRestrita(tipo){ return tipo === "equipamento"; }
 function fiscalPodeGravarRemessa(tipo){ return !fiscalRemessaRestrita(tipo) || (typeof podeGravarValorBem === "function" && podeGravarValorBem()); }
 function fiscalValorIgual(a, b){ return (a == null && b == null) || (a != null && b != null && Math.abs(Number(a) - Number(b)) < 0.005); }
-/* grava o valor para remessa de uma ou mais máquinas: [{ id, valor }] (valor null = apagar). origem: de onde veio o valor
-   (ex.: "planilha da contabilidade: imobilizado.xlsx"); vazio = digitado na tela. Devolve { n } ou { erro } */
+
+
 async function fiscalRemessaGravar(itens, origem){
   const args = { p_itens: itens.map(i => ({ id: i.id, valor: i.valor == null ? null : Number(i.valor) })) };
   if(origem) args.p_origem = String(origem).slice(0, 200);
@@ -215,8 +215,8 @@ async function fiscalRemessaGravar(itens, origem){
   return { n: Number(data) || 0 };
 }
 
-/* tipo: equipamento | acessorio | produto. registro: o que a ficha abriu ({} ou sem id = novo).
-   pode: false deixa os campos só para consulta (mesma regra de edição da ficha). */
+
+
 async function fiscalItemPreencher(pref, tipo, registro, pode){
   fiscalItemMontar(pref);
   const r = registro || {};
@@ -224,7 +224,7 @@ async function fiscalItemPreencher(pref, tipo, registro, pode){
   const tabela = FISCAL_ITEM_TABELA[tipo];
   const inp = $(`${pref}-ncm`), ucom = $(`${pref}-ucom`), vrem = $(`${pref}-vrem`), sug = $(`${pref}-vrem-sug`), av = $(`${pref}-fiscal-aviso`);
   if(!inp) return;
-  [inp, ucom, vrem].forEach(el => { el.disabled = true; });   // liberados depois de saber se as colunas existem
+  [inp, ucom, vrem].forEach(el => { el.disabled = true; });
   inp.value = ""; ucom.value = ""; vrem.value = ""; sug.textContent = ""; vrem.placeholder = "vazio = sugerido"; $(`${pref}-ncm-desc`).textContent = "";
   ucom.placeholder = tipo === "produto" && r.unidade ? String(r.unidade).toUpperCase().slice(0, 6) : "UN";
   let dados = null;
@@ -233,7 +233,7 @@ async function fiscalItemPreencher(pref, tipo, registro, pode){
     const { data, error } = await sb.from(tabela).select("ncm,unidade_comercial,valor_remessa").eq("id", r.id).maybeSingle();
     if(!error) dados = data || {};
   } else if(await fiscalColunaExiste(tabela, "ncm")) dados = {};
-  if(_fiscalItem[pref] !== est) return;   // a ficha mudou enquanto lia
+  if(_fiscalItem[pref] !== est) return;
   est.disponivel = !!dados;
   av.style.display = est.disponivel ? "none" : "";
   av.textContent = est.disponivel ? "" : "Os campos fiscais chegam com a atualização do banco da fase 105a.";
@@ -246,7 +246,7 @@ async function fiscalItemPreencher(pref, tipo, registro, pode){
   const rot = $(`${pref}-vrem-rot`); if(rot) rot.textContent = FISCAL_VREM_ROTULO[tipo] || "Valor unitário para remessa (R$)";
   if(fiscalRemessaRestrita(tipo)){
     const grava = fiscalPodeGravarRemessa(tipo);
-    vrem.disabled = !grava;   // o financeiro grava mesmo sem editar o resto do cadastro
+    vrem.disabled = !grava;
     vrem.title = grava ? FISCAL_VREM_TITLE_GRAVA : FISCAL_VREM_TITLE_LE;
   } else vrem.title = "";
   inp.dispatchEvent(new Event("blur"));
@@ -261,7 +261,7 @@ async function fiscalItemPreencher(pref, tipo, registro, pode){
   }
 }
 
-/* null = sem as colunas no banco (o módulo não manda nada); { erro } = valor inválido; senão o trecho do salvar */
+
 function fiscalItemValores(pref){
   const est = _fiscalItem[pref];
   if(!est || !est.disponivel) return null;
@@ -272,11 +272,11 @@ function fiscalItemValores(pref){
   if(ucom && !/^[0-9A-Z]{1,6}$/.test(ucom)) return { erro: "Unidade comercial com até 6 letras ou dígitos (ex.: UN, PC, KG)." };
   const valor = vtxt === "" ? null : Number(vtxt.replace(",", "."));
   if(valor != null && !(valor >= 0)) return { erro: "Valor para remessa inválido." };
-  // máquina: o valor para remessa nunca vai no update do cadastro (vai por fiscalItemRemessaMudou + fiscalRemessaGravar)
+
   if(fiscalRemessaRestrita(est.tipo)) return { ncm: ncm || null, unidade_comercial: ucom || null };
   return { ncm: ncm || null, unidade_comercial: ucom || null, valor_remessa: valor };
 }
-/* máquina: { valor } quando quem grava mudou o valor para remessa; { erro } se inválido; null se não há o que gravar */
+
 function fiscalItemRemessaMudou(pref){
   const est = _fiscalItem[pref];
   if(!est || !est.disponivel || !fiscalRemessaRestrita(est.tipo) || !fiscalPodeGravarRemessa(est.tipo)) return null;

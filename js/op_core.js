@@ -1,17 +1,17 @@
-/* ====================================================================
-   CGL Fundações — app do operador (fase 129b, spec docs/specs/fase-129-diario-operador.md)
-   op_core.js — cliente Supabase, sessão, fila no aparelho (IndexedDB), drenagem e navegação.
-   Carregado pelo operador.html antes dos outros js/op_*.js; op_init.js roda por último.
-   O core.js do painel não entra aqui (registra listeners do index na carga): a sessão e o login por CPF
-   são cópia das funções de mesmo nome do core.js (fases 87 e 93b), como a spec permite (seção 4.1).
-   Regras: o campo grava só pelas RPCs rdo_campo_* (fase 129a); toda gravação vai para a fila e sobe em
-   ordem; a rejeição do banco fica visível por linha; Sair e sessão vencida nunca apagam a fila.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
 
 const SUPABASE_URL = "https://xiirduialyewpqkwsfxx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_uef7GgPhtV5SSp-281PtNA_fD3ajHN4";
 
-/* ---------- Sessão (cópia de core.js, fase 87): sessionStorage, ou localStorage com "Manter conectado" ---------- */
+
 const SESSAO_LEMBRAR_CHAVE = "cgl_lembrar";
 function lembrarLer(){
   try {
@@ -42,7 +42,7 @@ const sessaoStorage = {
 };
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storage: sessaoStorage } });
 
-/* ---------- Login por CPF (cópia de core.js, fase 93b): o e-mail técnico nunca vai para a tela ---------- */
+
 const LOGIN_CPF_DOMINIO = "funcionarios.cglfundacoes.com.br";
 function loginPareceCpf(v){
   const s = String(v || "").trim();
@@ -54,7 +54,7 @@ function loginParaEmail(v){
 }
 function emailEhLoginCpf(email){ return String(email || "").toLowerCase().endsWith("@" + LOGIN_CPF_DOMINIO); }
 
-/* ---------- Ajudantes ---------- */
+
 const $ = (id) => document.getElementById(id);
 function esc(v){
   return String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -89,8 +89,8 @@ function horaDeTimestamp(iso){
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 }
-/* Fase 155a: hora da estaca como o resto do sistema grava (hora de parede com +00) e lê (fatiando o texto, sem fuso).
-   horaDeTimestamp continua para instantes reais (envio, sincronização, fila). */
+
+
 function horaParedeAgora(){ return `${dataLocalISO()}T${horaAgora(1)}:00+00:00`; }
 function horaDeParede(iso){ const m = /^\d{4}-\d{2}-\d{2}[T ](\d{2}):(\d{2})/.exec(String(iso || "")); return m ? `${m[1]}:${m[2]}` : ""; }
 function minutos(h){ const m = /^(\d{1,2}):(\d{2})/.exec(String(h || "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
@@ -115,8 +115,8 @@ function prefGravar(k, v){ try { if(v == null) localStorage.removeItem("cgl_op_"
 
 const ROTULO_TIPO = { helice_continua: "Hélice contínua", helice_secante: "Hélice secante", estaca_raiz: "Estaca raiz", trado_mecanizado: "Trado mecanizado" };
 const ROTULO_TEMPO = { bom: "Bom", nublado: "Nublado", chuva_fraca: "Chuva fraca", chuva_forte: "Chuva forte", impraticavel: "Impraticável" };
-/* Fase 179 (D1): clima em 3 opções na tela, banco com os 5 valores. Cópia de CLIMA_3 / CLIMA_3_OPCOES / climaGravar de
-   js/core.js (este app não carrega o core.js): mudar lá é mudar aqui. */
+
+
 const CLIMA_3 = { bom: "bom", nublado: "bom", chuva_fraca: "chuva", chuva_forte: "chuva", impraticavel: "impraticavel" };
 const CLIMA_3_OPCOES = [["bom", "Bom", "bom"], ["chuva", "Chuva", "chuva_fraca"], ["impraticavel", "Impraticável", "impraticavel"]];
 function climaGravar(opcao, atual){
@@ -134,14 +134,14 @@ const ROTULO_FUNCAO = { operador: "Operador", ajudante: "Ajudante", encarregado:
 const CARGOS_CAMPO = ["operador", "encarregado", "engenheiro", "assistente_engenharia", "admin", "diretor"];
 const ehRaizOuTrado = (t) => t === "estaca_raiz" || t === "trado_mecanizado";
 
-/* ---------- Estado ---------- */
+
 const OP = {
-  perfil: null,        // { id, nome, cargo, funcionario_id, senha_provisoria }
-  funcionario: null,   // { nome, funcao } da CTPS, pela vw_funcionarios_campo
+  perfil: null,
+  funcionario: null,
   cpfDigitos: null,
   db: null,
-  rdoId: null,         // diário aberto
-  snap: null,          // snapshot do diário aberto (rdo_campo_snapshot)
+  rdoId: null,
+  snap: null,
   snapVistoEm: null,
   difRelogioMin: 0,
   drenando: false,
@@ -149,13 +149,13 @@ const OP = {
   forcarFotos: false,
   ultimaSync: null,
   telaAtual: null,
-  telas: {}            // nome -> função de render, registradas pelos módulos
+  telas: {}
 };
 
-/* ====================================================================
-   IndexedDB: um banco por profile_id, com 4 stores (seção 4.3)
-   dia (snapshot por rdo_id) · cache (listas de apoio) · outbox (fila, em ordem) · fotos (Blob reduzido)
-   ==================================================================== */
+
+
+
+
 function idbAbrir(profileId){
   return new Promise((ok, falha) => {
     const r = indexedDB.open("cgl-campo-" + profileId, 1);
@@ -189,7 +189,7 @@ const idbDel = (store, chave) => idbReq(store, "readwrite", s => s.delete(chave)
 const idbTodos = (store) => idbReq(store, "readonly", s => s.getAll());
 const idbLimpar = (store) => idbReq(store, "readwrite", s => s.clear());
 
-/* contagem da fila antes do login (faixa da tela Entrar): o último perfil que usou o aparelho */
+
 async function contarFilaDoAparelho(){
   const id = prefLer("ultimo_perfil");
   if(!id || !window.indexedDB) return { registros: 0, fotos: 0 };
@@ -206,7 +206,7 @@ async function contarFilaDoAparelho(){
   } catch(_){ return { registros: 0, fotos: 0 }; }
 }
 
-/* decisão A (09/11/2026): a fila vive até campo_fila_max_dias; passou disso, sai ao abrir a página, com o aviso */
+
 async function limparFilaVencida(){
   const maxDias = Number(prefLer("fila_max_dias", "30")) || 30;
   const limite = Date.now() - maxDias * 86400000;
@@ -222,15 +222,15 @@ async function limparFilaVencida(){
   return n;
 }
 
-/* ====================================================================
-   Fila (outbox) e drenagem em ordem (seção 4.3)
-   ==================================================================== */
+
+
+
 async function lerFila(){
   const fila = await idbTodos("outbox");
   return fila.sort((a, b) => a.seq - b.seq);
 }
 
-/* rpc + args; meta: { rotulo, linha_id }. p_op é o op_id (idempotência em campo_ops) */
+
 async function enfileirar(rpc, args, meta = {}){
   const opId = args.p_op || novoId();
   if("p_op" in args || rpc.startsWith("rdo_campo_")) args.p_op = opId;
@@ -241,7 +241,7 @@ async function enfileirar(rpc, args, meta = {}){
   });
   if(OP.snap) await idbPut("dia", { rdo_id: OP.rdoId, snap: OP.snap, visto_em: OP.snapVistoEm });
   agendarDrenagem(10000);
-  await atualizarFaixaFila();   // a tela que redesenha logo depois já mostra o selo "no aparelho"
+  await atualizarFaixaFila();
   return opId;
 }
 
@@ -274,7 +274,7 @@ async function drenar(){
   const rdosTocados = new Set();
   try {
     const fila = await lerFila();
-    const travados = new Set();   // diários com operação recusada ou em conflito antes do envio
+    const travados = new Set();
     for(const o of fila){
       if(o.situacao === "rejeitada" || o.situacao === "conflito"){ travados.add(o.rdo_id); continue; }
       if(o.situacao !== "pendente") continue;
@@ -319,7 +319,7 @@ async function drenar(){
         await idbPut("outbox", o);
         continue;
       }
-      await idbDel("outbox", o.seq);   // confirmada: sai do aparelho (seção 4.7)
+      await idbDel("outbox", o.seq);
       aplicadas++;
       rdosTocados.add(o.rdo_id);
     }
@@ -327,7 +327,7 @@ async function drenar(){
     OP.drenando = false;
   }
   if(aplicadas) OP.ultimaSync = new Date();
-  // o diário aberto volta do banco quando não sobrou nada pendente dele no aparelho
+
   if(OP.rdoId && rdosTocados.has(OP.rdoId)){
     const resta = (await lerFila()).some(o => o.rdo_id === OP.rdoId && o.situacao === "pendente" && o.rpc !== "upload_foto");
     if(!resta) await recarregarDia(true);
@@ -336,7 +336,7 @@ async function drenar(){
   renderTelaAtual();
 }
 
-/* fotos: depois dos dados, com teto diário de MB (plano de dados do operador) */
+
 function fotosEnviadasHojeMB(){
   const r = String(prefLer("fotos_mb_dia", "") || "").split("|");
   return r[0] === dataLocalISO() ? Number(r[1]) || 0 : 0;
@@ -348,10 +348,10 @@ async function enviarFoto(o){
   const tetoMB = Number(OP.snap?.config?.fotos_auto_mb || prefLer("fotos_auto_mb", "20")) || 20;
   const mb = (foto.blob?.size || 0) / 1048576;
   if(!OP.forcarFotos && fotosEnviadasHojeMB() + mb > tetoMB) return "adiada";
-  // o registro da foto (rdo_campo_foto_registrar) tem de ter subido antes: ele está antes na fila
+
   const regPendente = (await lerFila()).some(x => x.rpc === "rdo_campo_foto_registrar" && x.args?.p_id === o.args.foto_id);
   if(regPendente) return "adiada";
-  // regra de uploads do projeto: o MIME vai no Blob reembalado, nunca pelo File
+
   const corpo = new Blob([await foto.blob.arrayBuffer()], { type: "image/jpeg" });
   let up;
   try { up = await sb.storage.from("rdo-fotos").upload(o.args.path, corpo, { contentType: "image/jpeg", upsert: false }); }
@@ -371,7 +371,7 @@ async function enviarFoto(o){
   return "ok";
 }
 
-/* situação de uma linha da tela pela fila: pendente, rejeitada (com motivo) ou conflito */
+
 let _filaCache = [];
 async function atualizarFaixaFila(){
   if(!OP.db) return;
@@ -401,7 +401,7 @@ function estadoDaLinha(id){
   if(ops.some(o => o.situacao === "pendente")) return { tipo: "aparelho", texto: "no aparelho" };
   return null;
 }
-/* rótulo de estado com ícone (nunca só cor) */
+
 function seloEstado(id, linha){
   const e = estadoDaLinha(id);
   if(e && e.tipo === "recusado") return `<span class="op-selo op-selo-perigo">⚠ ${esc(e.texto)}</span>`;
@@ -412,7 +412,7 @@ function seloEstado(id, linha){
 function filaTemPendenteDoDia(){ return _filaCache.some(o => o.rdo_id === OP.rdoId && o.situacao === "pendente" && o.rpc !== "upload_foto"); }
 function filaVazia(){ return !_filaCache.length; }
 
-/* valores que o aparelho viu antes de mudar (p_anteriores): o banco só acusa conflito se mudou de lá para cá */
+
 function anteriores(linha, campos){
   if(!linha) return null;
   const r = {};
@@ -420,9 +420,9 @@ function anteriores(linha, campos){
   return Object.keys(r).length ? r : null;
 }
 
-/* ====================================================================
-   Diário aberto: snapshot no aparelho
-   ==================================================================== */
+
+
+
 async function guardarSnapshot(snap){
   OP.snap = snap;
   OP.rdoId = snap?.rdo?.id || null;
@@ -460,9 +460,9 @@ function diaEditavel(){
 }
 function paradaAberta(){ return (OP.snap?.paradas || []).find(p => p.periodo_inicio && !p.periodo_fim) || null; }
 
-/* ====================================================================
-   Navegação: uma <section class="op-tela"> por tela, barra inferior por tipo de serviço (seção 5)
-   ==================================================================== */
+
+
+
 const TITULOS = { maquina: "Minha máquina", dia: "Meu dia", equipe: "Equipe do dia", abast: "Abastecimento e horímetro",
   estacas: "Estacas do dia", geo: "Estacas de hoje", parada: "Paradas", foto: "Fotos", enviar: "Enviar o dia",
   dias: "Meus dias", eu: "Eu", mais: "Mais" };
@@ -499,15 +499,15 @@ function montarCabecalho(){
   sub.textContent = s ? `${s.equipamento?.codigo || "sem máquina"} · ${s.obra?.codigo || ""} · ${dataBR(s.rdo?.data)}${s.rdo?.turno_campo === "noturno" ? " · noturno" : ""}` : (OP.perfil?.nome || "");
 }
 
-/* ====================================================================
-   Sessão: entrar, troca da senha provisória, pedir senha de novo, sair
-   ==================================================================== */
+
+
+
 async function lerPerfil(){
   const { data: { user } } = await sb.auth.getUser();
   if(!user) return null;
   OP.cpfDigitos = emailEhLoginCpf(user.email) ? String(user.email).split("@")[0] : null;
-  // fase 159a: perfil e funcionário vêm da RPC campo_meu_perfil (o app do campo deixa de ler tabela direto, para o portão
-  // da API poder recusar todo acesso a tabela). Sem a migration (função ausente) cai na leitura antiga.
+
+
   const r = await sb.rpc("campo_meu_perfil");
   if(!r.error) return r.data || { id: user.id, nome: "Funcionário", cargo: null, ativo: false };
   if(!opRpcAusente(r.error)) return { id: user.id, nome: "Funcionário", cargo: null, ativo: false };
@@ -515,12 +515,12 @@ async function lerPerfil(){
   if(error || !perfil) return { id: user.id, nome: "Funcionário", cargo: null, ativo: false };
   return perfil;
 }
-/* fase 159a: a RPC ainda não existe no banco (migration não aplicada) ou não entrou no cache da API */
+
 function opRpcAusente(err){ return !!err && (["PGRST202", "42883"].includes(err.code) || /could not find the function|schema cache/i.test(String(err.message || ""))); }
 async function lerFuncionario(){
   OP.funcionario = null;
   if(!OP.perfil?.funcionario_id) return;
-  // fase 159a: a RPC do perfil já trouxe o funcionário (a chave "funcionario" existe, mesmo nula)
+
   if(Object.prototype.hasOwnProperty.call(OP.perfil, "funcionario")){ OP.funcionario = OP.perfil.funcionario || null; return; }
   const { data } = await sb.from("vw_funcionarios_campo").select("id,nome,funcao").eq("id", OP.perfil.funcionario_id).limit(1);
   if(data && data[0]) OP.funcionario = data[0];
@@ -533,7 +533,7 @@ function pedirSenhaDeNovo(){
   atualizarFaixaFila();
 }
 
-/* Sair: apaga o diário e as listas guardadas e o CPF lembrado; a fila fica (seção 4.7) */
+
 async function sair(){
   const fila = OP.db ? await lerFila() : [];
   if(fila.length && !confirm(`Há ${fila.length} registro(s) no aparelho ainda não enviados. Eles ficam guardados e sobem no próximo acesso. Sair mesmo assim?`)) return;
@@ -545,9 +545,9 @@ async function sair(){
   location.replace("operador.html");
 }
 
-/* ====================================================================
-   Versão (fase 86): recarrega sozinho só com a fila vazia e sem parada aberta
-   ==================================================================== */
+
+
+
 function versaoAtual(){ return document.querySelector('meta[name="app-versao"]')?.content || "dev"; }
 async function conferirVersao(){
   if(versaoAtual() === "dev" || !navigator.onLine) return;

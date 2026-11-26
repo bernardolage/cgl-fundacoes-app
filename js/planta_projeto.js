@@ -1,42 +1,42 @@
-/* ====================================================================
-   Módulo: projeto do cliente como fundo da planta — fase 167a (prefixo ppj-)
-   Carregado depois de js/estacas.js. A visão Planta da aba Estacas ganha uma barra: "Esquema" (o desenho por coordenada, que
-   continua como era) e um botão por folha do projeto do cliente guardada na obra.
-   - O PDF vira imagem UMA VEZ, no navegador de quem envia: a janela "Projeto do cliente" carrega o pdf.js de vendor/ por
-     import() (ninguém mais baixa a biblioteca), desenha cada página marcada em duas resoluções (alta e média) e grava as
-     duas no bucket obras-documentos, junto com o original, que entra em Documentos da obra (categoria projeto).
-   - Quem lê abre só uma imagem por endereço assinado de 1 hora. Nada sai para host de fora e a CSP do index.html não muda.
-   - Tabela public.obras_plantas (migration 20261111_fase167a_obras_plantas.sql). SEM a migration no banco a leitura acusa
-     tabela ausente e o módulo se cala: a barra não aparece e a planta fica como era, sem erro do código no console.
-   - As estacas por cima da folha (marcadores, modo de edição) ficam em js/planta_posicoes.js, carregado logo depois. Este
-     arquivo só chama aquele por ganchos guardados por typeof: sem ele, a folha é só o fundo, com zoom e arrasto.
-   - obras_plantas.rotacao_graus guarda o giro total da página (o da própria página do PDF mais o escolhido no envio). Em
-     banco sem a coluna, o envio repete o insert sem o campo.
-   - Grava: diretor, admin, engenheiro, assistente de engenharia e encarregado (os mesmos de estacas_write), nunca o
-     usuário de revisão. O banco decide; a tela só esconde o que a pessoa não pode usar.
-   As funções ppjPodeEditarCargo, ppjValidarArquivo, ppjCaminhoImagens, ppjCaminhoDocumento, ppjDimensoes, ppjPaginasPedidas,
-   ppjLocaisDaObra, ppjFolhasVisiveis, ppjRotuloFolha, ppjProximaOrdem, ppjReordenar, ppjAjustar, ppjLimitar, ppjZoom,
-   ppjArrastar, ppjPinca, ppjEscolherImagem, ppjTabelaAusente, ppjUrlVale, ppjBarraHTML, ppjRotacaoTotal e ppjColunaAusente
-   são puras (sem tela nem banco) e testadas por scripts/testar-fase167a.mjs e scripts/testar-fase167b.mjs.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const PPJ_BUCKET = "obras-documentos";
-const PPJ_PDFJS = "vendor/pdfjs-4.10.38.min.js";                 // pdfjs-dist 4.10.38, build/pdf.min.mjs (hash em vendor/HASHES.txt)
-const PPJ_PDFJS_WORKER = "vendor/pdfjs-4.10.38.worker.min.js";   // build/pdf.worker.min.mjs
-const PPJ_TAM_MAX = 52428800;            // 50 MB: o limite do bucket
-const PPJ_LADO_ALTA = 6000;              // lado maior da imagem alta, em pixels
-const PPJ_LADO_ALTA_REDUZIDA = 4000;     // quando o navegador não dá conta do canvas de 6.000
+const PPJ_PDFJS = "vendor/pdfjs-4.10.38.min.js";
+const PPJ_PDFJS_WORKER = "vendor/pdfjs-4.10.38.worker.min.js";
+const PPJ_TAM_MAX = 52428800;
+const PPJ_LADO_ALTA = 6000;
+const PPJ_LADO_ALTA_REDUZIDA = 4000;
 const PPJ_LADO_MEDIA = 2400;
 const PPJ_LADO_MINIATURA = 220;
-const PPJ_QUALIDADE = 0.9;               // WebP
-const PPJ_ZOOM_MAX = 40;                 // vezes o "cabe na tela"
+const PPJ_QUALIDADE = 0.9;
+const PPJ_ZOOM_MAX = 40;
 const PPJ_MAX_MINIATURAS = 40;
-const PPJ_URL_SEGUNDOS = 3600;           // endereço assinado de 1 hora
-const PPJ_FOLGA_MEDIA = 1.15;            // a média serve até o desenho pedir 15% a mais de pixels do que ela tem
+const PPJ_URL_SEGUNDOS = 3600;
+const PPJ_FOLGA_MEDIA = 1.15;
 const PPJ_TELA_ESTREITA_PX = 768;
-const PPJ_VALIDADE_MS = 60000;           // a lista de folhas vale um minuto
-const PPJ_AUSENTE_MS = 300000;           // tabela ausente: não pergunta de novo por 5 minutos
-const PPJ_NOVA_TENTATIVA_MS = 15000;     // leitura que deu erro: espera antes de tentar outra vez
+const PPJ_VALIDADE_MS = 60000;
+const PPJ_AUSENTE_MS = 300000;
+const PPJ_NOVA_TENTATIVA_MS = 15000;
 const PPJ_CARGOS_EDITAM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado"];
 const PPJ_COLUNAS = "id,obra_id,documento_id,pagina,titulo,local,revisao,imagem_alta_path,imagem_media_path,largura_px,altura_px,ordem,ativa,created_at,documento:obras_documentos(id,nome,storage_path)";
 const PPJ_VAZIO = "Esta obra ainda não tem o projeto do cliente como fundo.";
@@ -47,8 +47,8 @@ const PPJ_NOTA_SEM_ESTACAS = "Nesta folha as estacas ainda não são desenhadas:
 const PPJ_MIME = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" };
 const PPJ_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/* ---------- quem edita ---------- */
-/* a mesma lista de estacas_write (diretor entra por has_role no banco e por nome aqui); o usuário de revisão nunca grava */
+
+
 function ppjPodeEditarCargo(cargo, somenteLeitura){
   return !somenteLeitura && PPJ_CARGOS_EDITAM.includes(String(cargo || ""));
 }
@@ -57,9 +57,9 @@ function ppjPodeEditar(){
   return ppjPodeEditarCargo(usuarioAtual.cargo, typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
 }
 
-/* ---------- arquivo enviado ---------- */
-/* Confere o arquivo escolhido antes de qualquer leitura: PDF, PNG ou JPG, até 50 MB, com conteúdo.
-   Devolve { ok, tipo: "pdf" | "imagem", ext, mime } ou { ok: false, erro }. O MIME sai da extensão, nunca do navegador. */
+
+
+
 function ppjValidarArquivo(arq){
   if(!arq || typeof arq !== "object") return { ok: false, erro: "Escolha um arquivo." };
   const nome = String(arq.name || ""), partes = nome.split(".");
@@ -72,16 +72,16 @@ function ppjValidarArquivo(arq){
   return { ok: true, tipo: ext === "pdf" ? "pdf" : "imagem", ext, mime: PPJ_MIME[ext] };
 }
 
-/* ---------- caminhos no bucket ---------- */
-/* As duas imagens de uma folha: <obra_id>/plantas/<uuid>_alta.<ext> e _media.<ext>. Obra e uuid têm de ser uuid de
-   verdade e a extensão webp ou png: o caminho nunca leva texto que venha de fora. Fora disso devolve nulo. */
+
+
+
 function ppjCaminhoImagens(obraId, uuid, ext){
   const e = String(ext || "").toLowerCase();
   if(!PPJ_UUID_RE.test(String(obraId || "")) || !PPJ_UUID_RE.test(String(uuid || "")) || (e !== "webp" && e !== "png")) return null;
   const base = `${String(obraId).toLowerCase()}/plantas/${String(uuid).toLowerCase()}`;
   return { alta: `${base}_alta.${e}`, media: `${base}_media.${e}` };
 }
-/* O original (PDF ou imagem) entra onde os documentos da obra entram: <obra_id>/<tempo>_<sufixo>.<ext> */
+
 function ppjCaminhoDocumento(obraId, agoraMs, sufixo, ext){
   const e = String(ext || "").toLowerCase(), s = String(sufixo || "").toLowerCase();
   if(!PPJ_UUID_RE.test(String(obraId || "")) || !Object.prototype.hasOwnProperty.call(PPJ_MIME, e)) return null;
@@ -89,10 +89,10 @@ function ppjCaminhoDocumento(obraId, agoraMs, sufixo, ext){
   return `${String(obraId).toLowerCase()}/${Math.trunc(Number(agoraMs))}_${s}.${e}`;
 }
 
-/* ---------- tamanho da imagem ---------- */
-/* Largura e altura em pixels inteiros para o lado maior valer `lado`, mantendo a proporção.
-   ampliar = true (página de PDF, que é vetor): sempre chega ao lado pedido. ampliar = false (imagem): nunca passa do
-   tamanho original. Devolve { w, h, escala } ou nulo quando a medida não serve. */
+
+
+
+
 function ppjDimensoes(largura, altura, lado, ampliar){
   const w0 = Number(largura), h0 = Number(altura), l = Number(lado);
   if(!(w0 > 0) || !(h0 > 0) || !(l > 0) || !Number.isFinite(w0 + h0 + l)) return null;
@@ -101,23 +101,23 @@ function ppjDimensoes(largura, altura, lado, ampliar){
   return { w: Math.max(1, Math.round(w0 * escala)), h: Math.max(1, Math.round(h0 * escala)), escala };
 }
 
-/* ---------- giro da página ----------
-   Giro total aplicado à página do PDF para gerar a imagem: o da própria página (pagina.rotate) mais o que a pessoa
-   escolheu no envio. Sempre 0, 90, 180 ou 270 (é o check de obras_plantas.rotacao_graus); o que não é número vale 0. */
+
+
+
 function ppjRotacaoTotal(rotacaoPagina, giro){
   const a = Number(rotacaoPagina), b = Number(giro), soma = (Number.isFinite(a) ? a : 0) + (Number.isFinite(b) ? b : 0);
   return ((Math.round(soma / 90) * 90) % 360 + 360) % 360;
 }
-/* O banco recusou por não conhecer a coluna (migration ainda não aplicada)? PostgREST: PGRST204; Postgres: 42703. */
+
 function ppjColunaAusente(erro, coluna){
   if(!erro || !coluna) return false;
   const cod = String(erro.code || ""), msg = String(erro.message || "");
   return (cod === "PGRST204" || cod === "42703") && msg.includes(String(coluna));
 }
 
-/* ---------- páginas pedidas ---------- */
-/* "1, 3-5" vira [1, 3, 4, 5]. total = páginas do PDF; maximo = quantas cabem de uma vez.
-   Devolve { paginas } ou { erro }. */
+
+
+
 function ppjPaginasPedidas(texto, total, maximo){
   const t = Number(total), max = Number(maximo) > 0 ? Number(maximo) : PPJ_MAX_MINIATURAS;
   if(!(t >= 1)) return { erro: "O arquivo não tem páginas." };
@@ -135,15 +135,15 @@ function ppjPaginasPedidas(texto, total, maximo){
   return { paginas: [...saida].sort((x, y) => x - y) };
 }
 
-/* ---------- folhas ---------- */
-/* locais da obra, tirados das estacas (o mesmo texto de estacas.local), em ordem natural */
+
+
 function ppjLocaisDaObra(estacas){
   const l = (Array.isArray(estacas) ? estacas : []).map(e => String((e && e.local) || "").trim()).filter(Boolean);
   return [...new Set(l)].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
 }
 const ppjOrdenar = (a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.titulo || "").localeCompare(String(b.titulo || ""), "pt-BR", { numeric: true });
-/* As folhas que entram na barra: só as ativas. Com filtro de local, as daquele local e as sem local (que valem para
-   todos); com o filtro "sem local", só as sem local. */
+
+
 function ppjFolhasVisiveis(folhas, fLocal){
   const f = String(fLocal || "");
   return (Array.isArray(folhas) ? folhas : []).filter(x => x && x.ativa !== false).filter(x => {
@@ -153,7 +153,7 @@ function ppjFolhasVisiveis(folhas, fLocal){
     return !l || l === f;
   }).sort(ppjOrdenar);
 }
-/* texto do botão da folha: título e revisão */
+
 function ppjRotuloFolha(f){
   if(!f) return "";
   const t = String(f.titulo || "").trim() || (f.pagina ? `Folha ${Number(f.pagina) || 1}` : "Folha"), r = String(f.revisao || "").trim();
@@ -162,7 +162,7 @@ function ppjRotuloFolha(f){
 function ppjProximaOrdem(folhas){
   return (Array.isArray(folhas) ? folhas : []).reduce((m, f) => Math.max(m, Number(f && f.ordem) || 0), 0) + 1;
 }
-/* Sobe (delta -1) ou desce (+1) uma folha na lista. Devolve só as linhas cuja ordem muda: [{ id, ordem }]. */
+
 function ppjReordenar(folhas, id, delta){
   const l = (Array.isArray(folhas) ? folhas : []).filter(Boolean).slice().sort(ppjOrdenar);
   const i = l.findIndex(f => f.id === id), j = i + (delta < 0 ? -1 : 1);
@@ -171,18 +171,18 @@ function ppjReordenar(folhas, id, delta){
   return l.map((f, k) => ({ id: f.id, ordem: k + 1, antes: Number(f.ordem) || 0 })).filter(x => x.ordem !== x.antes).map(x => ({ id: x.id, ordem: x.ordem }));
 }
 
-/* ---------- visor ----------
-   A folha tem lw × lh pixels (os da imagem alta). O visor é { z, tx, ty }: um ponto (x, y) da folha aparece na tela em
-   (x·z + tx, y·z + ty), em pixels do palco, que tem W × H. */
+
+
+
 const ppjNum = (v) => typeof v === "number" && Number.isFinite(v);
-/* "cabe na tela": a folha inteira, centrada */
+
 function ppjAjustar(lw, lh, W, H){
   if(!(lw > 0) || !(lh > 0) || !(W > 0) || !(H > 0)) return { z: 1, tx: 0, ty: 0 };
   const z = Math.min(W / lw, H / lh);
   return { z, tx: (W - lw * z) / 2, ty: (H - lh * z) / 2 };
 }
-/* A folha não sai da tela: zoom entre o "cabe na tela" e 40 vezes ele; no eixo em que ela é menor que o palco fica
-   centrada, e no que é maior não deixa faixa vazia. */
+
+
 function ppjLimitar(v, lw, lh, W, H){
   const base = ppjAjustar(lw, lh, W, H);
   if(!v || !ppjNum(v.z) || !ppjNum(v.tx) || !ppjNum(v.ty) || !(v.z > 0)) return base;
@@ -191,7 +191,7 @@ function ppjLimitar(v, lw, lh, W, H){
   const eixo = (t, tam, palco) => tam <= palco ? (palco - tam) / 2 : Math.min(0, Math.max(palco - tam, t));
   return { z, tx: eixo(v.tx, lw * z, W), ty: eixo(v.ty, lh * z, H) };
 }
-/* Zoom com o ponto (fx, fy) do palco parado (o cursor, ou o centro quando vier nulo). Fator inválido não mexe. */
+
 function ppjZoom(v, fator, fx, fy, lw, lh, W, H){
   const atual = ppjLimitar(v, lw, lh, W, H);
   if(!ppjNum(fator) || !(fator > 0)) return atual;
@@ -200,13 +200,13 @@ function ppjZoom(v, fator, fx, fy, lw, lh, W, H){
   const cx = ppjNum(fx) ? fx : W / 2, cy = ppjNum(fy) ? fy : H / 2;
   return ppjLimitar({ z, tx: cx - (cx - atual.tx) * k, ty: cy - (cy - atual.ty) * k }, lw, lh, W, H);
 }
-/* Arrasto: a folha anda junto com o dedo, até o limite */
+
 function ppjArrastar(v, dx, dy, lw, lh, W, H){
   const atual = ppjLimitar(v, lw, lh, W, H);
   return ppjLimitar({ z: atual.z, tx: atual.tx + (ppjNum(dx) ? dx : 0), ty: atual.ty + (ppjNum(dy) ? dy : 0) }, lw, lh, W, H);
 }
-/* Pinça: antes e depois = { ax, ay, bx, by } (os dois dedos, em pixels do palco). O ponto da folha que estava entre os
-   dedos continua entre eles, e o zoom muda na razão da distância. */
+
+
 function ppjPinca(v, antes, depois, lw, lh, W, H){
   const atual = ppjLimitar(v, lw, lh, W, H);
   if(!antes || !depois) return atual;
@@ -219,43 +219,43 @@ function ppjPinca(v, antes, depois, lw, lh, W, H){
   return ppjLimitar({ z, tx: m1x - px * z, ty: m1y - py * z }, lw, lh, W, H);
 }
 
-/* ---------- qual imagem abrir ----------
-   o = { z, larguraAlta, larguraMedia, dpr, estreita, poucaMemoria, pediuAlta, temAlta }.
-   A média abre primeiro e serve enquanto o desenho na tela não pede mais pixels do que ela tem. Passando disso, o
-   computador busca a alta sozinho; tela estreita ou aparelho com pouca memória fica na média até a pessoa pedir
-   ("Carregar em alta"). Depois de carregada, a alta fica. */
+
+
+
+
+
 function ppjEscolherImagem(o){
   const p = o || {};
   if(p.temAlta || p.pediuAlta) return "alta";
   const la = Number(p.larguraAlta), lm = Number(p.larguraMedia), z = Number(p.z), dpr = Number(p.dpr) > 0 ? Number(p.dpr) : 1;
   if(!(la > 0) || !(lm > 0) || !(z > 0)) return "media";
-  if(lm >= la) return "media";                                   // folha pequena: as duas imagens têm o mesmo tamanho
+  if(lm >= la) return "media";
   if(z * la * dpr <= lm * PPJ_FOLGA_MEDIA) return "media";
   return p.estreita || p.poucaMemoria ? "media" : "alta";
 }
-/* largura da imagem média de uma folha, pela mesma conta de quem gerou */
+
 function ppjLarguraMedia(folha){
   const d = folha ? ppjDimensoes(folha.largura_px, folha.altura_px, PPJ_LADO_MEDIA, false) : null;
   return d ? d.w : 0;
 }
 
-/* ---------- banco ---------- */
-/* A tabela obras_plantas ainda não existe (migration não aplicada)? PostgREST: PGRST205 (ou 404 com a mensagem do
-   cache de esquema); Postgres: 42P01. Qualquer outro erro é erro de verdade. */
+
+
+
 function ppjTabelaAusente(erro){
   if(!erro) return false;
   const cod = String(erro.code || ""), msg = String(erro.message || "");
   if(cod === "PGRST205" || cod === "42P01") return true;
   return /obras_plantas/.test(msg) && /schema cache|does not exist|não existe/i.test(msg);
 }
-/* o endereço assinado guardado ainda vale? (um minuto de folga) */
+
 function ppjUrlVale(reg, agoraMs){
   return !!(reg && typeof reg.url === "string" && reg.url && Number(reg.ate) - 60000 > Number(agoraMs));
 }
 
-/* ---------- HTML da barra ----------
-   e = { folhas: as visíveis, atual: id da folha na tela (nulo = Esquema), total: folhas ativas da obra, podeEditar,
-         erro }. Devolve o HTML da barra da planta: a alternância Esquema × folhas, os botões e o estado vazio. */
+
+
+
 function ppjBarraHTML(e){
   const s = e || {}, folhas = Array.isArray(s.folhas) ? s.folhas : [], atual = s.atual || "";
   const naTela = folhas.find(f => f.id === atual) || null;
@@ -265,10 +265,10 @@ function ppjBarraHTML(e){
     </div>` : "";
   const enviar = s.podeEditar ? `<button type="button" class="btn-sec btn-sm" data-ppj-abrir="1" title="Enviar o PDF do projeto do cliente e cuidar das folhas desta obra">Projeto do cliente</button>` : "";
   const baixar = naTela && naTela.documento && naTela.documento.storage_path ? `<button type="button" class="btn-sec btn-sm" data-ppj-baixar="${esc(naTela.id)}" title="Baixar o arquivo original desta folha, como o cliente mandou">${esc(ppjRotuloBaixar(naTela))}</button>` : "";
-  const linha = botoes || enviar || baixar ? `<div class="ppj-barra-linha">${/* html */ botoes}<span class="ppj-barra-acoes">${/* html */ baixar}${/* html */ enviar}</span></div>` : "";
-  const vazio = !(Number(s.total) > 0) ? `<div class="ppj-vazio">${/* html */ uiVazio(`${PPJ_VAZIO} ${s.podeEditar ? PPJ_VAZIO_EDITA : PPJ_VAZIO_LE}`)}</div>` : "";
+  const linha = botoes || enviar || baixar ? `<div class="ppj-barra-linha">${  botoes}<span class="ppj-barra-acoes">${  baixar}${  enviar}</span></div>` : "";
+  const vazio = !(Number(s.total) > 0) ? `<div class="ppj-vazio">${  uiVazio(`${PPJ_VAZIO} ${s.podeEditar ? PPJ_VAZIO_EDITA : PPJ_VAZIO_LE}`)}</div>` : "";
   const erro = s.erro ? `<p class="ppj-erro" role="alert">Não foi possível ler as folhas do projeto: ${esc(s.erro)}</p>` : "";
-  return `${/* html */ vazio}${/* html */ linha}${/* html */ erro}`;
+  return `${  vazio}${  linha}${  erro}`;
 }
 function ppjTituloFolha(f){
   const l = String((f && f.local) || "").trim();
@@ -279,26 +279,26 @@ function ppjRotuloBaixar(f){
   return /\.pdf$/i.test(nome) || !nome ? "Baixar o PDF original" : "Baixar o arquivo original";
 }
 
-/* ====================================================================
-   Tela
-   ==================================================================== */
+
+
+
 function ppjEstadoNovo(obraId){
   return { obraId: obraId || null, folhas: null, erro: "", lendo: false, lidoEm: 0, tentouEm: 0, atual: null, chaveBarra: "",
     montada: null, visor: null, mexeu: false, res: "", carregando: "", pediuAlta: false, pedidoImg: 0, obs: null, escolheu: false };
 }
-let _ppj = ppjEstadoNovo(null);      // trocado inteiro a cada obra
-let _ppjAusenteEm = 0;               // quando a leitura acusou tabela ausente (migration não aplicada)
-const _ppjUrls = new Map();          // caminho no bucket -> { url, ate }
-let _ppjPdfjs = null;                // a biblioteca, carregada uma vez e só na janela de envio
-let _ppjSemRotacaoEm = 0;            // quando o banco recusou a coluna rotacao_graus (migration não aplicada)
+let _ppj = ppjEstadoNovo(null);
+let _ppjAusenteEm = 0;
+const _ppjUrls = new Map();
+let _ppjPdfjs = null;
+let _ppjSemRotacaoEm = 0;
 
 const ppjObraId = () => (typeof obraEditId !== "undefined" && obraEditId ? obraEditId : null);
 const ppjEstacas = () => (typeof _estacas !== "undefined" && Array.isArray(_estacas) ? _estacas : []);
 const ppjFiltroLocal = () => { const s = $("est-f-local"); return s ? s.value || "" : ""; };
 const ppjIndisponivel = () => _ppjAusenteEm > 0 && Date.now() - _ppjAusenteEm < PPJ_AUSENTE_MS;
 
-/* Chamada por renderEstacas (js/estacas.js) no ramo da Planta. Devolve true quando há uma folha na tela (o Esquema não
-   é desenhado); false quando a planta é o Esquema de sempre. */
+
+
 function ppjRender(){
   const wrap = $("est-planta-wrap"), barra = $("ppj-barra"), visor = $("ppj-visor");
   if(!wrap || !barra || !visor) return false;
@@ -307,11 +307,11 @@ function ppjRender(){
   if(!obraId || ppjIndisponivel()){ ppjEsquema(); ppjBarra(null); return false; }
   if(!_ppj.folhas){
     ppjEsquema(); ppjBarra(null);
-    if(Date.now() - _ppj.tentouEm > PPJ_NOVA_TENTATIVA_MS) ppjLer();   // leitura com erro não se repete a cada tecla da busca
+    if(Date.now() - _ppj.tentouEm > PPJ_NOVA_TENTATIVA_MS) ppjLer();
     return false;
   }
   if(Date.now() - Math.max(_ppj.lidoEm, _ppj.tentouEm) > PPJ_VALIDADE_MS) ppjLer();
-  if(_ppj.atual && typeof renderAbasLocaisPlanta === "function") renderAbasLocaisPlanta();   // em folha o Esquema não roda, e é ele que desenha as abas de local
+  if(_ppj.atual && typeof renderAbasLocaisPlanta === "function") renderAbasLocaisPlanta();
   const visiveis = ppjFolhasVisiveis(_ppj.folhas, ppjFiltroLocal());
   if(_ppj.atual && !visiveis.some(f => f.id === _ppj.atual)) _ppj.atual = null;
   ppjBarra(visiveis);
@@ -326,12 +326,12 @@ function ppjTrocarObra(obraId){
   const visor = $("ppj-visor");
   if(visor) visor.replaceChildren();
 }
-/* volta a planta ao desenho por coordenada */
+
 function ppjEsquema(){
   const wrap = $("est-planta-wrap"), visor = $("ppj-visor");
   if(wrap) wrap.classList.remove("ppj-em-folha");
   if(visor) visor.style.display = "none";
-  if(typeof ppjPosSair === "function") ppjPosSair();   // voltar ao Esquema encerra o modo de edição das posições
+  if(typeof ppjPosSair === "function") ppjPosSair();
 }
 function ppjBarra(visiveis){
   const barra = $("ppj-barra");
@@ -342,13 +342,13 @@ function ppjBarra(visiveis){
   if(html !== _ppj.chaveBarra){ barra.innerHTML = html; _ppj.chaveBarra = html; }
   barra.style.display = html ? "" : "none";
 }
-/* redesenha a aba pelo caminho de sempre, se a planta estiver na tela */
+
 function ppjRedesenhar(){
   const wrap = $("est-planta-wrap");
   if(wrap && wrap.style.display !== "none" && typeof renderEstacas === "function") renderEstacas();
 }
 
-/* Lê as folhas da obra (poucas linhas). Tabela ausente = migration não aplicada: o módulo se cala por 5 minutos. */
+
 async function ppjLer(){
   const obraId = _ppj.obraId;
   if(!obraId || _ppj.lendo) return;
@@ -371,13 +371,13 @@ async function ppjLer(){
   _ppj.lidoEm = Date.now();
   if(primeira){
     const wrap = $("est-planta-wrap");
-    if(wrap && wrap.style.display !== "none") ppjRender();   // a planta abre no Esquema, que já está desenhado
-    if(typeof ppjPosAbrirPrimeira === "function") ppjPosAbrirPrimeira();   // e passa para a primeira folha, se ela já tem estaca posicionada
+    if(wrap && wrap.style.display !== "none") ppjRender();
+    if(typeof ppjPosAbrirPrimeira === "function") ppjPosAbrirPrimeira();
   }
   else if(JSON.stringify(_ppj.folhas) !== antes) ppjRedesenhar();
 }
 
-/* ---------- endereço assinado ---------- */
+
 async function ppjUrlAssinada(caminho){
   const reg = _ppjUrls.get(caminho);
   if(ppjUrlVale(reg, Date.now())) return reg.url;
@@ -387,7 +387,7 @@ async function ppjUrlAssinada(caminho){
   return data.signedUrl;
 }
 
-/* ---------- visor da folha ---------- */
+
 function ppjAparelhoRestrito(){
   const estreita = typeof window !== "undefined" && window.innerWidth < PPJ_TELA_ESTREITA_PX;
   const mem = typeof navigator !== "undefined" ? Number(navigator.deviceMemory) : NaN;
@@ -401,7 +401,7 @@ function ppjMostrarFolha(folha){
   const chave = [folha.id, folha.titulo, folha.revisao, folha.local, folha.imagem_alta_path].join("|");
   if(_ppj.montada === chave && visor.firstChild){
     ppjAplicarVisor();
-    if(typeof ppjPosAtualizar === "function") ppjPosAtualizar(folha);   // filtros, cor e status das estacas podem ter mudado
+    if(typeof ppjPosAtualizar === "function") ppjPosAtualizar(folha);
     return;
   }
   _ppj.montada = chave;
@@ -429,7 +429,7 @@ function ppjMostrarFolha(folha){
   img.style.width = folha.largura_px + "px";
   img.style.height = folha.altura_px + "px";
   ppjLigarPalco(palco);
-  if(typeof ppjPosMontar === "function") ppjPosMontar(folha, palco);   // as estacas por cima da folha
+  if(typeof ppjPosMontar === "function") ppjPosMontar(folha, palco);
   if(typeof ResizeObserver === "function"){
     _ppj.obs = new ResizeObserver(() => ppjAplicarVisor());
     _ppj.obs.observe(palco);
@@ -443,14 +443,14 @@ function ppjTamanho(){
   const W = palco.clientWidth, H = palco.clientHeight;
   return W > 0 && H > 0 ? { W, H, lw: Number(folha.largura_px), lh: Number(folha.altura_px), folha } : null;
 }
-/* aplica o visor à imagem e decide se é hora de buscar a alta. Palco sem tamanho (aba escondida): espera o ResizeObserver. */
+
 function ppjAplicarVisor(){
   const t = ppjTamanho(), img = $("ppj-img");
   if(!t || !img) return;
   _ppj.visor = _ppj.visor && _ppj.mexeu ? ppjLimitar(_ppj.visor, t.lw, t.lh, t.W, t.H) : ppjAjustar(t.lw, t.lh, t.W, t.H);
   const v = _ppj.visor;
   img.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.z})`;
-  if(typeof ppjPosVisor === "function") ppjPosVisor(v, t);   // os marcadores acompanham a folha
+  if(typeof ppjPosVisor === "function") ppjPosVisor(v, t);
   const r = ppjAparelhoRestrito(), temAlta = _ppj.res === "alta";
   const qual = ppjEscolherImagem({ z: v.z, larguraAlta: t.lw, larguraMedia: ppjLarguraMedia(t.folha), dpr: window.devicePixelRatio || 1,
     estreita: r.estreita, poucaMemoria: r.poucaMemoria, pediuAlta: _ppj.pediuAlta, temAlta });
@@ -459,7 +459,7 @@ function ppjAplicarVisor(){
   if(botao) botao.hidden = !(!temAlta && _ppj.res === "media" && _ppj.carregando !== "alta" && (r.estreita || r.poucaMemoria) && ppjLarguraMedia(t.folha) < t.lw);
 }
 function ppjMexer(visor){ _ppj.visor = visor; _ppj.mexeu = true; ppjAplicarVisor(); }
-/* carrega a imagem (média ou alta) pelo endereço assinado; a que está na tela fica até a nova estar pronta */
+
 async function ppjCarregarImagem(folha, qual){
   const pedido = ++_ppj.pedidoImg, estado = $("ppj-estado");
   _ppj.carregando = qual;
@@ -488,18 +488,18 @@ async function ppjCarregarImagem(folha, qual){
 }
 function ppjRes(msg){ const el = $("ppj-res"); if(el) el.textContent = msg; }
 
-/* arrasto, roda do mouse, pinça, teclado e os botões do palco */
+
 function ppjLigarPalco(palco){
   const dedos = new Map();
-  // ponto do palco na origem da imagem: o canto de dentro da borda (sem descontá-la, o ponto sob o cursor escorregava no zoom: 2 px em 6 passos da roda)
+
   const pos = (ev) => { const r = palco.getBoundingClientRect(); return { x: ev.clientX - r.left - (palco.clientLeft || 0), y: ev.clientY - r.top - (palco.clientTop || 0) }; };
   const par = () => { const [a, b] = [...dedos.values()]; return { ax: a.x, ay: a.y, bx: b.x, by: b.y }; };
   palco.addEventListener("pointerdown", (ev) => {
     if(ev.target.closest(".ppj-controles")) return;
     if(ev.pointerType === "mouse" && ev.button !== 0) return;
-    if(typeof ppjPosAgarrar === "function" && ppjPosAgarrar(ev, pos(ev))) return;   // marcador arrastado no modo de edição: a folha não anda
+    if(typeof ppjPosAgarrar === "function" && ppjPosAgarrar(ev, pos(ev))) return;
     dedos.set(ev.pointerId, pos(ev));
-    try { palco.setPointerCapture(ev.pointerId); } catch(e){ /* ponteiro já solto */ }
+    try { palco.setPointerCapture(ev.pointerId); } catch(e){   }
     palco.classList.add("ppj-arrastando");
   });
   palco.addEventListener("pointermove", (ev) => {
@@ -545,7 +545,7 @@ function ppjLigarPalco(palco){
     else ppjMexer(ppjZoom(_ppj.visor, acao === "mais" ? 1.4 : 1 / 1.4, null, null, t.lw, t.lh, t.W, t.H));
   });
 }
-/* tela cheia do navegador quando ele tem; senão o palco cobre a janela (iPhone) */
+
 function ppjTelaCheia(palco){
   if(document.fullscreenElement === palco){ document.exitFullscreen(); return; }
   if(palco.classList.contains("ppj-cheia")){ palco.classList.remove("ppj-cheia"); ppjAplicarVisor(); return; }
@@ -554,7 +554,7 @@ function ppjTelaCheia(palco){
   ppjAplicarVisor();
 }
 
-/* ---------- baixar o original ---------- */
+
 async function ppjBaixarOriginal(folhaId){
   const f = (_ppj.folhas || []).find(x => x.id === folhaId), doc = f && f.documento;
   if(!doc || !doc.storage_path){ aviso("app-aviso", "Esta folha não tem o arquivo original guardado.", "erro"); return; }
@@ -565,11 +565,11 @@ async function ppjBaixarOriginal(folhaId){
   document.body.appendChild(a); a.click(); a.remove();
 }
 
-/* ====================================================================
-   Gerar as imagens (só no navegador de quem envia)
-   ==================================================================== */
+
+
+
 const ppjUrlLocal = (arq) => new URL(arq, document.baseURI).href;
-/* a biblioteca só entra aqui, por import(), e fica na memória da aba */
+
 function ppjPdfjs(){
   if(!_ppjPdfjs){
     _ppjPdfjs = import(ppjUrlLocal(PPJ_PDFJS)).then(lib => { lib.GlobalWorkerOptions.workerSrc = ppjUrlLocal(PPJ_PDFJS_WORKER); return lib; });
@@ -577,12 +577,12 @@ function ppjPdfjs(){
   }
   return _ppjPdfjs;
 }
-/* abre o PDF (dados = ArrayBuffer). isEvalSupported: false: a CSP do app não deixa a biblioteca compilar função. */
+
 async function ppjAbrirPdf(dados){
   const lib = await ppjPdfjs();
   return lib.getDocument({ data: new Uint8Array(dados), isEvalSupported: false, enableXfa: false }).promise;
 }
-/* o canvas deste tamanho funciona neste navegador? (acima do limite ele existe, mas não guarda pixel nenhum) */
+
 function ppjCanvasNovo(w, h){
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
@@ -597,7 +597,7 @@ function ppjCanvasNovo(w, h){
   return { canvas, ctx };
 }
 function ppjSoltarCanvas(canvas){ if(canvas){ canvas.width = 0; canvas.height = 0; } }
-/* Desenha a fonte (página de PDF ou imagem) com o lado maior pedido e o giro (0, 90, 180, 270). Devolve o canvas. */
+
 async function ppjDesenhar(fonte, lado, giro){
   const g = ((Number(giro) || 0) % 360 + 360) % 360;
   if(fonte.tipo === "pdf"){
@@ -621,15 +621,15 @@ async function ppjDesenhar(fonte, lado, giro){
   c.ctx.drawImage(fonte.imagem, -(deitada ? d.h : d.w) / 2, -(deitada ? d.w : d.h) / 2, deitada ? d.h : d.w, deitada ? d.w : d.h);
   return c.canvas;
 }
-/* canvas -> arquivo: WebP 0,9; PNG se o navegador não gerar WebP */
+
 function ppjCanvasArquivo(canvas){
   const para = (tipo, q) => new Promise(ok => canvas.toBlob(ok, tipo, q));
   return para("image/webp", PPJ_QUALIDADE).then(b => b && b.type === "image/webp" ? { blob: b, ext: "webp" }
     : para("image/png").then(p => { if(!p) throw new Error("o navegador não gerou a imagem"); return { blob: p, ext: "png" }; }));
 }
-/* As duas imagens de uma folha. A alta tenta 6.000 px e cai para 4.000 se o canvas falhar ou o arquivo passar de 50 MB.
-   Devolve { alta, media, ext, largura, altura, rotacao } (largura e altura são as da alta; rotacao é o giro total da
-   página do PDF, 0 para imagem enviada direto). */
+
+
+
 async function ppjGerarImagens(fonte, giro){
   let alta = null, dim = null, ultimo = null;
   for(const lado of [PPJ_LADO_ALTA, PPJ_LADO_ALTA_REDUZIDA]){
@@ -647,7 +647,7 @@ async function ppjGerarImagens(fonte, giro){
   const cm = await ppjDesenhar(fonte, Math.min(PPJ_LADO_MEDIA, Math.max(dim.w, dim.h)), giro);
   let media = await ppjCanvasArquivo(cm);
   ppjSoltarCanvas(cm);
-  if(media.ext !== alta.ext){   // as duas no mesmo formato: o caminho leva uma extensão só
+  if(media.ext !== alta.ext){
     const c2 = await ppjDesenhar(fonte, Math.min(PPJ_LADO_MEDIA, Math.max(dim.w, dim.h)), giro);
     media = { blob: await new Promise(ok => c2.toBlob(ok, "image/png")), ext: "png" };
     ppjSoltarCanvas(c2);
@@ -657,11 +657,11 @@ async function ppjGerarImagens(fonte, giro){
   return { alta: alta.blob, media: media.blob, ext: alta.ext, largura: dim.w, altura: dim.h, rotacao: giroTotal };
 }
 
-/* ====================================================================
-   Janela "Projeto do cliente": enviar e cuidar das folhas
-   ==================================================================== */
-let _ppjGuardados = [];  // PDFs de projeto já guardados na obra, lidos ao abrir a janela
-let _ppjEnvio = null;   // { arquivo, guardado, info, fonte: { tipo, pdf | imagem }, total, paginas: [{ n, giro }], ocupado }
+
+
+
+let _ppjGuardados = [];
+let _ppjEnvio = null;
 
 function ppjAbrirJanela(){
   const modal = $("ppj-modal");
@@ -677,7 +677,7 @@ function ppjAbrirJanela(){
 function ppjFecharJanela(){
   const modal = $("ppj-modal");
   if(!modal || modal.style.display === "none") return;
-  if(_ppjEnvio && _ppjEnvio.ocupado){ ppjAvisoJanela("Aguarde: o envio das folhas ainda não terminou.", "aviso"); return; }   // no meio de um envio a janela não fecha
+  if(_ppjEnvio && _ppjEnvio.ocupado){ ppjAvisoJanela("Aguarde: o envio das folhas ainda não terminou.", "aviso"); return; }
   modal.style.display = "none";
   ppjSoltarEnvio();
   $("ppj-corpo").replaceChildren();
@@ -694,10 +694,10 @@ function ppjAvisoJanela(msg, tipo){
   if(!msg){ el.textContent = ""; el.className = "aviso"; return; }
   aviso("ppj-aviso", msg, tipo || "erro");
 }
-/* Hotfix da 8506 (12/11/2026): o local da folha é digitado, com os locais da obra e das folhas como sugestão. Antes era
-   uma lista fechada com os locais que já tinham estaca, e a folha do bloco 02 não tinha como virar "BLOCO 02" enquanto
-   nenhuma estaca do bloco 02 existisse; sem local, a leitura comparava os nomes com as estacas do bloco 01.
-   Vazio = sem local (vale para todos). As sugestões ficam num datalist só, desenhado uma vez na janela. */
+
+
+
+
 function ppjLocaisSugeridos(){
   const folhas = (_ppj.folhas || []).map(f => String((f && f.local) || "").trim()).filter(Boolean);
   return [...new Set(ppjLocaisDaObra(ppjEstacas()).concat(folhas))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
@@ -705,12 +705,12 @@ function ppjLocaisSugeridos(){
 function ppjLocaisDatalistHTML(){
   return `<datalist id="ppj-locais">${ppjLocaisSugeridos().map(l => `<option value="${esc(l)}"></option>`).join("")}</datalist>`;
 }
-/* attr = "data-ppj-edita" (folha gravada) ou "data-ppj-campo" (página que vai virar folha) */
+
 function ppjCampoLocalHTML(attr, valor){
   const a = attr === "data-ppj-campo" ? "data-ppj-campo" : "data-ppj-edita";
-  return `<div class="campo"><label>Local</label><input ${/* html */ a}="local" list="ppj-locais" value="${esc(String(valor || "").trim())}" maxlength="60" placeholder="ex.: BLOCO 02 (vazio vale para todos)" title="Local desta folha, escrito como o local das estacas (ex.: BLOCO 02). A leitura e o vínculo comparam só com as estacas deste local. Vazio vale para todos." /></div>`;
+  return `<div class="campo"><label>Local</label><input ${  a}="local" list="ppj-locais" value="${esc(String(valor || "").trim())}" maxlength="60" placeholder="ex.: BLOCO 02 (vazio vale para todos)" title="Local desta folha, escrito como o local das estacas (ex.: BLOCO 02). A leitura e o vínculo comparam só com as estacas deste local. Vazio vale para todos." /></div>`;
 }
-/* PDFs de projeto que a obra já tem em Documentos: lista para escolher em vez de enviar de novo */
+
 function ppjGuardadosHTML(pdfs){
   const l = Array.isArray(pdfs) ? pdfs : [];
   if(!l.length) return "";
@@ -722,22 +722,22 @@ function ppjJanelaHTML(guardados){
   const lista = ppjGuardadosHTML(guardados);
   const enviar = `<p class="texto-apoio">Escolha o PDF do projeto do cliente (até 50 MB). O PDF vira imagem aqui, no seu computador, e fica guardado na obra junto com o original. Projeto escaneado também serve: envie a imagem PNG ou JPG.</p>
     <div class="campo"><label for="ppj-arquivo">Arquivo do projeto</label><input id="ppj-arquivo" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" /></div>
-    <div id="ppj-guardados">${/* html */ lista}</div>
+    <div id="ppj-guardados">${  lista}</div>
     <div id="ppj-paginas"></div>`;
-  // fase 175a: planilha e DXF saíram da barra da aba Estacas e ficam aqui, com papel novo (spec 175, "Planilha e DXF")
+
   const listas = `<p class="texto-apoio">A folha dá o nome e a posição das estacas; Ø, profundidade de projeto e bloco vêm da lista do projeto. Em obra grande, importe a lista antes de ler a folha: a leitura passa só a posicionar e conferir.</p>
     <div class="ppl-acoes"><button type="button" class="btn-sec btn-sm" data-ppj-lista="planilha" title="Lista de estacas do projeto em .xlsx, .csv ou colada do Excel (Nome, Ø, profundidade, bloco, local, X e Y). Não usa IA.">Lista de estacas (planilha)</button>
     <button type="button" class="btn-sec btn-sm" data-ppj-lista="dxf" title="Arquivo do CAD (DXF) enviado pelo projetista: nome e coordenada exatos, sem IA. DWG não é lido.">Tenho o arquivo do CAD (DXF)</button>
     <button type="button" class="btn-sec btn-sm" data-ppj-lista="orcamento" title="Obra que veio de um orçamento com o projeto lido no assistente: cria as estacas por essa leitura, sem nova leitura paga.">Leitura do orçamento</button></div>`;
-  return `${/* html */ uiSecao("documento", "Enviar projeto", enviar)}${/* html */ uiSecao("foto", "Folhas desta obra", `<div id="ppj-folhas">${/* html */ ppjFolhasHTML(_ppj.folhas || [])}</div>${/* html */ ppjLocaisDatalistHTML()}`, String((_ppj.folhas || []).length))}${/* html */ uiSecao("documento", "Lista do projeto e CAD", listas)}`;
+  return `${  uiSecao("documento", "Enviar projeto", enviar)}${  uiSecao("foto", "Folhas desta obra", `<div id="ppj-folhas">${  ppjFolhasHTML(_ppj.folhas || [])}</div>${  ppjLocaisDatalistHTML()}`, String((_ppj.folhas || []).length))}${  uiSecao("documento", "Lista do projeto e CAD", listas)}`;
 }
-/* a lista "Folhas desta obra": renomear, trocar local e revisão, reordenar, desativar, baixar o original e excluir */
+
 function ppjFolhasHTML(folhas){
   const l = (folhas || []).slice().sort(ppjOrdenar);
   if(!l.length) return uiVazio("Nenhuma folha ainda. Envie o projeto acima e marque as páginas que são planta de locação.");
   return l.map((f, k) => `<div class="ppj-folha${f.ativa === false ? " ppj-inativa" : ""}" data-ppj-id="${esc(f.id)}">
       <div class="campo"><label>Título</label><input data-ppj-edita="titulo" value="${esc(f.titulo || "")}" maxlength="80" /></div>
-      ${/* html */ ppjCampoLocalHTML("data-ppj-edita", f.local)}
+      ${  ppjCampoLocalHTML("data-ppj-edita", f.local)}
       <div class="campo"><label>Revisão</label><input data-ppj-edita="revisao" value="${esc(f.revisao || "")}" maxlength="30" placeholder="ex.: R02" /></div>
       <div class="ppj-folha-acoes">
         <span class="ppj-folha-meta">página ${Number(f.pagina) || 1} · ${Number(f.largura_px) || 0} × ${Number(f.altura_px) || 0} px${f.ativa === false ? " · desativada" : ""}</span>
@@ -755,7 +755,7 @@ function ppjAtualizarFolhasJanela(){
   const dl = $("ppj-locais");
   if(dl) dl.outerHTML = ppjLocaisDatalistHTML();
 }
-/* PDFs de categoria projeto que a obra já tem em Documentos */
+
 async function ppjListarGuardados(){
   const obraId = _ppj.obraId;
   const { data, error } = await sb.from("obras_documentos").select("id,nome,storage_path,mime_type,created_at").eq("obra_id", obraId).eq("categoria", "projeto").order("created_at", { ascending: false });
@@ -764,14 +764,14 @@ async function ppjListarGuardados(){
   $("ppj-guardados").innerHTML = ppjGuardadosHTML(_ppjGuardados);
 }
 
-/* abre o arquivo escolhido no computador */
+
 async function ppjAbrirArquivo(arquivo){
   const info = ppjValidarArquivo(arquivo);
   ppjAvisoJanela("");
   if(!info.ok){ ppjAvisoJanela(info.erro); return; }
   await ppjPrepararEnvio({ arquivo, guardado: null, info, nome: arquivo.name }, () => arquivo.arrayBuffer());
 }
-/* abre um PDF que já está nos Documentos da obra */
+
 async function ppjAbrirGuardado(){
   const id = $("ppj-guardado")?.value, doc = _ppjGuardados.find(d => d.id === id);
   ppjAvisoJanela("");
@@ -818,7 +818,7 @@ async function ppjPrepararEnvio(base, lerDados){
   area.innerHTML = `<div id="ppj-cartoes"></div>`;
   await ppjMostrarPaginas(Array.from({ length: envio.total }, (_, k) => k + 1));
 }
-/* os cartões das páginas, com a miniatura de cada uma */
+
 async function ppjMostrarPaginas(numeros){
   const envio = _ppjEnvio, cont = $("ppj-cartoes");
   if(!envio || !cont) return;
@@ -829,7 +829,7 @@ async function ppjMostrarPaginas(numeros){
       <div class="ppj-mini" data-ppj-mini="${Number(n)}"><span class="ppj-mini-txt">página ${Number(n)}</span></div>
       <label class="ppj-check"><input type="checkbox" data-ppj-campo="usar"${uma ? " checked" : ""} /> Planta de locação</label>
       <div class="campo"><label>Título</label><input data-ppj-campo="titulo" value="Folha ${Number(n)}" maxlength="80" /></div>
-      ${/* html */ ppjCampoLocalHTML("data-ppj-campo", localPadrao)}
+      ${  ppjCampoLocalHTML("data-ppj-campo", localPadrao)}
       <div class="campo"><label>Revisão</label><input data-ppj-campo="revisao" maxlength="30" placeholder="ex.: R02" /></div>
       <button type="button" class="btn-sec btn-sm" data-ppj-girar="${Number(n)}" title="Girar a página 90° antes de gerar a imagem">Girar 90°</button>
     </div>`).join("")}</div>
@@ -854,8 +854,8 @@ async function ppjMiniatura(n){
   }
 }
 
-/* Gera e grava as folhas marcadas, uma de cada vez. O original só sobe depois de a primeira imagem sair; se uma folha
-   falhar, as imagens dela saem do Storage e o envio para ali (as folhas já gravadas ficam). */
+
+
 async function ppjGerar(){
   const envio = _ppjEnvio, obraId = _ppj.obraId;
   if(!envio || !envio.fonte || envio.ocupado || !obraId) return;
@@ -875,7 +875,7 @@ async function ppjGerar(){
   envio.ocupado = true;
   if(botao) botao.disabled = true;
   let documentoId = envio.guardado ? envio.guardado.id : null, docNovo = null, feitas = 0, ordem = ppjProximaOrdem(_ppj.folhas);
-  const novas = [];   // as folhas gravadas agora (a leitura é oferecida na primeira)
+  const novas = [];
   const bucket = sb.storage.from(PPJ_BUCKET);
   try {
     for(const m of marcadas){
@@ -904,7 +904,7 @@ async function ppjGerar(){
         novas.push(ins.data);
         feitas++;
       } catch(e){
-        if(subidos.length) await bucket.remove(subidos);   // não deixa imagem sem folha
+        if(subidos.length) await bucket.remove(subidos);
         throw e;
       }
     }
@@ -914,10 +914,10 @@ async function ppjGerar(){
     _ppj.lidoEm = Date.now();
     ppjFecharJanela();
     ppjRedesenhar();
-    if(typeof pplLeiOferecer === "function") pplLeiOferecer(novas);   // "Ler os nomes das estacas agora?" (fase 175b)
+    if(typeof pplLeiOferecer === "function") pplLeiOferecer(novas);
   } catch(e){
     console.error("Projeto do cliente, envio:", e);
-    if(docNovo && !feitas){   // nenhuma folha saiu: o original que subiu agora não fica órfão
+    if(docNovo && !feitas){
       const apagada = await sb.from("obras_documentos").delete().eq("id", docNovo.id).select("id");
       if(!apagada.error && apagada.data && apagada.data.length) await bucket.remove([docNovo.storage_path]);
     }
@@ -930,8 +930,8 @@ async function ppjGerar(){
     if(feitas){ _ppj.lidoEm = Date.now(); ppjAtualizarFolhasJanela(); ppjRedesenhar(); }
   }
 }
-/* Grava a folha com o giro da página (rotacao_graus). Banco sem a coluna (migration ainda não aplicada): o insert é
-   repetido sem o campo, e as folhas seguintes já vão sem ele; depois de 5 minutos tenta com o campo outra vez. */
+
+
 async function ppjInserirFolha(linha, rotacao){
   const comGiro = !(_ppjSemRotacaoEm > 0 && Date.now() - _ppjSemRotacaoEm < PPJ_AUSENTE_MS);
   let ins = await sb.from("obras_plantas").insert(comGiro ? { ...linha, rotacao_graus: ppjRotacaoTotal(rotacao, 0) } : linha).select(PPJ_COLUNAS).single();
@@ -941,8 +941,8 @@ async function ppjInserirFolha(linha, rotacao){
   } else if(!ins.error && comGiro) _ppjSemRotacaoEm = 0;
   return ins;
 }
-/* o original entra em Documentos da obra, como entra pela aba Documentos: categoria projeto, origem manual, MIME pela
-   extensão e corpo em Blob. Se a linha não gravar, o arquivo sai do Storage. */
+
+
 async function ppjGuardarOriginal(obraId, envio){
   const caminho = ppjCaminhoDocumento(obraId, Date.now(), Math.random().toString(36).slice(2, 8) || "x", envio.info.ext);
   if(!caminho) throw new Error("caminho inválido");
@@ -957,7 +957,7 @@ async function ppjGuardarOriginal(obraId, envio){
   return ins.data;
 }
 
-/* ---------- cuidar das folhas: cada mudança grava na hora ---------- */
+
 async function ppjGravarCampo(id, campo, valor, el){
   const f = (_ppj.folhas || []).find(x => x.id === id);
   if(!f || !["titulo", "local", "revisao"].includes(campo)) return;
@@ -994,7 +994,7 @@ async function ppjAcaoFolha(id, acao, botao){
       }
     } else if(acao === "excluir"){
       if(!confirm(`Excluir a folha "${ppjRotuloFolha(f)}"? As duas imagens dela e a posição das estacas marcadas nela são apagadas. O arquivo original continua nos Documentos da obra.`)) return;
-      // a linha sai primeiro: se o banco recusar, as imagens continuam onde estão
+
       const r = await sb.from("obras_plantas").delete().eq("id", id).select("id");
       if(r.error || !r.data || !r.data.length){ ppjAvisoJanela(r.error ? "Não foi possível excluir: " + r.error.message : "Seu cargo não exclui folhas do projeto nesta obra."); return; }
       await sb.storage.from(PPJ_BUCKET).remove([f.imagem_alta_path, f.imagem_media_path]);
@@ -1007,7 +1007,7 @@ async function ppjAcaoFolha(id, acao, botao){
   });
 }
 
-/* ---------- eventos ---------- */
+
 function ligarPlantaProjeto(){
   if(typeof $ !== "function") return;
   $("ppj-barra")?.addEventListener("click", (ev) => {
@@ -1036,12 +1036,12 @@ function ligarPlantaProjeto(){
     const el = ev.target;
     if(el.closest("#btn-ppj-guardado")) return void ppjAbrirGuardado();
     if(el.closest("#btn-ppj-gerar")) return void ppjGerar();
-    // fase 175a: planilha e DXF (saíram da barra da aba Estacas): a janela fecha e abre a importação de sempre
+
     const lista = el.closest("[data-ppj-lista]");
     if(lista){
       if(_ppjEnvio && _ppjEnvio.ocupado) return;
       ppjFecharJanela();
-      const qual = lista.dataset.ppjLista;   // "orcamento": leitura do orçamento da fase 174b, sem leitura paga
+      const qual = lista.dataset.ppjLista;
       const fn = qual === "dxf" ? "abrirModalDXF" : qual === "orcamento" ? "abrirModalImport" : "abrirModalXlsx";
       const abrir = typeof window[fn] === "function" ? window[fn] : null;
       if(abrir) abrir();
@@ -1069,8 +1069,8 @@ if(typeof document !== "undefined"){
   else ligarPlantaProjeto();
 }
 
-// teste em Node (scripts/testar-fase167a.mjs e testar-fase167b.mjs): as funções puras também saem por module.exports.
-// js/planta_posicoes.js, carregado depois, acrescenta as dele ao mesmo objeto.
+
+
 if(typeof module === "object" && module && module.exports){
   module.exports = { PPJ_BUCKET, PPJ_PDFJS, PPJ_PDFJS_WORKER, PPJ_TAM_MAX, PPJ_LADO_ALTA, PPJ_LADO_ALTA_REDUZIDA, PPJ_LADO_MEDIA, PPJ_ZOOM_MAX, PPJ_MAX_MINIATURAS,
     PPJ_URL_SEGUNDOS, PPJ_CARGOS_EDITAM, PPJ_COLUNAS, PPJ_VAZIO, PPJ_VAZIO_EDITA, PPJ_VAZIO_LE, PPJ_NOTA_FOLHA, PPJ_NOTA_SEM_ESTACAS, PPJ_AUSENTE_MS, PPJ_VALIDADE_MS,

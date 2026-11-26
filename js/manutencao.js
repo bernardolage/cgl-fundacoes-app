@@ -1,23 +1,23 @@
-/* ====================================================================
-   Módulo: Manutenção (fase 92, 20/10/2026) — os controles do Bruno no sistema.
-   Painel no padrão Serviços com quatro visões: OS (lista / por status), Preventivas (a RG 3.0.3: uma linha por
-   TAG com horímetro, itens vencendo e semáforo), Planos (RG 3.14: um por TAG, itens com periodicidade em h, km
-   ou dias e o kit de peças) e Checklists (RG 3.12, ligados à mobilização). Ficha da OS no padrão Odoo:
-   statusbar aberta → em execução → concluída, chips, smart-buttons, abas Atividades, Mão de obra, Materiais
-   (baixa no estoque pela RPC manutencao_consumir_pecas), Checklist, Anexos, Observações (+ chatter), impressão
-   no leiaute do modelo de OS. Horímetro e km da máquina vêm de equipamento_leituras (RDO, OS, checklist, viagem,
-   ajuste manual pela RPC equipamento_ajustar_leitura). Prefixo man-.
-   Permissões espelham o banco: manutencao_pode_operar() (admin, engenheiro, mecânico, gestor_frota,
-   logística, gestor_manutencao; diretor sempre); peças também pelo almoxarifado; checklist também pelo campo.
-   Lote S56b (29/10/2026): #194 só o almoxarifado dá baixa das peças (almoxarifado_baixa_pecas(): almoxarife, auxiliar,
-   admin; diretor), a OS pode ser concluída com baixa pendente e a pendência vai para a fila do almoxarifado (chip
-   "Baixa pendente" na lista e na ficha); #193 a OS preventiva gera a separação do kit (smart-button "Separação"): a peça
-   que está na separação sai pela separação, não pelo "Dar baixa".
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 let _manView = "os";
 let _manOS = [];
-let _manPrev = [];            // vw_manutencao_preventiva (uma linha por item do plano)
+let _manPrev = [];
 let _manChecks = [];
 let _manEquips = [];
 let _manFuncs = [];
@@ -25,27 +25,27 @@ let _manProfiles = [];
 let _manModelos = [];
 let _manCfg = { custo_hora_oficina: 0, manutencao_atencao_h: 50, manutencao_atencao_km: 500 };
 let _manCarregado = false;
-let _manAtual = null;         // OS aberta
+let _manAtual = null;
 let _manAtivs = [];
 let _manHoras = [];
 let _manMats = [];
 let _manAnexos = [];
 let _manChecksOS = [];
-let _manPlanoEq = null;       // TAG escolhida na visão Planos
+let _manPlanoEq = null;
 let _manPlano = null;
 let _manPlanoItens = [];
-let _manItemEdit = null;      // item do plano no modal
+let _manItemEdit = null;
 let _manItemMats = [];
-let _manCheckAtual = null;    // checklist no modal
+let _manCheckAtual = null;
 let _manCheckItens = [];
-let _manCheckOrigem = null;   // função a chamar ao fechar o modal do checklist (quem abriu redesenha)
+let _manCheckOrigem = null;
 let _manLeituraEq = null;
 let _manAnexoUrl = {};
-let _manPendBaixa = {};       // lote S56b (#194): id da OS -> peças de estoque sem baixa
-let _manSeps = [];            // lote S56b (#193): separações da OS aberta (separacoes.manutencao_id)
-let _manMatSep = {};          // lote S56b (#193): id do material -> { numero, status, separado } do item de separação
-let _man131b = false;         // fase 131b: migration do pedido ligado à OS aplicada (manutencoes.custo_compras)
-let _manPeds = [];            // fase 131b: pedidos de compra ligados à OS aberta (pedidos_compra.manutencao_id)
+let _manPendBaixa = {};
+let _manSeps = [];
+let _manMatSep = {};
+let _man131b = false;
+let _manPeds = [];
 
 const MAN_STATUS = { agendada: ["Aberta", "azul"], em_andamento: ["Em execução", "ambar"], concluida: ["Concluída", "verde"], cancelada: ["Cancelada", "cinza"] };
 const MAN_STAGES = ["agendada", "em_andamento", "concluida"];
@@ -61,24 +61,24 @@ const MAN_SELECT = "id,numero,tipo,status,descricao,setor,local,prioridade,equip
 const MAN_ANEXO_BUCKET = "manutencao-anexos";
 const MAN_ANEXO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", pdf: "application/pdf", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xls: "application/vnd.ms-excel", csv: "text/csv", txt: "text/plain", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", doc: "application/msword" };
 
-/* ---------- permissões (espelho do banco) ---------- */
+
 function manPodeEditar(){ return !!usuarioAtual && !ehSomenteLeitura() && ["admin", "diretor", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"].includes(usuarioAtual.cargo); }
-/* peças: manutencao_pode_operar() ou almoxarifado_pode_operar() (= compras_pode_operar() ou auxiliar de almoxarifado) */
+
 function manPodeMateriais(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["comprador", "almoxarife", "auxiliar_almoxarifado", "gestor_acessorios", "gestor_manutencao", "logistica", "financeiro"].includes(usuarioAtual.cargo)); }
-/* lote S56b (#194): só o almoxarifado dá baixa (espelho de almoxarifado_baixa_pecas(): almoxarife, auxiliar de almoxarifado,
-   admin; diretor). Lançar a peça na OS continua por manPodeMateriais(). */
+
+
 function manBaixaPode(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo); }
-/* peça de estoque ainda sem saída (a que o almoxarifado precisa baixar) */
+
 function manMatPendente(i){ return i.tipo === "consumo" && i.origem === "app" && !i.movimentacao_estoque_id && !!i.produto_id; }
-/* pendente e numa separação viva: sai pela separação */
+
 function manMatNaSeparacao(i){ const x = _manMatSep[i.id]; return !!x && !x.separado && ["aberta", "em_separacao", "separada"].includes(x.status); }
 function manTagBaixaPend(n){ return n ? `<span class="tag ambar" title="Peças de estoque lançadas na OS e ainda sem baixa: o almoxarifado dá baixa">Baixa pendente (${esc(n)})</span>` : ""; }
-/* fase 131b: comprar pela OS = compras_pode_operar() (inclui gestor de frota e de manutenção e o mecânico); auditor e só leitura nunca */
+
 function manPodeComprar(){ return _man131b && typeof cmpPodeOperar === "function" && cmpPodeOperar() && !ehSomenteLeitura(); }
 function manPedVivos(){ return _manPeds.filter(p => p.status !== "cancelado"); }
 function manPodeChecklist(){ return manPodeEditar() || (!!usuarioAtual && !ehSomenteLeitura() && ["encarregado", "operador", "logistica", "assistente_engenharia", "gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo)); }
 
-/* ---------- utilitários ---------- */
+
 function manTag(st){ const o = MAN_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function manTagSem(s){ const o = MAN_SEMAFORO[s] || [s || "—", "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function manTagSit(s){ const o = MAN_SITUACAO[s] || [s, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
@@ -116,7 +116,7 @@ function manAtividadeTxt(r){
   const op = (r.operacao_descricao || MAN_OPERACAO[r.operacao] || "").toUpperCase();
   return (op ? op + " — " : "") + r.componente;
 }
-async function manTodas(q){   // PostgREST pagina em 1.000: busca em páginas
+async function manTodas(q){
   const out = [];
   for(let de = 0; out.length === de; de += 1000){
     const r = await q(de, de + 999);
@@ -126,7 +126,7 @@ async function manTodas(q){   // PostgREST pagina em 1.000: busca em páginas
   return out;
 }
 
-/* ---------- carga ---------- */
+
 async function manCarregarBase(force){
   if(_manCarregado && !force) return;
   const [eq, fu, pr, cfg, mod, f131b] = await Promise.all([
@@ -135,7 +135,7 @@ async function manCarregarBase(force){
     sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),
     sb.from("empresa_config").select("custo_hora_oficina,manutencao_atencao_h,manutencao_atencao_km").eq("id", 1).maybeSingle(),
     sb.from("checklist_modelos").select("id,nome,versao,tipo,ativo").eq("ativo", true).order("nome"),
-    sb.from("manutencoes").select("custo_compras").limit(1)   // fase 131b: a coluna nova diz se a migration está no banco
+    sb.from("manutencoes").select("custo_compras").limit(1)
   ]);
   _man131b = !f131b.error;
   _manEquips = (eq.data || []).sort(manOrdEq);
@@ -165,7 +165,7 @@ async function carregarManutencao(force){
   renderManutencao();
 }
 async function manFetchOS(){
-  manFetchPendBaixa();   // lote S56b (#194): em paralelo; redesenha a lista quando chega
+  manFetchPendBaixa();
   const dias = Number($("man-f-periodo")?.value || 0);
   const corte = dias ? dataLocalISO(new Date(Date.now() - dias * 864e5)) : null;
   _manOS = await manTodas((de, ate) => {
@@ -173,9 +173,9 @@ async function manFetchOS(){
     if(corte) q = q.or(`data_prevista.gte.${corte},data_inicio.gte.${corte},created_at.gte.${corte},status.in.(agendada,em_andamento)`);
     return q;
   });
-  await anexarCustoMO("os", _manOS);   // lote S67-h
+  await anexarCustoMO("os", _manOS);
 }
-/* lote S56b (#194): peças de estoque sem baixa, por OS (chip "Baixa pendente" da lista) */
+
 async function manFetchPendBaixa(){
   const linhas = await manTodas((de, ate) => sb.from("manutencao_materiais").select("manutencao_id").eq("tipo", "consumo").eq("origem", "app")
     .not("produto_id", "is", null).is("movimentacao_estoque_id", null).order("manutencao_id").range(de, ate));
@@ -190,7 +190,7 @@ async function manFetchPrev(){
 async function manFetchChecks(){
   _manChecks = await manTodas((de, ate) => sb.from("checklists").select("id,data,equipamento_id,mobilizacao_id,manutencao_id,horimetro,km,resultado,responsavel_id,vistoriador,operador,created_at,equipamento:equipamentos(codigo,nome),mobilizacao:mobilizacoes(obra_id,status,data_mobilizacao_prev),os:manutencoes!checklists_manutencao_id_fkey(numero,status),itens:checklist_itens(situacao,atividade_id)").order("data", { ascending: false }).order("created_at", { ascending: false }).range(de, ate));
 }
-/* custo da hora da oficina (empresa_config; o mesmo dos reparos e da fabricação) */
+
 function manRenderCustoHora(){
   const el = $("man-custo-hora"); if(!el) return;
   const pode = !!usuarioAtual && ["diretor", "admin"].includes(usuarioAtual.cargo);
@@ -211,7 +211,7 @@ function manRenderCustoHora(){
   });
 }
 
-/* ---------- indicadores ---------- */
+
 function manRenderKpis(){
   const hoje = hojeISO(), mes = hoje.slice(0, 7);
   const abertas = _manOS.filter(m => ["agendada", "em_andamento"].includes(m.status));
@@ -226,7 +226,7 @@ function manRenderKpis(){
   set("man-kpi-atencao", porTag.filter(t => !t.n.critico && t.n.atencao > 0).length);
 }
 
-/* ---------- painel: dispatcher ---------- */
+
 function renderManutencao(){
   const cont = $("man-conteudo"); if(!cont) return;
   document.querySelectorAll("#man-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _manView));
@@ -245,7 +245,7 @@ function renderManutencao(){
   else renderManChecklists();
 }
 
-/* ---------- visão OS ---------- */
+
 function manOSFiltradas(){
   const q = ($("man-busca")?.value || "").trim().toLowerCase();
   const tag = $("man-f-tag")?.value || "", tipo = $("man-f-tipo")?.value || "", setor = $("man-f-setor")?.value || "", st = $("man-f-status")?.value || "", resp = $("man-f-resp")?.value || "";
@@ -289,7 +289,7 @@ function renderManOS(){
   }
 }
 
-/* ---------- visão Preventivas (RG 3.0.3) ---------- */
+
 function manPrevPorTag(){
   const map = new Map();
   _manPrev.forEach(r => {
@@ -337,7 +337,7 @@ function renderManPreventivas(){
 async function manGerarPreventiva(eqId, itemIds){
   if(!manPodeEditar()) return;
   const e = manEq(eqId);
-  // lote S58 (#233): diz antes quantos itens têm kit com produto; a separação nasce do gatilho dos materiais (lote S56b)
+
   const { data: vencendo } = await sb.from("vw_manutencao_preventiva").select("item_id,semaforo").eq("equipamento_id", eqId);
   const ids = (vencendo || []).filter(i => itemIds ? itemIds.includes(i.item_id) : ["critico", "atencao"].includes(i.semaforo)).map(i => i.item_id);
   const { data: kits } = ids.length ? await sb.from("manutencao_plano_materiais").select("plano_item_id").in("plano_item_id", ids).not("produto_id", "is", null) : { data: [] };
@@ -356,11 +356,11 @@ async function manGerarPreventiva(eqId, itemIds){
   await manFetchOS(); manRenderKpis();
   abrirManutencao(data);
 }
-/* ---------- fase 131b: compra ligada à OS ----------
-   D1: Preventivas → "Gerar OS e pedido" abre a OS sem separação (p_sem_kit) e o pedido em rascunho com o kit
-   (manutencao_gerar_pedido). Na OS, "Comprar peças / serviço" gera o pedido e "Registrar nota da oficina" é a compra direta
-   já ligada. O recebimento copia os itens para a aba Materiais (origem compra, sem baixa de estoque); o custo entra na TAG
-   uma vez só, pelo recebimento. */
+
+
+
+
+
 async function manAbrirPedido(id){
   if(!id || !irParaSecao("compras")) return;
   if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false);
@@ -400,7 +400,7 @@ async function manNotaOficina(){
   if(typeof abrirCompraDiretaOS === "function") abrirCompraDiretaOS({ id: m.id, numero: m.numero, equipamento_id: m.equipamento_id, codigo: e?.codigo || "" });
 }
 
-/* ---------- visão Planos (RG 3.14) ---------- */
+
 async function manAbrirPlano(eqId){
   _manPlanoEq = eqId || null; _manView = "planos";
   if($("man-plano-tag")) $("man-plano-tag").value = _manPlanoEq || "";
@@ -413,7 +413,7 @@ async function renderManPlano(){
   $("man-contador").textContent = "";
   $("man-plano-info").textContent = "";
   if(!eqId){
-    // sem TAG escolhida: resumo de quem tem plano
+
     const porTag = manPrevPorTag();
     cont.innerHTML = `<p class="meta">Escolha a TAG para ver e editar o plano. ${porTag.length} TAG(s) com plano; ${_manEquips.filter(e => e.ativo).length - porTag.length} ativa(s) sem plano.</p>
       <div class="tabela-rola"><table><thead><tr><th>TAG</th><th>Equipamento</th><th class="num">Itens</th><th>Semáforo</th></tr></thead>
@@ -505,7 +505,7 @@ async function manPlanoCriar(){
   await manFetchPrev();
   manAbrirPlano(eqId);
 }
-/* item do plano: modal com o kit de peças */
+
 function manItemAbrir(item){
   _manItemEdit = item || null; _manItemMats = [];
   const pode = manPodeEditar();
@@ -545,7 +545,7 @@ async function manItemSalvar(){
   if(r.error){ aviso("app-aviso", "Não foi possível salvar o item: " + r.error.message, "erro"); return; }
   aviso("app-aviso", "Item salvo.", "ok");
   await manFetchPrev();
-  if(!_manItemEdit){ // item novo: fica aberto para o kit
+  if(!_manItemEdit){
     const novo = _manPrev.find(i => i.item_id === r.data.id);
     if(novo){ manItemAbrir(novo); renderManPlano(); return; }
   }
@@ -578,7 +578,7 @@ async function manItemMatAdd(produto){
   manItemMatsCarregar();
 }
 
-/* ---------- visão Checklists (RG 3.12) ---------- */
+
 function manCheckNaoOk(c){ return (c.itens || []).filter(i => i.situacao === "nao_ok").length; }
 function renderManChecklists(){
   const cont = $("man-conteudo");
@@ -589,7 +589,7 @@ function renderManChecklists(){
     return true;
   });
   $("man-contador").textContent = `${dados.length} de ${_manChecks.length}`;
-  // mobilizações a sair sem checklist aprovado (aviso, não bloqueio — decisão 3)
+
   sb.from("mobilizacoes").select("id,obra_id,equipamento_id,status,data_mobilizacao_prev,equipamento:equipamentos(codigo,nome)").in("status", ["prevista", "em_preparacao", "em_transito"]).not("equipamento_id", "is", null).order("data_mobilizacao_prev", { ascending: true, nullsFirst: false }).then(({ data }) => {
     const aprov = new Set(_manChecks.filter(c => c.resultado === "aprovado" && c.mobilizacao_id).map(c => c.mobilizacao_id));
     const pend = (data || []).filter(m => !aprov.has(m.id));
@@ -609,7 +609,7 @@ function renderManChecklists(){
       <td class="num">${c.horimetro != null ? num(c.horimetro) : "—"}</td><td>${manTagRes(c.resultado)}</td><td class="num">${manCheckNaoOk(c) || "—"}</td>
       <td>${c.manutencao_id ? linkManutencao(c.manutencao_id, c.os?.numero || "OS") : "—"}</td><td class="meta">${esc(c.vistoriador || "")}</td></tr>`).join("") || `<tr><td colspan="8" class="vazio">Nenhum checklist.</td></tr>`}</tbody></table></div>`;
 }
-/* novo checklist: formulário curto; com pre.mobilizacao_id cria direto */
+
 async function manCheckNovo(pre){
   if(!manPodeChecklist()){ aviso("app-aviso", "Seu perfil não preenche checklist.", "erro"); return; }
   if(!_manCarregado) await manCarregarBase();
@@ -735,7 +735,7 @@ function manCheckFechar(){
   if(typeof f === "function") f();
   else if($("sec-manutencao")?.classList.contains("ativa") && _manView === "checklists") carregarManutencao(false);
 }
-/* seção 8 do drawer da mobilização (js/mobilizacoes.js chama) */
+
 async function manRenderChecklistMob(m, containerId){
   const box = $(containerId); if(!box || !m) return;
   const { data, error } = await sb.from("checklists").select("id,data,horimetro,resultado,manutencao_id,vistoriador,os:manutencoes!checklists_manutencao_id_fkey(numero),itens:checklist_itens(situacao)").eq("mobilizacao_id", m.id).order("data", { ascending: false });
@@ -755,7 +755,7 @@ async function manRenderChecklistMob(m, containerId){
   $("btn-man-mob-ck-novo")?.addEventListener("click", async () => { if(!_manCarregado) await manCarregarBase(); manCheckCriar({ equipamento_id: m.equipamento_id, mobilizacao_id: m.id }, redesenhar); });
 }
 
-/* ---------- ficha da OS ---------- */
+
 async function manNovaOS(pre){
   if(!manPodeEditar()){ aviso("app-aviso", "Seu perfil não abre OS de manutenção.", "erro"); return; }
   if(!_manCarregado) await manCarregarBase();
@@ -773,15 +773,15 @@ async function abrirManutencao(id){
     sb.from("manutencao_anexos").select("*").eq("manutencao_id", id).order("created_at"),
     sb.from("checklists").select("id,data,resultado,horimetro,itens:checklist_itens(situacao)").eq("manutencao_id", id).order("data", { ascending: false })
   ]);
-  await aptCarregarAguardandoDoc(id);   // fase 188c
+  await aptCarregarAguardandoDoc(id);
   if(m.error || !m.data){ aviso("app-aviso", "Não foi possível abrir a OS" + (m.error ? ": " + m.error.message : "."), "erro"); return; }
-  await anexarCustoMO("os", m.data);   // lote S67-h
-  await manCarregarSeparacaoOS(id, mt.data || []);   // lote S56b (#193)
-  _manPeds = [];   // fase 131b: pedidos ligados (a RLS de pedidos_compra decide quem vê)
+  await anexarCustoMO("os", m.data);
+  await manCarregarSeparacaoOS(id, mt.data || []);
+  _manPeds = [];
   if(_man131b){ const pd = await sb.from("pedidos_compra").select("id,numero,status").eq("manutencao_id", id).order("created_at"); if(!pd.error) _manPeds = pd.data || []; }
   manAbrirFicha(m.data, at.data || [], hs.data || [], mt.data || [], ax.data || [], ck.data || []);
 }
-/* lote S56b (#193): separação do kit da OS preventiva e o item de cada material. Sem a migration (coluna ausente) fica vazio. */
+
 async function manCarregarSeparacaoOS(id, mats){
   _manSeps = []; _manMatSep = {};
   const [sp, it] = await Promise.all([
@@ -792,7 +792,7 @@ async function manCarregarSeparacaoOS(id, mats){
   if(!it.error) (it.data || []).forEach(r => { if(r.manutencao_material_id && r.separacao) _manMatSep[r.manutencao_material_id] = { numero: r.separacao.numero, status: r.separacao.status, separado: r.separado }; });
 }
 function manAbrirFicha(m, ativs, horas, mats, anexos, checks){
-  if(!m.id){ _manSeps = []; _manMatSep = {}; _manPeds = []; }   // lote S56b: OS nova não herda a separação da anterior (fase 131b: nem os pedidos)
+  if(!m.id){ _manSeps = []; _manMatSep = {}; _manPeds = []; }
   _manAtual = m; _manAtivs = ativs; _manHoras = horas; _manMats = mats; _manAnexos = anexos; _manChecksOS = checks;
   $("man-painel").style.display = "none"; $("man-ficha").style.display = "";
   const novo = !m.id, pode = manPodeEditar() && m.status !== "cancelada";
@@ -803,12 +803,12 @@ function manAbrirFicha(m, ativs, horas, mats, anexos, checks){
   $("man-hor").value = m.horimetro_km ?? ""; $("man-km").value = m.km ?? ""; $("man-forn").value = m.fornecedor_id || ""; $("man-custo").value = m.custo ?? ""; $("man-obs").value = m.observacoes || "";
   $("man-ficha").querySelectorAll(".odoo-tab[data-tab=geral] input, .odoo-tab[data-tab=geral] select, #man-obs").forEach(el => el.disabled = !pode);
   $("man-equip").disabled = !pode || (!novo && m.origem === "planilha");
-  // fase 131b (D2): com pedido ligado o serviço externo vem da nota; o campo trava (o banco também recusa)
+
   const comPed = manPedVivos().length > 0;
   if(comPed){ $("man-custo").disabled = true; }
   $("man-custo").title = comPed ? "Com pedido de compra ligado, o serviço externo vem da nota do pedido (aba Materiais)." : "";
   $("man-equip").disabled = $("man-equip").disabled || comPed;
-  // lote S50 (#146, parte 1): atividades digitadas no cadastro, uma por linha; só na OS ainda não salva
+
   $("man-ativs-novas-campo").style.display = novo ? "" : "none";
   $("man-ativs-novas").value = ""; $("man-ativs-novas").disabled = !pode;
   manHorAtual();
@@ -842,14 +842,14 @@ function manAtualizarCabecalho(){
   $("man-chip-hor").textContent = [m.horimetro_km != null ? num(m.horimetro_km) + " h" : null, m.km != null ? num(m.km) + " km" : null].filter(Boolean).join(" · ") || "—";
   $("man-chip-resp").textContent = manFunc(m.responsavel_id) || "—";
   $("man-chip-dias").textContent = manDias(m) ?? "—";
-  $("man-chip-autor").textContent = autorOrdemTexto(m, m.autor);   // lote S65-h (#323)
+  $("man-chip-autor").textContent = autorOrdemTexto(m, m.autor);
   $("man-chip-origem").style.display = m.origem === "planilha" ? "" : "none"; $("man-chip-origem-txt").textContent = m.codigo_externo ? "OS " + m.codigo_externo : "RG 3.1";
-  // lote S56b (#194/#193): o "Dar baixa" é do almoxarifado e só para a peça que não está numa separação viva
+
   const pend = _manMats.filter(manMatPendente), pendSep = pend.filter(manMatNaSeparacao), pendBaixa = pend.length > pendSep.length;
   const mostra = { "btn-man-salvar": pode && st !== "cancelada", "btn-man-iniciar": pode && !novo && st === "agendada", "btn-man-concluir": pode && !novo && ["agendada", "em_andamento"].includes(st),
     "btn-man-cancelar": pode && !novo && ["agendada", "em_andamento"].includes(st), "btn-man-reabrir": pode && !novo && st === "concluida",
     "btn-man-baixa": manBaixaPode() && !novo && st !== "cancelada" && m.origem === "app" && pendBaixa, "btn-man-imprimir": !novo,
-    // fase 131b: compra pela OS só aberta ou em execução e sem serviço externo digitado (D2)
+
     "btn-man-comprar": manPodeComprar() && !novo && ["agendada", "em_andamento"].includes(st) && !(Number(m.custo || 0) > 0),
     "btn-man-nota-oficina": manPodeComprar() && !novo && ["agendada", "em_andamento"].includes(st) && !(Number(m.custo || 0) > 0) };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
@@ -858,7 +858,7 @@ function manAtualizarCabecalho(){
   sb2("sb-man-plano", (m.plano_item_ids || []).length || _manAtivs.filter(a => a.plano_item_id).length);
   sb2("sb-man-check", _manChecksOS.length + (m.checklist_id && !_manChecksOS.some(c => c.id === m.checklist_id) ? 1 : 0));
   sb2("sb-man-custo", brlMO(m.custo_real));
-  // lote S56b (#193): smart-button da separação do kit (só na preventiva)
+
   const sep = _manSeps.find(x => x.status !== "cancelada") || _manSeps[_manSeps.length - 1] || null;
   const bSep = $("sb-man-sep");
   if(bSep){
@@ -867,7 +867,7 @@ function manAtualizarCabecalho(){
     bSep.querySelector(".sb-num").textContent = sep ? sep.numero : "—";
     bSep.querySelector(".sb-lbl").textContent = sep ? "separação · " + (sep.status === "em_separacao" ? "em separação" : sep.status) : "separação";
   }
-  // fase 131b: smart-button dos pedidos ligados (com um só, abre o pedido; com vários, a aba Materiais)
+
   const bPed = $("sb-man-ped");
   if(bPed){
     const vivos = manPedVivos();
@@ -876,7 +876,7 @@ function manAtualizarCabecalho(){
     bPed.querySelector(".sb-lbl").textContent = vivos.length === 1 ? "pedido" : "pedidos";
     bPed.title = vivos.length ? "Pedidos ligados: " + vivos.map(p => `${p.numero} (${p.status})`).join(", ") : "";
   }
-  // lote S56b (#194): chip "Baixa pendente" para todos que leem a OS
+
   const chipB = $("man-chip-baixa-box");
   if(chipB){
     chipB.style.display = !novo && st !== "cancelada" && pend.length ? "" : "none";
@@ -890,16 +890,16 @@ function manAtualizarCabecalho(){
 function manAtivarTab(nome){
   document.querySelectorAll("#man-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.tab === nome));
   document.querySelectorAll("#man-ficha .odoo-tab").forEach(t => t.classList.toggle("ativa", t.dataset.tab === nome));
-  if(nome === "atividades") document.querySelectorAll("#man-ativs textarea").forEach(manAtivAltura);   // lote S50 (#148): a aba estava oculta no render
+  if(nome === "atividades") document.querySelectorAll("#man-ativs textarea").forEach(manAtivAltura);
 }
-/* lote S50 (#148): o campo da atividade cresce com o texto (aba oculta não tem altura: mede ao abrir a aba) */
+
 function manAtivAltura(el){
   if(!el || !el.offsetParent) return;
   el.style.height = "auto";
   el.style.height = (el.scrollHeight + 2) + "px";
 }
-/* lote S50 (#146, parte 1): linhas do campo "Atividades (uma por linha)" da OS nova: aparadas, sem marcador de tópico
-   ("- ", "• ", "* "), sem linha vazia e sem repetir (comparação sem diferença de maiúscula e espaço) */
+
+
 function manAtivsNovasLinhas(){
   const vistas = new Set(), out = [];
   String($("man-ativs-novas")?.value || "").split(/\r?\n/).forEach(l => {
@@ -927,8 +927,8 @@ async function salvarManutencao(){
   if(id){ const { error } = await sb.from("manutencoes").update(reg).eq("id", id); if(error){ aviso("app-aviso", "Erro ao salvar: " + error.message, "erro"); return null; } }
   else {
     const { data, error } = await sb.from("manutencoes").insert({ ...reg, status: "agendada", origem: "app" }).select("id").single(); if(error){ aviso("app-aviso", "Erro ao abrir a OS: " + error.message, "erro"); return null; } id = data.id;
-    // lote S50 (#146, parte 1): cada linha do campo vira uma atividade pendente, na ordem digitada e com o setor da OS.
-    // Falha aqui não desfaz a OS: avisa para lançar pela aba Atividades.
+
+
     const linhas = manAtivsNovasLinhas();
     if(linhas.length){
       const { error: eA } = await sb.from("manutencao_atividades").insert(linhas.map((t, i) => ({ manutencao_id: id, ordem: i + 1, setor: reg.setor || null, atividade: t, situacao: "pendente" })));
@@ -971,17 +971,17 @@ async function manAcao(acao){
   await abrirManutencao(m.id);
 }
 
-/* atividades */
-/* lote S54 (#169): dia (data_inicio/data_fim, date) ao lado da hora (inicio/fim, time) por atividade. Leitura "20/10 07:30",
-   "—" quando vazio; sem o dia só a hora, sem a hora só o dia. As horas de mão de obra continuam em manutencao_horas. */
+
+
+
 function manAtivDiaHora(dia, hora, vazio){
   const d = dia ? dataBR(dia).slice(0, 5) : "", h = hora ? String(hora).slice(0, 5) : "";
   return [d, h].filter(Boolean).join(" ") || (vazio == null ? "—" : vazio);
 }
-/* lote S68-c1 (#368): início e fim da atividade não são hora trabalhada. Atividade com executante, início e fim e sem hora
-   da mesma pessoa e dia na OS (gravada ou aguardando aprovação) mostra "Lançar hora", que grava pelo caminho do Lançar horas
-   (aptGravarLinha: repetida, divisão pelo expediente e HE para aprovação). Devolve null (nada a lançar), { dia } ou
-   { varios: true } (atividade de vários dias: uma linha por dia, pelo Lançar horas ou pela aba Mão de obra). */
+
+
+
+
 function manAtivSemHora(a){
   if(!a || !a.executante_id || !a.inicio || !a.fim) return null;
   const dia = a.data_inicio || a.data_fim; if(!dia) return null;
@@ -1017,8 +1017,8 @@ async function manAtivLancarHora(id){
   else if(n("aguardando")) aviso("app-aviso", `${n("gravada") ? `${n("gravada")} linha(s) normal(is) gravada(s); ` : ""}${n("aguardando")} de hora extra aguardando aprovação. ${aptAvisoAprovacao("OS")}`, "ok");
   else aviso("app-aviso", linhas.length > 1 ? `Hora gravada em ${linhas.length} linhas na aba Mão de obra.` : `Hora gravada na aba Mão de obra.${div.avisoExp ? ` ${div.avisoExp}: a hora extra de dia útil não foi separada.` : ""}`, div.avisoExp ? "aviso" : "ok");
 }
-/* lote S69-h1 (#339): outra linha da OS com a mesma atividade (texto), o mesmo executante e o mesmo dia (dia de início ou,
-   sem ele, o de conclusão). Manhã e tarde no mesmo dia são legítimas: só avisa, não impede. Devolve a outra linha ou null. */
+
+
 function manAtivRepetida(a){
   if(!a || !a.executante_id || !String(a.atividade || "").trim()) return null;
   const dia = a.data_inicio || a.data_fim; if(!dia) return null;
@@ -1038,15 +1038,15 @@ function manRenderAtivs(){
       <td><select class="man-a-f" data-c="situacao">${optSit}</select></td>
       <td><select class="man-a-f" data-c="executante_id">${optF}</select>${a.executante_nome && !a.executante_id ? `<div class="meta" title="nome da planilha, sem par no cadastro">${esc(a.executante_nome)}</div>` : ""}</td>
       <td><input type="date" class="man-a-f" data-c="data_inicio" value="${esc(a.data_inicio || "")}" title="Dia de início" style="width:118px;" /> <input type="time" class="man-a-f" data-c="inicio" value="${a.inicio ? esc(String(a.inicio).slice(0, 5)) : ""}" title="Hora de início" style="width:78px;" /></td>
-      <td><input type="date" class="man-a-f" data-c="data_fim" value="${esc(a.data_fim || "")}" title="Dia de conclusão" style="width:118px;" /> <input type="time" class="man-a-f" data-c="fim" value="${a.fim ? esc(String(a.fim).slice(0, 5)) : ""}" title="Hora de conclusão" style="width:78px;" />${/* html */ manAtivHoraHTML(a)}</td>
+      <td><input type="date" class="man-a-f" data-c="data_fim" value="${esc(a.data_fim || "")}" title="Dia de conclusão" style="width:118px;" /> <input type="time" class="man-a-f" data-c="fim" value="${a.fim ? esc(String(a.fim).slice(0, 5)) : ""}" title="Hora de conclusão" style="width:78px;" />${  manAtivHoraHTML(a)}</td>
       <td><input class="man-a-f" data-c="observacao" value="${esc(a.observacao || "")}" /></td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo man-a-rem" data-a="${esc(a.id)}" title="remover">×</button></td></tr>`
     : `<tr><td>${esc(a.ordem)}</td><td class="meta">${esc(MAN_SETOR[a.setor] || "—")}</td><td>${esc(a.atividade)}</td><td>${manTagSit(a.situacao)}</td><td class="meta">${esc(manFunc(a.executante_id) || a.executante_nome || "—")}</td>
-      <td>${esc(manAtivDiaHora(a.data_inicio, a.inicio))}</td><td>${esc(manAtivDiaHora(a.data_fim, a.fim))}${/* html */ manAtivHoraHTML(a)}</td><td class="meta">${esc(a.observacao || "")}</td><td></td></tr>`).join("");
+      <td>${esc(manAtivDiaHora(a.data_inicio, a.inicio))}</td><td>${esc(manAtivDiaHora(a.data_fim, a.fim))}${  manAtivHoraHTML(a)}</td><td class="meta">${esc(a.observacao || "")}</td><td></td></tr>`).join("");
   if(pode){
     _manAtivs.forEach(a => { const tr = tb.querySelector(`tr[data-a="${a.id}"]`); if(!tr) return;
       tr.querySelector('[data-c="setor"]').value = a.setor || ""; tr.querySelector('[data-c="situacao"]').value = a.situacao; tr.querySelector('[data-c="executante_id"]').value = a.executante_id || ""; });
-    tb.querySelectorAll('textarea[data-c="atividade"]').forEach(el => { manAtivAltura(el); el.addEventListener("input", () => manAtivAltura(el)); });   // lote S50 (#148)
+    tb.querySelectorAll('textarea[data-c="atividade"]').forEach(el => { manAtivAltura(el); el.addEventListener("input", () => manAtivAltura(el)); });
     tb.querySelectorAll(".man-a-f").forEach(el => el.addEventListener("change", async () => {
       const id = el.closest("tr").dataset.a, c = el.dataset.c; let v = el.value;
       if(c === "atividade" && !v.trim()){ aviso("app-aviso", "A atividade não pode ficar vazia.", "erro"); return; }
@@ -1054,7 +1054,7 @@ function manRenderAtivs(){
       const upd = { [c]: v };
       const atv = _manAtivs.find(x => x.id === id);
       let avisoPeriodo = "";
-      // lote S54 (#169): "Executado" sem fim preenche dia e hora de hoje; hora digitada sem dia assume o início da OS (ou hoje)
+
       if(c === "situacao" && v === "executado" && atv){ if(!atv.fim) upd.fim = new Date().toTimeString().slice(0, 5); if(!atv.data_fim) upd.data_fim = hojeISO(); }
       if(c === "inicio" && v && atv && !atv.data_inicio) upd.data_inicio = _manAtual?.data_inicio || hojeISO();
       if(c === "fim" && v && atv && !atv.data_fim) upd.data_fim = atv.data_inicio || _manAtual?.data_inicio || hojeISO();
@@ -1067,22 +1067,22 @@ function manRenderAtivs(){
       const { error } = await sb.from("manutencao_atividades").update(upd).eq("id", id);
       if(error){ aviso("app-aviso", "Não foi possível salvar a atividade: " + error.message, "erro"); return; }
       if(atv) Object.assign(atv, upd);
-      // lote S69-h1 (#339): aviso não bloqueante quando a mesma atividade do mesmo executante já está neste dia
+
       const rep = ["atividade", "executante_id", "data_inicio", "data_fim"].includes(c) || upd.data_inicio || upd.data_fim ? manAtivRepetida(atv) : null;
       const avRep = rep ? `Já existe esta atividade deste executante neste dia (linha ${rep.ordem}).` : "";
       if(avisoPeriodo || avRep) aviso("app-aviso", [avRep, avisoPeriodo].filter(Boolean).join(" "), "aviso");
-      // lote S68-c1: executante, dia e hora decidem o botão "Lançar hora" (só redesenha quando ele muda)
+
       const horaAntes = !!el.closest("td")?.parentElement?.querySelector(".man-a-hora, .man-a-semhora"), horaMudou = ["executante_id", "inicio", "fim", "data_inicio", "data_fim"].includes(c);
       if(c === "situacao" || Object.keys(upd).length > 1 || (horaMudou && (horaAntes || !!manAtivHoraHTML(atv)))) manRenderAtivs();
     }));
-    tb.querySelectorAll(".man-a-hora").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => manAtivLancarHora(b.dataset.a))));   // lote S68-c1 (#368)
+    tb.querySelectorAll(".man-a-hora").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, () => manAtivLancarHora(b.dataset.a))));
     tb.querySelectorAll(".man-a-rem").forEach(b => b.addEventListener("click", async () => {
       const { error } = await sb.from("manutencao_atividades").delete().eq("id", b.dataset.a);
       if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
       await abrirManutencao(_manAtual.id); manAtivarTab("atividades");
     }));
   }
-  // itens do plano da TAG que ainda não estão na OS
+
   const sel = $("man-a-plano");
   const ja = new Set(_manAtivs.map(a => a.plano_item_id).filter(Boolean));
   const itens = _manAtual?.equipamento_id ? _manPrev.filter(i => i.equipamento_id === _manAtual.equipamento_id && !ja.has(i.item_id)).sort((a, b) => MAN_SEM_ORDEM[a.semaforo] - MAN_SEM_ORDEM[b.semaforo] || a.ordem - b.ordem) : [];
@@ -1097,8 +1097,8 @@ async function manAtivAdd(){
   const ordem = _manAtivs.length ? Math.max(..._manAtivs.map(a => a.ordem)) + 1 : 1;
   const { error } = await sb.from("manutencao_atividades").insert({ manutencao_id: _manAtual.id, ordem, setor: it?.setor || $("man-a-setor").value || null, atividade: texto, situacao: "pendente", plano_item_id: itemId });
   if(error){ aviso("app-aviso", "Não foi possível adicionar: " + error.message, "erro"); return; }
-  let erroKit = null;   // fase 142 (EST-04)
-  if(it){ // kit do item vira material da OS
+  let erroKit = null;
+  if(it){
     const { data: kit, error: erroLeitura } = await sb.from("manutencao_plano_materiais").select("produto_id,descricao,codigo_peca,quantidade,produto:produtos(codigo,nome,unidade,custo_ultimo)").eq("plano_item_id", itemId);
     erroKit = erroLeitura;
     if(!erroKit && kit?.length) ({ error: erroKit } = await sb.from("manutencao_materiais").insert(kit.map(k => ({ manutencao_id: _manAtual.id, produto_id: k.produto_id, descricao: k.produto ? `${prodTxt(k.produto)}` : k.descricao, unidade: k.produto?.unidade || "un", quantidade: k.quantidade, custo_unitario: Number(k.produto?.custo_ultimo || 0), codigo_peca: k.codigo_peca, plano_item_id: itemId, origem: "app" }))));
@@ -1112,16 +1112,16 @@ async function manAtivAdd(){
   if(erroKit) aviso("app-aviso", "Atividade adicionada, mas o kit de materiais não foi: " + erroKit.message, "erro");
 }
 
-/* mão de obra */
+
 function manRenderHoras(){
   const tb = $("man-horas"), pode = manPodeEditar() && _manAtual?.status !== "cancelada";
-  const ag = _manAtual?.id ? aptTxtAguardando(_manAtual.id, "OS") : "";   // fase 188c: HE aguardando, fora do total
+  const ag = _manAtual?.id ? aptTxtAguardando(_manAtual.id, "OS") : "";
   if(!_manHoras.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">${_manAtual?.id ? "Nenhuma hora lançada." : "Salve a OS para lançar horas."}</td></tr>`; $("man-horas-total").innerHTML = ag; return; }
   tb.innerHTML = _manHoras.map(h => `<tr><td>${esc(manFunc(h.funcionario_id) || h.funcionario_nome || "—")}</td><td>${dataBR(h.data)}</td><td>${h.inicio ? esc(String(h.inicio).slice(0, 5)) : "—"}</td><td>${h.fim ? esc(String(h.fim).slice(0, 5)) : "—"}</td>
     <td class="num">${num(h.horas)}${h.hora_extra ? ' <span class="tag ambar" title="hora extra, custa ×2">HE</span>' : ""}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · planilha" : ""}</td>
     <td>${pode ? `<button type="button" class="btn-sec btn-sm txt-perigo man-h-rem" data-id="${esc(h.id)}" title="remover">×</button>` : ""}</td></tr>`).join("");
   const porF = {}; _manHoras.forEach(h => { const n = manFunc(h.funcionario_id) || h.funcionario_nome || "sem funcionário"; porF[n] = (porF[n] || 0) + Number(h.horas || 0); });
-  const heMan = _manHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);   // fase 156a (HE)
+  const heMan = _manHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
   $("man-horas-total").innerHTML = `Total: <strong>${num(_manHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong>${heMan ? ` (${num(heMan)} h de hora extra)` : ""} · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ") + ag;
   tb.querySelectorAll(".man-h-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("manutencao_horas").delete().eq("id", b.dataset.id);
@@ -1133,18 +1133,18 @@ async function manAddHoras(){
   if(!_manAtual?.id) return;
   const reg = { manutencao_id: _manAtual.id, funcionario_id: $("man-h-func").value || null, data: $("man-h-data").value || hojeISO(),
     inicio: $("man-h-inicio").value || null, fim: $("man-h-fim").value || null, horas: $("man-h-horas").value === "" ? null : Number($("man-h-horas").value), observacao: $("man-h-obs").value.trim() || null,
-    hora_extra: false };   // lote S69-j (#369): HE só automática (fim de semana, feriado e fora do expediente)
+    hora_extra: false };
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim){
-    reg.horas = 0;   // o gatilho calcula
+    reg.horas = 0;
     if(reg.fim <= reg.inicio){ aviso("app-aviso", "O fim precisa ser depois do início (hora que passa da meia-noite: uma linha por dia).", "erro"); return; }
   }
-  // fase 188b (#322): a mesma divisão do "Lançar horas" e da ficha da OF; antes, marcar HE aqui mandava a linha inteira
+
   let div;
   try { div = await aptDividirFicha(reg); } catch(e){ aviso("app-aviso", e.message, "erro"); return; }
   if(!div) return;
-  // fase 188c (#322, D9): a parte normal grava direto; a hora extra (marcada, ou sábado, domingo e feriado) vai para aprovação do gestor de manutenção
+
   const g = await aptGravarFicha("OS", _manAtual.id, div.regs);
   if(g.erro && !g.gravadas){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
   ["man-h-inicio", "man-h-fim", "man-h-horas", "man-h-obs"].forEach(id => $(id).value = ""); aptMostrarHEFicha("man-h");
@@ -1152,17 +1152,17 @@ async function manAddHoras(){
   aptAvisoFicha("OS", g, div.regs.length, div.avisoExp);
 }
 
-/* materiais */
+
 function manRenderMats(){
   const tb = $("man-mats"), pode = manPodeMateriais() && _manAtual?.status !== "cancelada";
   if(!_manMats.length){ tb.innerHTML = `<tr><td colspan="8" class="vazio">${_manAtual?.id ? "Nenhuma peça lançada." : "Salve a OS para lançar peças."}</td></tr>`; return; }
   tb.innerHTML = _manMats.map(i => {
-    const compra = i.origem === "compra";   // fase 131b: veio do recebimento de pedido ligado; nunca baixa estoque nem se remove aqui
+    const compra = i.origem === "compra";
     const baixa = compra ? `<span class="tag azul" title="Recebido pelo pedido de compra ligado à OS: o custo entra na TAG pelo recebimento, sem baixa de estoque">compra</span>${i.observacoes ? ` <span class="meta">${esc(i.observacoes)}</span>` : ""}`
       : i.movimentacao_estoque_id ? '<span class="tag verde">baixada no estoque</span>' : i.origem === "planilha" ? '<span class="tag cinza" title="histórico da planilha: não mexe no estoque">planilha</span>'
       : i.tipo === "retirada" ? '<span class="meta">—</span>' : !i.produto_id ? '<span class="meta" title="sem produto no catálogo: só texto">sem cadastro</span>'
       : manMatNaSeparacao(i) ? `<span class="tag azul" title="Sai pela separação do kit: o almoxarifado marca separado e a baixa entra aqui">na separação ${esc(_manMatSep[i.id].numero)}</span>`
-      : '<span class="tag ambar" title="O almoxarifado dá baixa (botão Dar baixa das peças)">pendente</span>';   // lote S56b (#193/#194)
+      : '<span class="tag ambar" title="O almoxarifado dá baixa (botão Dar baixa das peças)">pendente</span>';
     return `<tr><td>${i.produto_id ? linkProduto(i.produto_id, semCodOdoo(i.descricao)) : esc(semCodOdoo(i.descricao))}${i.codigo_peca ? ` <span class="meta">${esc(i.codigo_peca)}</span>` : ""}${i.plano_item_id ? ' <span class="tag azul" title="kit do item do plano">kit</span>' : ""}</td><td>${esc(i.unidade || "un")}</td><td class="num">${num(i.quantidade)}</td>
       <td class="num">${brl(i.custo_unitario)}</td><td class="num">${brl(Number(i.quantidade) * Number(i.custo_unitario))}</td><td>${i.tipo === "retirada" ? "Retirada" : i.tipo === "servico" ? "Mão de obra" : "Consumo"}</td><td>${baixa}</td>
       <td>${pode && !compra && !i.movimentacao_estoque_id ? `<button type="button" class="btn-sec btn-sm txt-perigo man-mat-rem" data-id="${esc(i.id)}" title="remover">×</button>` : ""}</td></tr>`; }).join("");
@@ -1188,7 +1188,7 @@ function manRenderCustos(){
   const m = _manAtual, c = $("man-custos"); if(!m || !c) return;
   const pode = manPodeEditar() && !!m.id;
   const horas = _manHoras.reduce((t, h) => t + Number(h.horas || 0), 0), he = _manHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
-  const compras = _manMats.filter(i => i.origem === "compra").reduce((t, i) => t + Math.round(Number(i.quantidade) * Number(i.custo_unitario) * 100) / 100, 0);   // fase 131b (= custo_compras)
+  const compras = _manMats.filter(i => i.origem === "compra").reduce((t, i) => t + Math.round(Number(i.quantidade) * Number(i.custo_unitario) * 100) / 100, 0);
   c.innerHTML = `<div class="custos-resumo">
       <div><div class="mov-ace-sug-grupo-t">Composição do custo</div>
         <div class="custos-linha"><span>Serviço externo (fornecedor)</span><strong>${brl(m.custo || 0)}</strong></div>
@@ -1217,7 +1217,7 @@ function manRenderCustos(){
   });
 }
 
-/* checklist da OS */
+
 function manRenderChecklistOS(){
   const m = _manAtual, box = $("man-check-os"); if(!m || !box) return;
   const lista = _manChecksOS.slice();
@@ -1231,7 +1231,7 @@ function manRenderChecklistOS(){
   $("btn-man-os-ck-novo")?.addEventListener("click", () => manCheckCriar({ equipamento_id: m.equipamento_id, manutencao_id: m.id, horimetro: m.horimetro_km ?? undefined, km: m.km ?? undefined }, redesenhar));
 }
 
-/* anexos */
+
 async function manRenderAnexos(){
   const box = $("man-anexos"); if(!box) return;
   if(!_manAnexos.length){ box.innerHTML = `<p class="vazio">${_manAtual?.id ? "Nenhum anexo." : "Salve a OS para anexar fotos e documentos."}</p>`; return; }
@@ -1265,7 +1265,7 @@ async function manEnviarAnexos(){
     const mime = MAN_ANEXO_MIME[ext];
     if(!mime){ falhas.push(`${f.name}: tipo não aceito.`); continue; }
     if(f.size > 20 * 1024 * 1024){ falhas.push(`${f.name}: acima de 20 MB.`); continue; }
-    // supabase-js ignora contentType quando o corpo é File: reembala em Blob com o MIME da extensão
+
     const corpo = f.type === mime ? f : new Blob([f], { type: mime });
     const caminho = `${m.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const up = await sb.storage.from(MAN_ANEXO_BUCKET).upload(caminho, corpo, { cacheControl: "3600", contentType: mime, upsert: false });
@@ -1278,7 +1278,7 @@ async function manEnviarAnexos(){
   await abrirManutencao(m.id); manAtivarTab("anexos");
 }
 
-/* lote S69-h1 (#339): dia único da atividade (início e conclusão no mesmo dia, ou só um dos dois); null = sem dia ou vários dias */
+
 function manAtivDiaUnico(a){
   if(a.data_inicio && a.data_fim && a.data_inicio !== a.data_fim) return null;
   return a.data_inicio || a.data_fim || null;
@@ -1290,21 +1290,21 @@ function manDiaSeguinte(iso){
   const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
-/* Grupos para o PDF da OS, na ordem da primeira linha de cada grupo: a mesma atividade (texto) do mesmo executante, um dia por
-   linha, em dias seguidos, vira um grupo. Linha sem executante, sem dia ou de vários dias fica sozinha; duas linhas no mesmo
-   dia (manhã e tarde) quebram a sequência e cada uma fica no seu grupo. Devolve [[atividade, ...], ...]. */
+
+
+
 function manAtivGruposPDF(ativs){
   const pos = new Map(ativs.map((a, i) => [a, i]));
   const temExec = a => !!(a.executante_id || String(a.executante_nome || "").trim());
-  // percorre por dia (a linha de 04/11 lançada antes da de 03/11 ainda agrupa); a saída volta à ordem da OS
+
   const porDia = [...ativs].sort((x, y) => String(manAtivDiaUnico(x) || "").localeCompare(String(manAtivDiaUnico(y) || "")) || pos.get(x) - pos.get(y));
   const hora = a => `${String(a.inicio || "").slice(0, 5)}-${String(a.fim || "").slice(0, 5)}`;
-  const grupos = [], porChave = {};   // chave → grupos dessa atividade e executante
+  const grupos = [], porChave = {};
   for(const a of porDia){
     const dia = manAtivDiaUnico(a);
     if(!dia || !temExec(a)){ grupos.push([a]); continue; }
     const k = manAtivChave(a), lista = porChave[k] || (porChave[k] = []);
-    // continua um grupo que terminou na véspera; com manhã e tarde na véspera, prefere o de mesmo horário
+
     const cand = lista.filter(g => manDiaSeguinte(manAtivDiaUnico(g[g.length - 1])) === dia);
     const g = cand.find(x => hora(x[x.length - 1]) === hora(a)) || cand[0];
     if(g){ g.push(a); continue; }
@@ -1312,7 +1312,7 @@ function manAtivGruposPDF(ativs){
   }
   return grupos.sort((x, y) => Math.min(...x.map(a => pos.get(a))) - Math.min(...y.map(a => pos.get(a))));
 }
-/* "03 a 05/11 · 3 dias · 07:15–17:00"; com horários diferentes, o detalhe por dia embaixo. Devolve HTML já escapado. */
+
 function manAtivGrupoHTML(g){
   const d1 = manAtivDiaUnico(g[0]), d2 = manAtivDiaUnico(g[g.length - 1]);
   const b1 = dataBR(d1).slice(0, 5), b2 = dataBR(d2).slice(0, 5);
@@ -1324,26 +1324,26 @@ function manAtivGrupoHTML(g){
   return esc(topo) + g.map(a => `<br/>${esc(dataBR(manAtivDiaUnico(a)).slice(0, 5))} ${esc(hora(a) || "—")}`).join("");
 }
 
-/* impressão no leiaute do modelo de OS do Bruno (html2pdf; estilo inline, fora do CSS do app) */
+
 async function manImprimirOS(){
   const m = _manAtual; if(!m?.id) return;
   const e = m.equipamento || manEq(m.equipamento_id) || {};
   const td = "border:1px solid #444;padding:3px 5px;font-size:10px;vertical-align:top;";
   const th = td + "background:#ddd;font-weight:700;";
   const setores = [...new Set(_manAtivs.map(a => a.setor || "outros"))];
-  // lote S69-h1 (#339): a mesma atividade do mesmo executante em dias seguidos sai numa linha só (manAtivGruposPDF)
-  const cel = (html, extra = "", span = 0) => `<td${span ? ` colspan="${esc(span)}"` : ""} style="${td}${/* html */ extra}">${/* html */ html}</td>`;   // extra = CSS fixo do próprio PDF
+
+  const cel = (html, extra = "", span = 0) => `<td${span ? ` colspan="${esc(span)}"` : ""} style="${td}${  extra}">${  html}</td>`;
   let nLinhas = 0;
-  const ativHTML = setores.map(s => `<tr>${/* html */ cel(esc(MAN_SETOR[s] || s), th.slice(td.length) + "text-transform:uppercase;", 6)}</tr>` +
+  const ativHTML = setores.map(s => `<tr>${  cel(esc(MAN_SETOR[s] || s), th.slice(td.length) + "text-transform:uppercase;", 6)}</tr>` +
     manAtivGruposPDF(_manAtivs.filter(a => (a.setor || "outros") === s)).map(g => {
       nLinhas++;
       const a = g[0], u = g[g.length - 1];
       const dias = g.length > 1 ? cel(manAtivGrupoHTML(g), "", 2)
-        : cel(esc(manAtivDiaHora(a.data_inicio, a.inicio, ""))) + cel(esc(manAtivDiaHora(a.data_fim, a.fim, "")));   // lote S54 (#169): dia e hora
-      return `<tr>${/* html */ cel(esc(a.ordem), "text-align:center;")}${/* html */ cel(esc(a.atividade))}${/* html */ cel(esc(MAN_SITUACAO[u.situacao]?.[0] || ""))}${/* html */ cel(esc(manFunc(a.executante_id) || a.executante_nome || ""))}${/* html */ dias}</tr>`;
+        : cel(esc(manAtivDiaHora(a.data_inicio, a.inicio, ""))) + cel(esc(manAtivDiaHora(a.data_fim, a.fim, "")));
+      return `<tr>${  cel(esc(a.ordem), "text-align:center;")}${  cel(esc(a.atividade))}${  cel(esc(MAN_SITUACAO[u.situacao]?.[0] || ""))}${  cel(esc(manFunc(a.executante_id) || a.executante_nome || ""))}${  dias}</tr>`;
     }).join("")).join("");
   const vazias = Math.max(0, 8 - nLinhas);
-  const linhasVazias = Array.from({ length: vazias }, (_, i) => `<tr>${/* html */ cel(esc(nLinhas + i + 1), "text-align:center;")}${/* html */ cel("&nbsp;")}${/* html */ cel("").repeat(4)}</tr>`).join("");
+  const linhasVazias = Array.from({ length: vazias }, (_, i) => `<tr>${  cel(esc(nLinhas + i + 1), "text-align:center;")}${  cel("&nbsp;")}${  cel("").repeat(4)}</tr>`).join("");
   const mats = _manMats.map((i, k) => `<tr><td style="${td}text-align:center;">${k + 1}</td><td style="${td}">${esc(semCodOdoo(i.descricao))}${i.codigo_peca ? " · " + esc(i.codigo_peca) : ""}</td><td style="${td}text-align:right;">${num(i.quantidade)} ${esc(i.unidade || "un")}</td><td style="${td}">${i.movimentacao_estoque_id ? "baixado no estoque" : i.tipo === "retirada" ? "retirada" : ""}</td></tr>`).join("")
     + Array.from({ length: Math.max(0, 4 - _manMats.length) }, (_, k) => `<tr><td style="${td}text-align:center;">${_manMats.length + k + 1}</td><td style="${td}">&nbsp;</td><td style="${td}"></td><td style="${td}"></td></tr>`).join("");
   const horas = _manHoras.map(h => `<tr><td style="${td}">${esc(manFunc(h.funcionario_id) || h.funcionario_nome || "")}</td><td style="${td}">${dataBR(h.data)}</td><td style="${td}">${h.inicio ? esc(String(h.inicio).slice(0, 5)) : ""}</td><td style="${td}">${h.fim ? esc(String(h.fim).slice(0, 5)) : ""}</td><td style="${td}text-align:right;">${num(h.horas)}</td></tr>`).join("");
@@ -1366,16 +1366,16 @@ async function manImprimirOS(){
     </table>
     <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
       <tr><td style="${th}width:30px;">ITEM</td><td style="${th}">ATIVIDADE</td><td style="${th}width:70px;">SITUAÇÃO</td><td style="${th}width:110px;">EXECUTANTE</td><td style="${th}width:78px;">INÍCIO (DIA · HORA)</td><td style="${th}width:78px;">CONCLUSÃO (DIA · HORA)</td></tr>
-      ${ativHTML}${/* html */ linhasVazias}
+      ${ativHTML}${  linhasVazias}
     </table>
     <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
       <tr><td style="${th}" colspan="4">MATERIAIS NECESSÁRIOS / UTILIZADOS</td></tr>
       <tr><td style="${th}width:30px;">ITEM</td><td style="${th}">DESCRIÇÃO</td><td style="${th}width:80px;">QTD</td><td style="${th}width:120px;">ESTOQUE</td></tr>
-      ${/* html */ mats}
+      ${  mats}
     </table>
     ${_manHoras.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
       <tr><td style="${th}" colspan="5">APROPRIAÇÃO DE MÃO DE OBRA</td></tr>
-      <tr><td style="${th}">NOME</td><td style="${th}width:70px;">DATA</td><td style="${th}width:60px;">INÍCIO</td><td style="${th}width:60px;">FIM</td><td style="${th}width:60px;">HORAS</td></tr>${/* html */ horas}</table>` : ""}
+      <tr><td style="${th}">NOME</td><td style="${th}width:70px;">DATA</td><td style="${th}width:60px;">INÍCIO</td><td style="${th}width:60px;">FIM</td><td style="${th}width:60px;">HORAS</td></tr>${  horas}</table>` : ""}
     <table style="width:100%;border-collapse:collapse;margin-top:28px;">
       <tr><td style="${th}" colspan="3">RESPONSÁVEIS TÉCNICOS</td></tr>
       <tr><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>EXECUTANTE</td><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>GESTOR DA MANUTENÇÃO</td><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>OPERADOR / ENCARREGADO</td></tr>
@@ -1384,7 +1384,7 @@ async function manImprimirOS(){
   catch(err){ aviso("app-aviso", "Não foi possível gerar o PDF: " + err.message, "erro"); }
 }
 
-/* ---------- ficha do equipamento: plano, semáforo e leituras (js/equipamentos.js chama) ---------- */
+
 async function manRenderResumoEquipamento(e, containerId){
   const box = $(containerId); if(!box || !e?.id) return;
   const [pv, lei] = await Promise.all([
@@ -1434,7 +1434,7 @@ async function manLeituraSalvar(){
   if(typeof carregarEquipamentos === "function") carregarEquipamentos(true);
 }
 
-/* ---------- atalhos da Sala de Comando ---------- */
+
 async function manAbrirPreset(nome, eqId){
   await manCarregarBase();
   if(nome === "os_atrasadas"){ _manView = "os"; $("man-f-status").value = "_atrasadas"; }
@@ -1445,7 +1445,7 @@ async function manAbrirPreset(nome, eqId){
   await carregarManutencao(false);
 }
 
-/* ---------- buscas de produto (ficha da OS e kit do item) ---------- */
+
 function manLigarBuscaProduto(inpId, listaId, aoEscolher){
   const inp = $(inpId), lista = $(listaId); if(!inp || !lista) return;
   inp.addEventListener("input", debounce(async () => {
@@ -1453,7 +1453,7 @@ function manLigarBuscaProduto(inpId, listaId, aoEscolher){
     if(t.length < 2){ lista.style.display = "none"; return; }
     const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
     const res = data || [];
-    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
+    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${  prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
       || `<div class="resultado-item vazio">Nenhum produto.</div>`;
     lista.style.display = "";
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => { ev.preventDefault(); inp.value = ""; lista.style.display = "none"; aoEscolher(res.find(x => x.id === d.dataset.id)); }));
@@ -1461,7 +1461,7 @@ function manLigarBuscaProduto(inpId, listaId, aoEscolher){
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 150));
 }
 
-/* ---------- ligação ---------- */
+
 function ligarManutencao(){
   if(!$("sec-manutencao")) return;
   document.querySelector('nav button[data-secao="manutencao"]')?.addEventListener("click", () => carregarManutencao(false));
@@ -1487,25 +1487,25 @@ function ligarManutencao(){
   $("man-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a")) return;
     const bGerar = e.target.closest(".man-prev-gerar"); if(bGerar){ manGerarPreventiva(bGerar.dataset.eq, null); return; }
-    const bPed = e.target.closest(".man-prev-pedido"); if(bPed){ if(!bPed.disabled){ bPed.disabled = true; manGerarPreventivaPedido(bPed.dataset.eq).finally(() => { bPed.disabled = false; }); } return; }   // fase 131b
+    const bPed = e.target.closest(".man-prev-pedido"); if(bPed){ if(!bPed.disabled){ bPed.disabled = true; manGerarPreventivaPedido(bPed.dataset.eq).finally(() => { bPed.disabled = false; }); } return; }
     const bPlano = e.target.closest(".man-prev-plano"); if(bPlano){ manAbrirPlano(bPlano.dataset.eq); return; }
     if(e.target.closest("button")) return;
     const os = e.target.closest("[data-id]"); if(os && _manView === "os"){ abrirManutencao(os.dataset.id); return; }
     const eq = e.target.closest("[data-eq]"); if(eq && (_manView === "preventivas" || _manView === "planos")){ manAbrirPlano(eq.dataset.eq); return; }
     const ck = e.target.closest("[data-check]"); if(ck && _manView === "checklists") manCheckAbrir(ck.dataset.check);
   });
-  // ficha
+
   $("btn-man-voltar")?.addEventListener("click", mostrarPainelManutencao);
   $("btn-man-salvar")?.addEventListener("click", () => comBotaoTravado("btn-man-salvar", salvarManutencao));
   document.querySelectorAll("#man-ficha .man-acao").forEach(b => b.addEventListener("click", () => comBotaoTravado(b.id, () => manAcao(b.dataset.acao))));
   $("btn-man-imprimir")?.addEventListener("click", () => comBotaoTravado("btn-man-imprimir", manImprimirOS));
   document.querySelectorAll("#man-notebook button").forEach(b => b.addEventListener("click", () => manAtivarTab(b.dataset.tab)));
   document.querySelectorAll("#man-ficha .sb-btn[data-goto-tab]").forEach(b => b.addEventListener("click", () => manAtivarTab(b.dataset.gotoTab)));
-  $("sb-man-sep")?.addEventListener("click", () => {   // lote S56b (#193)
+  $("sb-man-sep")?.addEventListener("click", () => {
     const id = $("sb-man-sep").dataset.sep;
     if(id && irParaSecao("separacoes") && typeof abrirSeparacao === "function") abrirSeparacao(id);
   });
-  // fase 131b: pedido de compra pela OS e nota da oficina
+
   $("btn-man-comprar")?.addEventListener("click", () => comBotaoTravado("btn-man-comprar", manComprar));
   $("btn-man-nota-oficina")?.addEventListener("click", () => comBotaoTravado("btn-man-nota-oficina", manNotaOficina));
   $("sb-man-ped")?.addEventListener("click", () => {
@@ -1527,7 +1527,7 @@ function ligarManutencao(){
   $("btn-man-mat-texto")?.addEventListener("click", () => manAddMat(null, $("man-mat-texto").value.trim()));
   $("btn-man-anexo-enviar")?.addEventListener("click", () => comBotaoTravado("btn-man-anexo-enviar", manEnviarAnexos));
   manLigarBuscaProduto("man-prod-busca", "man-prod-res", p => manAddMat(p, null));
-  // modais
+
   $("btn-man-item-fechar")?.addEventListener("click", () => { $("man-item-modal").style.display = "none"; renderManPlano(); });
   $("btn-man-item-salvar")?.addEventListener("click", () => comBotaoTravado("btn-man-item-salvar", manItemSalvar));
   $("man-i-unid")?.addEventListener("change", manItemUnidade);

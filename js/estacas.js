@@ -1,25 +1,25 @@
-/* ====================================================================
-   Módulo: Estacas (aba dentro da ficha de Obra)
-   Lista, cadastro manual, edição, exclusão e importação via PDF (IA).
-   Depende de: window.obraEditId (id da obra aberta na ficha)
-   ==================================================================== */
 
-let _estacas = [];            // cache das estacas da obra atual
-let _estacaEdit = null;       // estaca em edição no modal
-let _importPreview = [];      // estacas extraídas do PDF aguardando confirmação
-let _importUnidade = null;    // unidade das coordenadas do import (IA ou heurística): "m" | "cm" | "mm"
-let _importNomenclatura = null; // "BLOCO" | "ANEL" | "PILAR" | … detectado pela extrair-estacas-pdf v12 (rotula a coluna)
-/* Rótulo da coluna de agrupamento: "Bloco" por padrão; a IA informa a nomenclatura do projeto */
+
+
+
+
+
+let _estacas = [];
+let _estacaEdit = null;
+let _importPreview = [];
+let _importUnidade = null;
+let _importNomenclatura = null;
+
 function rotuloAgrupamento(){
   const n = String(_importNomenclatura || "").trim();
   if(!n) return "Bloco";
   return n.charAt(0).toUpperCase() + n.slice(1).toLowerCase();
 }
 
-// Heurística pela MENOR distância entre estacas nas unidades cruas do arquivo:
-// estacas nunca ficam a menos de ~0,5 m nem a mais de ~500 m da vizinha mais próxima.
-//   dmin < 50    → metros (ex.: 1,70)      50 ≤ dmin < 500 → centímetros (ex.: 170)
-//   dmin ≥ 500   → milímetros (ex.: 1700)
+
+
+
+
 function unidadeSugeridaCoords(lista){
   const pts = (lista || []).filter(e => e.coord_x != null && e.coord_y != null).map(e => [Number(e.coord_x), Number(e.coord_y)]);
   if(pts.length < 2) return null;
@@ -31,18 +31,18 @@ function unidadeSugeridaCoords(lista){
   if(!isFinite(dmin)) return null;
   return dmin < 50 ? "m" : dmin < 500 ? "cm" : "mm";
 }
-let _estView = "lista";       // vista atual da aba Estacas: lista | planta
-let _estExecId = null;        // estaca aberta no modal de execução rápida
-let _estacaFuncs = [];        // cache funcionários para select operador
-let _estacaEquips = [];       // cache equipamentos para select equipamento
-let _plantaState = { zoom: 1, panX: 0, panY: 0 }; // estado do pan/zoom
-let _plantaCor = "status";  // como colorir a planta: "status" | "maquina"
-const _mapaMaquinas = {};   // equipamento_id -> { codigo, nome }
-let _equipamentosCache = []; // equipamentos ativos da obra atual
-let _distanciaMinObra = 0;    // piso absoluto opcional da obra (0 = sem piso)
+let _estView = "lista";
+let _estExecId = null;
+let _estacaFuncs = [];
+let _estacaEquips = [];
+let _plantaState = { zoom: 1, panX: 0, panY: 0 };
+let _plantaCor = "status";
+const _mapaMaquinas = {};
+let _equipamentosCache = [];
+let _distanciaMinObra = 0;
 let _regraDist = { fatorHelice: 5, fatorEscavada: 2.5, piso: 0, fatorLocacao: 3 };
-// Coordenadas ficam gravadas na unidade do projeto (mm por padrão — DXF/PDF vêm assim).
-// Tudo que desenha ou mede converte para metros via _coordM().
+
+
 let _unidadeCoord = "mm";
 let _fatorCoord = 1000;
 const FATOR_UNIDADE = { mm: 1000, cm: 100, m: 1 };
@@ -57,9 +57,9 @@ function _aplicarUnidadeCoordUI(){
   if($("regra-unidade")) $("regra-unidade").value = _unidadeCoord;
 }
 
-// Regra de cura da CGL: distância mínima EIXO A EIXO = fator × Ø (maior Ø do par).
-// Hélice/raiz/demais 5×Ø; escavada × escavada 2,5×Ø. Piso opcional por obra.
-// Sem Ø conhecido nas duas estacas cai no piso ou, se não houver, nos 2,05 m históricos.
+
+
+
 function distMinEntre(a, b){
   const dA = Number(a?.diametro_mm) || 0, dB = Number(b?.diametro_mm) || 0;
   const diam = Math.max(dA, dB) / 1000;
@@ -69,8 +69,8 @@ function distMinEntre(a, b){
   const exigido = Math.max(porDiam, Number(_regraDist.piso) || 0);
   return exigido > 0 ? exigido : 2.05;
 }
-// Regra de LOCAÇÃO do projeto (independe de máquina/sequência): fatorLocacao × maior Ø do par.
-// null quando nenhuma das duas tem Ø (não dá para avaliar).
+
+
 function distMinLocacao(a, b){
   const diam = Math.max(Number(a?.diametro_mm) || 0, Number(b?.diametro_mm) || 0) / 1000;
   const f = Number(_regraDist.fatorLocacao) || 0;
@@ -78,7 +78,7 @@ function distMinLocacao(a, b){
 }
 function descreverRegraDist(){
   const f = (n) => Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-  // Só menciona o fator de escavada se a obra tiver estacas escavadas (obra de raiz/hélice não precisa ver isso)
+
   const tipos = new Set((_estacas || []).map(e => e.tipo).filter(Boolean));
   const temEsc = tipos.has("escavada"), soEsc = temEsc && tipos.size === 1;
   const exec = soEsc ? f(_regraDist.fatorEscavada) + "×Ø"
@@ -111,10 +111,10 @@ async function salvarRegraDist(){
   renderPlantaSVG();
   aviso("app-aviso","Regra de distância salva: " + descreverRegraDist(), "ok");
 }
-let _dxfParsed = null;        // resultado do parse do DXF: { entidades, layers }
-let _dxfCfg = null;           // config escolhida no modal DXF
+let _dxfParsed = null;
+let _dxfCfg = null;
 
-/* Paleta para colorir por máquina (cores de domínio, não semânticas) */
+
 const CORES_MAQUINA = ["#F4A020", "#1B5FA8", "#8B5CF6", "#2D7D46", "#C0392B",
                         "#0EA5E9", "#DB2777", "#65A30D", "#EA580C", "#4B5563"];
 function corDaMaquina(eqId){
@@ -124,9 +124,9 @@ function corDaMaquina(eqId){
   return esc(CORES_MAQUINA[i % CORES_MAQUINA.length]);
 }
 
-/* Cores da estaca por status na planta. Fluxo (fase 25):
-   prevista → em_execucao → perfuracao_concluida → armacao_aplicada
-   → executada(=concretada) → refugada. */
+
+
+
 const COR_STATUS = {
   prevista:             "var(--estaca-prevista)",
   em_execucao:          "var(--aviso)",
@@ -137,32 +137,32 @@ const COR_STATUS = {
 };
 const COR_HOJE = "var(--estaca-hoje)";
 
-/* Normaliza nome da estaca (UPPER + trim) — mesmo formato que o trigger SQL usa.
-   NOTA: NÃO remove BB. Em obras da CGL, BB1.1, B6.1_BB etc são nomes legítimos
-   (estacas reais distintas de B1.1 / B6.1). Só normaliza caixa e espaços. */
+
+
+
 function normalizarNumeroEstacaEstacas(s){
   if(!s) return "";
   return String(s).toUpperCase().trim().replace(/\s+/g, " ");
 }
 
-/* lote S44 (L5, chamado #78, Isaque): chave de SUGESTÃO entre o nome do campo e o do projeto.
-   Tira o prefixo de uma letra (T, E, P…), vírgula vira ponto e os zeros à esquerda da parte
-   numérica saem: T1.85 = E1.85 = 1,85 → "1.85"; P081 = E81 = 081 → "81"; T85 = E85 = 85 → "85".
-   Prefixo de duas letras ou mais fica (BB1.1 continua "BB1.1" e NÃO casa com B1.1 → "1.1";
-   regra de 26/05/2026). Serve só para sugerir: o nome original não é renomeado e a vinculação
-   é confirmada pela pessoa. Usada no import do RDO (js/rdo.js) e na reconciliação de órfãs. */
+
+
+
+
+
+
 function estNormalizarNome(s){
   let t = String(s || "").toUpperCase().replace(/\s+/g, "").replace(/,/g, ".");
   if(!t) return "";
-  t = t.replace(/^[A-Z](?=[\d.])/, "");          // uma letra de prefixo: T1.85 → 1.85, P081 → 081
-  t = t.replace(/^0+(?=\d)/, "");               // zeros à esquerda da parte numérica: 081 → 81 (1.05 fica 1.05)
+  t = t.replace(/^[A-Z](?=[\d.])/, "");
+  t = t.replace(/^0+(?=\d)/, "");
   return t;
 }
 
-/* Reduz a string a apenas dígitos (pra comparar "B66" vs "B6.6" → ambos viram "66") */
-// ---- Coordenadas/cotas vindas como texto no import (IA v4 escrevia
-// "Coordenadas N=2553,000 E=4253,940. CAE=99,350m, CPE=87,300m" em observacoes).
-// Sem coord_x/coord_y a planta vira grid por bloco e a checagem de 2,05 m nao roda.
+
+
+
+
 function _numBRImport(s){
   if(s == null) return null;
   let t = String(s).trim();
@@ -194,26 +194,26 @@ function soDigitos(s){
   return String(s||"").replace(/\D/g, "");
 }
 
-/* Score de similaridade entre nome do CSV e nome cadastrado (0..1)
-   Bônus / penalidade pra prefixo BB: ambos com BB ou ambos sem BB tem prioridade
-   sobre cruzamentos (BB11 deve sugerir BB1.1 antes de B1.1). */
+
+
+
 function scoreSimilaridade(csvNome, projNome){
   const a = String(csvNome||"").toUpperCase();
   const b = String(projNome||"").toUpperCase();
   if(a === b) return 1;
-  // lote S44 (#78): mesmo nome sem prefixo/zeros (T1.85 ≈ E1.85, P081 ≈ E81) vale mais que "mesmos dígitos"
+
   if(estNormalizarNome(a) && estNormalizarNome(a) === estNormalizarNome(b)) return 0.97;
   const da = soDigitos(a);
   const db = soDigitos(b);
   if(!da || !db) return 0;
-  // Indicador BB: começa com BB OU termina com _BB
+
   const isBBa = /^BB(?=\d)/.test(a) || /_BB$/.test(a);
   const isBBb = /^BB(?=\d)/.test(b) || /_BB$/.test(b);
-  const ajusteBB = (isBBa === isBBb) ? 0 : -0.15;  // penaliza cruzamento BB↔não-BB
+  const ajusteBB = (isBBa === isBBb) ? 0 : -0.15;
   let base = 0;
-  if(da === db)                                base = 0.95;     // mesmos dígitos
-  else if(da.includes(db) || db.includes(da))  base = 0.70;     // um contém o outro
-  else if(da[0] === db[0])                     base = 0.40;     // mesmo primeiro dígito
+  if(da === db)                                base = 0.95;
+  else if(da.includes(db) || db.includes(da))  base = 0.70;
+  else if(da[0] === db[0])                     base = 0.40;
   if(base === 0) return 0;
   return Math.max(0, Math.min(1, base + ajusteBB));
 }
@@ -232,8 +232,8 @@ const ESTACA_TIPOS = {
   outro: "Outro"
 };
 
-/* Tipos oferecidos nos selects (filtro, lote, modal, preview de importação): os ATIVOS
-   + os legados que ainda existem na obra. ESTACA_TIPOS completo segue só como rótulo. */
+
+
 const ESTACA_TIPOS_ATIVOS = ["helice_continua", "raiz", "escavada", "secante", "outro"];
 function tiposEstacaDisponiveis(extras){
   const emUso = new Set((_estacas || []).map(e => e.tipo).filter(Boolean));
@@ -263,7 +263,7 @@ const ESTACA_STATUS = {
   refugada:             { label: "Refurada",              cor: "vermelho" }
 };
 
-/* ---------- Carga ---------- */
+
 async function carregarEstacasDaObra(obraId){
   if(!obraId){
     _estacas = [];
@@ -271,13 +271,13 @@ async function carregarEstacasDaObra(obraId){
     renderEstacas();
     return;
   }
-  estCarregarTolerancia(); // hotfix 15b: tolerância do destaque executada × projeto
+  estCarregarTolerancia();
   const [estsRes, execsRes, equipsRes, obraRes] = await Promise.all([
     lerTudo(() => sb.from("estacas")
       .select("id,numero,tipo,status,diametro_mm,profundidade_m,profundidade_executada_m,projeto_pendente,cota_topo,cota_ponta,volume_concreto_m3,data_execucao,equipamento_id,operador_id,observacoes,alterada_em,alteracao_motivo,bloco,ordem_execucao,coord_x,coord_y,local,refuro_motivo")
       .eq("obra_id", obraId)
       .order("numero")),
-    // hotfix carga do banco: a view parte de rdo; o !inner varria todas as execuções a cada abertura
+
     sb.from("vw_rdo_execucoes_obra")
       .select("estaca_id, modalidade_execucao, obra_id")
       .eq("obra_id", obraId)
@@ -285,8 +285,8 @@ async function carregarEstacasDaObra(obraId){
     sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo"),
     sb.from("obras").select("distancia_minima_estacas,fator_dist_diametro,fator_dist_diametro_escavada,fator_dist_locacao,unidade_coordenadas").eq("id", obraId).single()
   ]);
-  // Guarda de corrida: se o usuário abriu OUTRA obra enquanto esta carregava,
-  // descarta o resultado (antes a ficha de B mostrava as estacas de A).
+
+
   if(obraId !== obraEditId) return;
   _equipamentosCache = equipsRes.error ? [] : (equipsRes.data || []);
   _regraDist = {
@@ -298,10 +298,10 @@ async function carregarEstacasDaObra(obraId){
   _distanciaMinObra = _regraDist.piso;
   _unidadeCoord = FATOR_UNIDADE[obraRes.data?.unidade_coordenadas] ? obraRes.data.unidade_coordenadas : "mm";
   _fatorCoord = FATOR_UNIDADE[_unidadeCoord];
-  _raizDados = null; // acompanhamento raiz recarrega com a obra
+  _raizDados = null;
   _estacas = estsRes.error ? [] : (estsRes.data || []);
-  montarSelectsTipoEstaca(); // tipos ativos + legados desta obra
-  // Conta execuções por estaca pra detectar "ALTERADO" (refuros, casamentos errados)
+  montarSelectsTipoEstaca();
+
   const contExec = {};
   (execsRes.data || []).forEach(re => {
     if(re.obra_id !== obraId) return;
@@ -309,26 +309,26 @@ async function carregarEstacasDaObra(obraId){
     contExec[re.estaca_id].total++;
     if(re.modalidade_execucao === "refuro") contExec[re.estaca_id].refuros++;
   });
-  // Anexa metadados nas estacas (não persiste — só uso em render)
+
   _estacas.forEach(e => {
     const c = contExec[e.id] || { total: 0, refuros: 0 };
     e._execs_total   = c.total;
     e._execs_refuros = c.refuros;
-    // ALTERADO se: tem refuro OU se tem 2+ execuções (suspeito)
+
     e._alterada = c.total > 1;
   });
   renderEstacas();
   carregarContagemReconciliacao(obraId);
 }
 
-/* ---------- Render ---------- */
-/* lote S61 (#267): "__sem__" = estacas sem local, na lista e no acompanhamento raiz (as abas da planta ainda voltam ao primeiro local) */
+
+
 function estCasaLocal(e, fLocal){
   if(!fLocal) return true;
   if(fLocal === "__sem__") return !(e.local || "").trim();
   return (e.local || "") === fLocal;
 }
-/* Filtro por local (1º nível acima do bloco) — só aparece quando a obra tem locais */
+
 function atualizarFiltroLocal(){
   const sel = $("est-f-local");
   if(!sel) return;
@@ -340,9 +340,9 @@ function atualizarFiltroLocal(){
   if(locais.includes(atual) || (atual === "__sem__" && semLocal)) sel.value = atual;
   sel.style.display = locais.length ? "" : "none";
 }
-/* Abas de local na planta: aparecem quando a obra tem 2+ locais; a aba seleciona o
-   filtro de local (mesmo filtro da lista/acompanhamento). Sem local escolhido, a
-   planta abre no primeiro local em vez de misturar projetos. */
+
+
+
 function renderAbasLocaisPlanta(){
   const box = $("planta-locais");
   const sel = $("est-f-local");
@@ -360,8 +360,8 @@ function renderAbasLocaisPlanta(){
     renderEstacas();
   }));
 }
-/* Botão "Acompanhamento raiz" só para obra com estacas raiz */
-/* Alterar tipo em lote: aplica às estacas que passam pelos filtros da lista (status/tipo/local/busca) */
+
+
 function estacasFiltradasLista(){
   const fStatus = $("est-f-status")?.value || "", fTipo = $("est-f-tipo")?.value || "", fLocal = $("est-f-local")?.value || "";
   const termo = ($("est-busca")?.value || "").trim().toLowerCase();
@@ -395,13 +395,13 @@ function atualizarBotaoRaiz(){
   if(!b) return;
   const nRaiz = _estacas.filter(e => e.tipo === "raiz").length;
   const tem = nRaiz > 0;
-  // Obra "de raiz" = raiz é o tipo predominante (08/09/2026: obra de hélice com 8 estacas
-  // classificadas como raiz pela IA virava painel raiz e escondia a lista).
+
+
   const predominante = tem && nRaiz * 2 > _estacas.length;
   b.style.display = tem ? "" : "none";
-  if(typeof ertBotao === "function") ertBotao(tem);   // fase 184a: vista Trechos (js/estacas_raiz_conf.js)
-  // Obra de raiz: o Acompanhamento substitui a Lista (Bernardo, 02/09/2026) — a aba Lista some
-  // e a vista padrão passa a ser o acompanhamento; em obra mista ou sem raiz, a Lista fica.
+  if(typeof ertBotao === "function") ertBotao(tem);
+
+
   const bLista = document.querySelector('[data-est-view="lista"]');
   if(bLista) bLista.style.display = predominante ? "none" : "";
   const irPara = (v) => { _estView = v; document.querySelectorAll("[data-est-view]").forEach(x => x.classList.toggle("ativo", x.dataset.estView === v)); };
@@ -409,18 +409,18 @@ function atualizarBotaoRaiz(){
   if(!tem && (_estView === "raiz" || _estView === "trechos")) irPara("lista");
 }
 
-/* ====================================================================
-   ACOMPANHAMENTO RAIZ (RG 11.1) — vista "Raiz" da aba Estacas.
-   Fase 154 (#255): colunas, ordem e grupos da planilha de acompanhamento da engenharia (A a U):
-   DADOS DE PROJETO   Projeto · Bloco · Estaca · Diâmetro · Comprimento estimado
-   EXECUÇÃO           Comprimento executado · Data · Revestimento · Tricone · Martelo · Refuro · TAG · Período
-   INJEÇÃO            Volume de concreto usinado · Data da injeção · Saco · M³ in loco · TAG · Turno
-   OUTROS DADOS       Medição (boletim em que a estaca entrou) · Observação
-   Tudo derivado do cadastro da estaca e do RDO (execuções, trechos de solo com ferramenta, turno do diário, medições) —
-   nada é digitado aqui. Só aparece quando a obra tem estacas do tipo raiz.
-   ==================================================================== */
-let _raizDados = null;   // { porEstaca: Map, medicoes: [], carregadoEm }
-let _raizLinhas = [];    // linhas da última renderização (CSV e Excel)
+
+
+
+
+
+
+
+
+
+
+let _raizDados = null;
+let _raizLinhas = [];
 
 const RAIZ_GRUPOS = [["DADOS DE PROJETO", 5, "proj"], ["EXECUÇÃO DA ESTACA", 8, "exec"], ["INJEÇÃO DA ESTACA", 6, "inj"], ["OUTROS DADOS", 2, "outros"]];
 const RAIZ_COLUNAS = ["Projeto", "Bloco", "Estaca", "Diâmetro (mm)", "Comprimento estimado (m)",
@@ -428,14 +428,14 @@ const RAIZ_COLUNAS = ["Projeto", "Bloco", "Estaca", "Diâmetro (mm)", "Comprimen
   "Volume de concreto usinado (m³)", "Data da injeção", "Saco (un)", "M³ (in loco)", "TAG", "Turno",
   "Medição", "Observação"];
 
-/* Fase 154: dia como o RDO grava. A tela do RDO e os imports gravam a hora digitada com +00 (hora de parede, sem fuso) e o app
-   a lê fatiando o texto (rdo.js, medicoes.js, histórico da estaca); converter para o fuso do navegador muda a hora e o dia. */
+
+
 function _raizDia(iso){
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(iso || ""));
   return m ? m[1] : null;
 }
-/* Fase 155a: o período vem da obra e do diário, nunca da hora. Obra de um turno é sempre DIURNO (o que passa do expediente é
-   hora extra do mesmo diário); obra de dois turnos usa o turno do diário (rdo.turno_campo; vazio conta como diurno). */
+
+
 function _raizPeriodo(turnoDiario, doisTurnos){
   return doisTurnos && turnoDiario === "noturno" ? "NOTURNO" : "DIURNO";
 }
@@ -448,9 +448,9 @@ function _raizTag(exec){
   return exec.maquina_codigo || "";
 }
 
-/* Fase 154: boletim em que a estaca entrou. Pelo item da medição ligado à execução; sem item, a medição da obra cujo período
-   contém a data da execução, da mesma TAG (equipamento_id; vazio, o "TAG nn" do número contra o código "nn-RZ") e, havendo, do
-   mesmo turno ("Diurno"/"Noturno" no número). Rejeitada não conta; boletim sem TAG (compressor, gerador) não é da estaca. */
+
+
+
 const _raizNumTag = (s) => { const m = String(s || "").match(/^\s*0*(\d+)/); return m ? m[1] : null; };
 function _raizMedicoes(execs){
   const achadas = new Map();
@@ -485,19 +485,19 @@ function _raizMedicaoRotulo(m){
 async function carregarAcompanhamentoRaiz(){
   if(!obraEditId) return null;
   const obraId = obraEditId;
-  // fase 154: tudo por obra e paginado (corte de 1.000 linhas; .in() com centenas de ids é recusado pela API)
+
   const [eRes, rRes, sRes, iRes, mRes, oRes] = await Promise.all([
     lerTudo(() => sb.from("vw_rdo_execucoes_obra")
       .select("id,estaca_id,estaca_numero,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,volume_concreto_m3,volume_injetado_m3,consumo_cimento_raiz,consumo_cimento_unidade,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,observacoes,rdo_id,obra_id,data,rdo_equipamento_id,numero_boletim_fisico,inclinacao,perfuracao_de_m,estaca_numero_corrigido,diametro_mm")
       .eq("obra_id", obraId)),
     lerTudo(() => sb.from("rdo").select("id,turno_campo").eq("obra_id", obraId)),
-    // fase 184a: ordem e classificação do solo para a vista Trechos (js/estacas_raiz_conf.js)
+
     lerTudo(() => sb.from("rdo_raiz_solo").select("id,execucao_id,ordem,inicio_ml,final_ml,ferramenta,classificacao,rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)),
-    // medição: só quem lê medição (pode_ler_financeiro); para os outros vem vazio e a coluna fica "—"
+
     lerTudo(() => sb.from("medicao_itens").select("execucao_id,medicao:medicao_id!inner(id,numero,status,periodo_inicio,periodo_fim,obra_id)")
       .eq("medicao.obra_id", obraId).not("execucao_id", "is", null)),
     sb.from("medicoes").select("id,numero,status,periodo_inicio,periodo_fim,equipamento_id").eq("obra_id", obraId),
-    sb.from("obras").select("dois_turnos").eq("id", obraId).maybeSingle()   // fase 155a
+    sb.from("obras").select("dois_turnos").eq("id", obraId).maybeSingle()
   ]);
   if(obraId !== obraEditId) return null;
   if(eRes.error){ aviso("app-aviso", "Não foi possível carregar as execuções: " + eRes.error.message, "erro"); return null; }
@@ -507,10 +507,10 @@ async function carregarAcompanhamentoRaiz(){
   execs.forEach(x => {
     x._turnoDiario = turnoRdo.get(x.rdo_id) || "";
     x._periodo = _raizPeriodo(x._turnoDiario, doisTurnos);
-    // obra de um turno: a medição não escolhe boletim pelo turno (o "Noturno" do número não vale para ela)
+
     x._turno = doisTurnos ? x._periodo.toLowerCase() : "";
   });
-  // ordem do furo: hora da perfuração; sem hora, o fim do dia do RDO
+
   const ordem = (x) => x.perfuracao_inicio ? String(x.perfuracao_inicio).slice(0, 19).replace(" ", "T") : `${x.data || "9999-12-31"}T23:59:59`;
   execs.sort((a, b) => ordem(a).localeCompare(ordem(b)));
 
@@ -519,7 +519,7 @@ async function carregarAcompanhamentoRaiz(){
   const medPorExec = new Map();
   (iRes.error ? [] : (iRes.data || [])).forEach(m => { if(m.medicao?.numero){ if(!medPorExec.has(m.execucao_id)) medPorExec.set(m.execucao_id, []); medPorExec.get(m.execucao_id).push(m.medicao); } });
 
-  // agrupa por estaca (id; sem id, pelo número normalizado)
+
   const porEstaca = new Map();
   execs.forEach(ex => {
     const chave = ex.estaca_id || ("n:" + normalizarNumeroEstacaEstacas(ex.estaca_numero || ""));
@@ -527,7 +527,7 @@ async function carregarAcompanhamentoRaiz(){
     porEstaca.get(chave).push({ ...ex, _solo: soloPorExec.get(ex.id) || [], _meds: medPorExec.get(ex.id) || [] });
   });
   _raizDados = { porEstaca, medicoes: mRes.error ? [] : (mRes.data || []), doisTurnos, carregadoEm: Date.now() };
-  if(typeof elpAoCarregar === "function") elpAoCarregar();   // resumo "só com injeção" da aba (js/estacas_perfuracao.js)
+  if(typeof elpAoCarregar === "function") elpAoCarregar();
   return _raizDados;
 }
 
@@ -535,11 +535,11 @@ function _raizLinha(est, execs){
   const num = (v) => (v == null || v === "" ? null : Number(v));
   const furos = execs.filter(x => (x.modalidade_execucao || "furo_normal") !== "refuro");
   const refuros = execs.filter(x => (x.modalidade_execucao || "furo_normal") === "refuro");
-  // execução = o último dia com perfuração (a linha só de injeção, sem metragem, não muda a data nem a TAG do furo)
+
   const comFuro = execs.filter(x => x.perfuracao_inicio || (num(x.profundidade_executada) || 0) > 0);
   const ultExec = comFuro.length ? comFuro[comFuro.length - 1] : (execs.length ? execs[execs.length - 1] : null);
-  // hotfix 15: profundidade_executada é a metragem DO DIA e perfuracao_ate_m o acumulado ao fim do dia.
-  // Comprimento executado = maior acumulado entre os furos (estaca de vários dias); total = soma dos dias, com refuros (só no resumo e no CSV).
+
+
   const acum = (x) => Math.max(num(x.perfuracao_ate_m) || 0, num(x.profundidade_executada) || 0);
   const compFinal = furos.length ? Math.max(...furos.map(acum)) : (ultExec ? acum(ultExec) : null);
   const compTotal = execs.reduce((s, x) => s + (num(x.profundidade_executada) || 0), 0);
@@ -550,7 +550,7 @@ function _raizLinha(est, execs){
     const k = ferr[s.ferramenta] != null ? s.ferramenta : "outro";
     ferr[k] += m;
   }));
-  // injeção: a execução com hora de injeção; sem hora, a última com algum dado de injeção
+
   const temInj = (x) => x.concretagem_inicio || num(x.volume_concreto_m3) != null || num(x.volume_injetado_m3) != null || String(x.consumo_cimento_raiz || "").trim();
   const comInj = execs.filter(temInj);
   const comHoraInj = comInj.filter(x => x.concretagem_inicio);
@@ -585,7 +585,7 @@ function _raizLinha(est, execs){
     obs, obsRdo,
     status: est.status
   };
-  // estaca só com injeção: EXECUÇÃO sem a data e a TAG da injeção, INJEÇÃO reconhecida pela etapa (js/estacas_perfuracao.js)
+
   return typeof elpAjustarLinha === "function" ? elpAjustarLinha(linha, est, execs) : linha;
 }
 
@@ -606,10 +606,10 @@ async function renderAcompanhamentoRaiz(){
 
   const fProf = $("est-f-prof")?.value || "";
   const linhas = lista.map(e => _raizLinha(e, _raizDados.porEstaca.get(e.id) || _raizDados.porEstaca.get("n:" + normalizarNumeroEstacaEstacas(e.numero || "")) || []))
-    // hotfix 15b: filtro "Executada ≠ projeto" também no acompanhamento raiz
+
     .filter(l => fProf !== "diferente" || estProfDiverge({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }));
   if(!linhas.length){ _raizLinhas = []; cont.innerHTML = `<p class="vazio">Nenhuma estaca raiz com profundidade executada diferente do projeto.</p>`; return; }
-  // ordena por projeto (local; sem local no fim), bloco, número
+
   const ord = (a, b) => ((!a.local) - (!b.local) || a.local.localeCompare(b.local, "pt-BR") || a.bloco.localeCompare(b.bloco, "pt-BR", { numeric: true }) || a.numero.localeCompare(b.numero, "pt-BR", { numeric: true }));
   linhas.sort(ord);
   _raizLinhas = linhas;
@@ -632,9 +632,9 @@ async function renderAcompanhamentoRaiz(){
     </div>`;
   if(semFerr) html += `<div class="dist-aviso neutro">ℹ️ ${semFerr} estaca(s) executada(s) sem trechos de solo com ferramenta no RDO — as colunas revestimento/tricone/martelo ficam zeradas até o RDO ser preenchido.</div>`;
 
-  // primeira coluna de cada grupo leva a borda à esquerda
+
   const INI = new Set([5, 13, 19]);
-  const td = (i, conteudo, cls = "", extra = "") => `<td class="${INI.has(i) ? "raiz-ini " : ""}${esc(cls)}"${/* html */ extra}>${/* html */ conteudo}</td>`;
+  const td = (i, conteudo, cls = "", extra = "") => `<td class="${INI.has(i) ? "raiz-ini " : ""}${esc(cls)}"${  extra}>${  conteudo}</td>`;
   const trs = linhas.map(l => {
     const stCls = l.status === "executada" ? "ok" : (l.status === "refugada" ? "perigo" : "");
     const exec = l.compFinal != null;
@@ -644,11 +644,11 @@ async function renderAcompanhamentoRaiz(){
           : esc(l.medicoesTxt))
       : "—";
     const c = [
-      l.local ? esc(l.local) : `<span class="raiz-sem-local" title="abra a estaca para informar o local de apropriação">sem local</span>`,   // lote S61 (#267)
+      l.local ? esc(l.local) : `<span class="raiz-sem-local" title="abra a estaca para informar o local de apropriação">sem local</span>`,
       esc(l.bloco || "—"),
       `<strong>${esc(l.numero)}</strong>${l.refuros ? ` <span class="badge-alterado" title="${esc(l.refuros)} refuro(s)">🔄${esc(l.refuros)}</span>` : ""}`,
       f0(l.diametro), f2(l.estimado),
-      (typeof elpCelulaRaiz === "function" && elpCelulaRaiz(l)) || (exec ? estCelulaExecutada({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }, f2) : "—"),   // etiqueta "falta a perfuração"
+      (typeof elpCelulaRaiz === "function" && elpCelulaRaiz(l)) || (exec ? estCelulaExecutada({ profundidade_m: l.estimado, profundidade_executada_m: l.compFinal }, f2) : "—"),
       dt(l.dataExec),
       exec ? f2(l.revest) : "—", exec ? f2(l.tricone) : "—", exec ? f2(l.martelo) : "—",
       l.refuroM ? f2(l.refuroM) : "—",
@@ -662,7 +662,7 @@ async function renderAcompanhamentoRaiz(){
     const NUM = new Set([3, 4, 5, 7, 8, 9, 10, 13, 15, 16]);
     return `<tr class="${stCls}">${c.map((v, i) => td(i, v, (NUM.has(i) ? "num" : "") + (i === 20 ? " meta" : ""),
         i === 20 && l.obsRdo ? ` title="${esc("RDO: " + l.obsRdo)}"` : "")).join("")}
-      <td class="col-acao">${/* html */ typeof elpBotaoLinha === "function" ? elpBotaoLinha(l.id) : ""}<button type="button" class="btn-sec btn-sm raiz-edit" data-id="${esc(l.id)}" title="abrir estaca">Abrir</button></td>
+      <td class="col-acao">${  typeof elpBotaoLinha === "function" ? elpBotaoLinha(l.id) : ""}<button type="button" class="btn-sec btn-sm raiz-edit" data-id="${esc(l.id)}" title="abrir estaca">Abrir</button></td>
     </tr>`;
   }).join("");
 
@@ -673,10 +673,10 @@ async function renderAcompanhamentoRaiz(){
   const tot = (i, v) => td(i, v, "num");
   html += `<div class="tabela-rola"><table class="raiz-tabela">
     <thead>
-      <tr class="raiz-cab-grupo">${/* html */ cabGrupos}<th></th></tr>
-      <tr>${/* html */ cabCols}<th></th></tr>
+      <tr class="raiz-cab-grupo">${  cabGrupos}<th></th></tr>
+      <tr>${  cabCols}<th></th></tr>
     </thead>
-    <tbody>${/* html */ trs}</tbody>
+    <tbody>${  trs}</tbody>
     <tfoot><tr><td colspan="5"><strong>Totais</strong></td>${tot(5, `<strong>${f2(soma("compFinal"))}</strong>`)}${td(6, "")}
       ${tot(7, `<strong>${f2(soma("revest"))}</strong>`)}${tot(8, `<strong>${f2(soma("tricone"))}</strong>`)}${tot(9, `<strong>${f2(soma("martelo"))}</strong>`)}${tot(10, `<strong>${f2(soma("refuroM"))}</strong>`)}
       ${td(11, "")}${td(12, "")}${tot(13, `<strong>${f2(soma("usinado"))}</strong>`)}${td(14, "")}${tot(15, `<strong>${f0(soma("sacos"))}</strong>`)}${tot(16, `<strong>${f2(soma("inLoco"))}</strong>`)}
@@ -684,13 +684,13 @@ async function renderAcompanhamentoRaiz(){
   </table></div>`;
   cont.innerHTML = html;
 
-  // lote S61 (#267): pelo id; pelo número abria a estaca de outro local com o mesmo número
+
   cont.querySelectorAll(".raiz-edit").forEach(b => b.addEventListener("click", () => abrirModalEstaca(b.dataset.id)));
   $("btn-raiz-csv")?.addEventListener("click", raizExportarCSV);
   $("btn-raiz-xlsx")?.addEventListener("click", raizExportarExcel);
 }
 
-/* Fase 154: valores crus da linha, na ordem das colunas A a U */
+
 function _raizValores(l){
   const d = (v) => (v ? String(v).slice(0, 10) : "");
   return [l.local || "sem local", l.bloco, l.numero, l.diametro, l.estimado,
@@ -710,7 +710,7 @@ function raizExportarCSV(){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
-/* Excel no leiaute da planilha da engenharia: linha 1 com os grupos mesclados, linha 2 com as colunas */
+
 function raizExportarExcel(){
   if(typeof XLSX === "undefined"){ aviso("app-aviso", "A biblioteca de planilhas não carregou; use o CSV.", "erro"); return; }
   const grupos = [];
@@ -728,40 +728,40 @@ function raizExportarExcel(){
 function renderEstacas(){
   atualizarFiltroLocal();
   atualizarBotaoRaiz();
-  // fase 175a: "Projeto do cliente" (enviar e ler o projeto, planilha e DXF) só para quem edita estaca
+
   { const bp = $("btn-est-projeto-cliente"); if(bp) bp.style.display = typeof ppjPodeEditar === "function" && ppjPodeEditar() ? "" : "none"; }
-  // Mini-stats. Fase 140 (decisão 3), regra única de avanço, a mesma de vw_sc_obra_andamento e vw_obra_producao:
-  // executadas ÷ (previstas − refuradas). Toda estaca cadastrada conta (inclusive BB), só a refurada sai; obra sem estaca
-  // cadastrada usa a meta da aba Parâmetros.
+
+
+
   const refuradas = _estacas.filter(e => e.status === "refugada").length;
   const total = (_estacas.length - refuradas) || (Number($("obr-meta-estacas")?.value) || 0);
   const exec  = _estacas.filter(e => e.status === "executada").length;
   const metragem = _estacas
     .filter(e => e.status === "executada")
-    .reduce((s, e) => s + (Number(e.profundidade_executada_m ?? e.profundidade_m) || 0), 0); // hotfix 15b: executada; sem execução vinculada, o cadastro
+    .reduce((s, e) => s + (Number(e.profundidade_executada_m ?? e.profundidade_m) || 0), 0);
   const pct = total ? Math.round((exec / total) * 1000) / 10 : 0;
   $("est-stat-total").textContent      = total;
   $("est-stat-executadas").textContent = exec;
   $("est-stat-pct").textContent        = `${num(pct)}%`;
   $("est-stat-metragem").textContent   = `${num(metragem)} m`;
-  // Linha "faltam": metros pelas estacas pendentes do projeto; sem profundidade no cadastro, meta de metros menos o executado
+
   const faltamN = Math.max(total - exec, 0);
   const pendentesM = _estacas.filter(e => e.status !== "executada" && e.status !== "refugada").reduce((s, e) => s + (Number(e.profundidade_m) || 0), 0);
   const faltamM = pendentesM > 0 ? pendentesM : Math.max((Number($("obr-meta-metros")?.value) || 0) - metragem, 0);
   if($("est-stat-faltam")) $("est-stat-faltam").textContent = total ? `faltam ${faltamN}${faltamM > 0 ? ` · ${num(Math.round(faltamM))} m` : ""}${refuradas ? ` · ${refuradas} refurada${refuradas === 1 ? "" : "s"} fora da conta` : ""}` : "";
-  if(typeof epjLinha === "function") epjLinha(_estacas);   // linha de estado da profundidade de projeto (js/estacas_prof_projeto.js)
-  if(typeof elpFaixa === "function") elpFaixa();   // estaca raiz só com injeção: resumo e aviso acima da lista (js/estacas_perfuracao.js)
+  if(typeof epjLinha === "function") epjLinha(_estacas);
+  if(typeof elpFaixa === "function") elpFaixa();
 
-  // Toggle vistas
+
   const wrapLista  = $("est-conteudo");
   const wrapPlanta = $("est-planta-wrap");
   const wrapRaiz   = $("est-raiz-wrap");
   const mostrar = (el, on) => { if(el) el.style.display = on ? "" : "none"; };
-  if(typeof ertVisao === "function" && ertVisao(_estView, [wrapLista, wrapPlanta, wrapRaiz, $("est-gps-wrap")])) return;   // fase 184a: vista Trechos (js/estacas_raiz_conf.js)
-  if(typeof egpVisao === "function" && egpVisao(_estView, [wrapLista, wrapPlanta, wrapRaiz])) return;   // visão GPS: js/estacas_gps.js cuida do próprio bloco
+  if(typeof ertVisao === "function" && ertVisao(_estView, [wrapLista, wrapPlanta, wrapRaiz, $("est-gps-wrap")])) return;
+  if(typeof egpVisao === "function" && egpVisao(_estView, [wrapLista, wrapPlanta, wrapRaiz])) return;
   if(_estView === "planta"){
     mostrar(wrapLista, false); mostrar(wrapRaiz, false); mostrar(wrapPlanta, true);
-    if(typeof ppjRender === "function" && ppjRender()) return;   // folha do projeto do cliente como fundo: js/planta_projeto.js desenha; sem folha na tela, segue o Esquema
+    if(typeof ppjRender === "function" && ppjRender()) return;
     renderPlantaSVG();
     return;
   }
@@ -775,7 +775,7 @@ function renderEstacas(){
   const cont = wrapLista;
   if(!cont) return;
 
-  // Filtros
+
   const fStatus = $("est-f-status")?.value || "";
   const fTipo   = $("est-f-tipo")?.value || "";
   const fLocal  = $("est-f-local")?.value || "";
@@ -800,10 +800,10 @@ function renderEstacas(){
   }
   const linhas = filtradas.map(e => {
     const st = ESTACA_STATUS[e.status] || { label: e.status, cor: "cinza" };
-    // Badge ALTERADO (estilo Maya). Prioridade:
-    //   1) Alteração manual registrada (alterada_em) — sempre aparece, mesmo com 1 execução
-    //   2) Tem refuro vinculado — verde
-    //   3) Múltiplas execuções sem refuro — laranja "suspeito"
+
+
+
+
     let badgeAlt = "";
     if(e.alterada_em){
       const quando = new Date(e.alterada_em).toLocaleDateString("pt-BR");
@@ -815,16 +815,16 @@ function renderEstacas(){
       badgeAlt = `<span class="badge-alterado badge-alterado-suspeito" title="${esc(e._execs_total)} execuções vinculadas — verificar na Conferência">⚠️ ALTERADO</span>`;
     }
     return `<tr data-id="${esc(e.id)}">
-      <td>${esc(e.numero)} ${/* html */ badgeAlt}</td>
+      <td>${esc(e.numero)} ${  badgeAlt}</td>
       <td class="meta">${esc([e.local, e.bloco].filter(Boolean).join(" · ") || "—")}</td>
       <td>${esc(ESTACA_TIPOS[e.tipo] || e.tipo || "—")}</td>
       <td class="num">${e.diametro_mm != null ? num(e.diametro_mm) : "—"}</td>
       <td class="num">${e.profundidade_m != null ? num(e.profundidade_m) : "—"}</td>
-      <td class="num">${/* html */ (typeof elpCelulaLista === "function" && elpCelulaLista(e)) || estCelulaExecutada(e)}</td>
+      <td class="num">${  (typeof elpCelulaLista === "function" && elpCelulaLista(e)) || estCelulaExecutada(e)}</td>
       <td>${dataBR(e.data_execucao)}</td>
       <td><span class="tag ${esc(st.cor)}">${esc(st.label)}</span></td>
       <td class="col-acao">
-        ${/* html */ typeof elpBotaoLinha === "function" ? elpBotaoLinha(e.id) : ""}
+        ${  typeof elpBotaoLinha === "function" ? elpBotaoLinha(e.id) : ""}
         <button type="button" class="btn-sec btn-sm est-edit" data-id="${esc(e.id)}">Editar</button>
         <button type="button" class="btn-sec btn-sm est-del txt-perigo" data-id="${esc(e.id)}">Excluir</button>
       </td>
@@ -836,7 +836,7 @@ function renderEstacas(){
       <th class="num" title="Profundidade executada (maior &quot;até&quot; das execuções). Destaque quando difere do projeto além da tolerância">Executada (m)</th>
       <th>Execução</th><th>Status</th><th class="col-acao"></th>
     </tr></thead>
-    <tbody>${/* html */ linhas}</tbody></table></div>`;
+    <tbody>${  linhas}</tbody></table></div>`;
 
   cont.querySelectorAll(".est-edit").forEach(b => {
     b.addEventListener("click", () => abrirModalEstaca(b.dataset.id));
@@ -846,10 +846,10 @@ function renderEstacas(){
   });
 }
 
-/* ---------- Profundidade executada × projeto (hotfix 15b, 05/10/2026) ----------
-   profundidade_m é o PROJETO (a execução não altera); profundidade_executada_m vem do gatilho.
-   Diferença além da tolerância da empresa (empresa_config.tolerancia_faixa_prof_m, 0,50 m)
-   é destacada: execução abaixo do projeto costuma ser impenetrável ou rocha. */
+
+
+
+
 let _estTolProf = 0.5, _estTolCarregada = false;
 async function estCarregarTolerancia(){
   if(_estTolCarregada) return;
@@ -857,22 +857,22 @@ async function estCarregarTolerancia(){
   if(data && data.tolerancia_faixa_prof_m != null){ _estTolProf = Number(data.tolerancia_faixa_prof_m); _estTolCarregada = true; }
 }
 function estProfDiferenca(e){
-  // executada 0 = execução lançada sem profundidade (ex.: import do RG 11.1): não é divergência
+
   if(!(Number(e.profundidade_executada_m) > 0) || e.profundidade_m == null) return null;
   return Math.round((Number(e.profundidade_executada_m) - Number(e.profundidade_m)) * 100) / 100;
 }
 function estProfDiverge(e){ const d = estProfDiferenca(e); return d != null && Math.abs(d) > _estTolProf; }
-/* Fase 75 ("Para regularizar"): executada sem profundidade lançada e projeto a confirmar.
-   Os outros valores do filtro ("", "diferente") não restringem aqui. */
+
+
 function estFiltroProfRegularizar(e, f){
-  if(typeof elpFiltro === "function"){ const r = elpFiltro(e, f); if(r != null) return r; }   // estaca raiz só com injeção, ou perfurada sem injeção (js/estacas_perfuracao.js)
+  if(typeof elpFiltro === "function"){ const r = elpFiltro(e, f); if(r != null) return r; }
   if(f === "sem_profundidade") return e.status === "executada" && !(Number(e.profundidade_executada_m) > 0);
   if(f === "projeto_pendente") return !!e.projeto_pendente;
-  if(f === "sem_diametro") return !(Number(e.diametro_mm) > 0) && e.status !== "refugada"; // lote S46 (#96)
+  if(f === "sem_diametro") return !(Number(e.diametro_mm) > 0) && e.status !== "refugada";
   return true;
 }
-/* Chamado pelo Início antes de abrir a obra: o filtro fica no select e a planta (que não
-   filtra por profundidade) volta para a lista. */
+
+
 function estDefinirFiltroProf(valor){
   const sel = $("est-f-prof");
   if(sel) sel.value = valor || "";
@@ -888,10 +888,10 @@ function estCelulaExecutada(e, fmt){
   const tag = estProfDiverge(e)
     ? ` <span class="tag ${d < 0 ? "ambar" : "azul"}" title="${d < 0 ? "Abaixo do projeto (impenetrável, rocha?)" : "Acima do projeto"}">${d > 0 ? "+" : ""}${num(d)}</span>`
     : "";
-  return esc(fmt(e.profundidade_executada_m)) + /* html */ tag;
+  return esc(fmt(e.profundidade_executada_m)) +   tag;
 }
 
-/* ---------- Modal Estaca (nova / editar) ---------- */
+
 function abrirModalEstaca(id, aba){
   _estacaEdit = id ? _estacas.find(e => e.id === id) : null;
   const e = _estacaEdit || {};
@@ -908,9 +908,9 @@ function abrirModalEstaca(id, aba){
       ? `Executada: ${num(e.profundidade_executada_m)} m${d != null && estProfDiverge(e) ? ` (${d > 0 ? "+" : ""}${num(d)} m do projeto)` : ""}`
       : "";
   }
-  const pend = $("est-proj-pend"); // fase 75
+  const pend = $("est-proj-pend");
   if(pend) pend.style.display = e.projeto_pendente ? "" : "none";
-  if(typeof elpFicha === "function") elpFicha(_estacaEdit);   // "falta lançar a perfuração" e o botão (js/estacas_perfuracao.js)
+  if(typeof elpFicha === "function") elpFicha(_estacaEdit);
   if($("est-proj-confirmado")) $("est-proj-confirmado").checked = false;
   $("est-cota-topo").value      = e.cota_topo ?? "";
   $("est-cota-ponta").value     = e.cota_ponta ?? "";
@@ -923,7 +923,7 @@ function abrirModalEstaca(id, aba){
   $("est-coord-y").value        = e.coord_y ?? "";
   $("est-obs").value            = e.observacoes || "";
   preencherSelectMaquinasEstaca("est-equipamento", e.equipamento_id);
-  // fase 94 (#81): aba Histórico só em estaca existente; abre direto nela quando pedido (planta → 📜 Histórico)
+
   const tabH = $("est-tab-historico");
   if(tabH) tabH.style.display = id ? "" : "none";
   ativarTabEstacaModal(aba === "historico" && id ? "historico" : "dados");
@@ -932,7 +932,7 @@ function abrirModalEstaca(id, aba){
   $("est-modal").style.display = "flex";
 }
 
-/* Preenche um select com as máquinas (equipamentos) disponíveis */
+
 async function preencherSelectMaquinasEstaca(selId, selecionado){
   const sel = $(selId);
   if(!sel) return;
@@ -953,8 +953,8 @@ function fecharModalEstaca(){
 
 async function salvarEstaca(){
   if(!obraEditId){ aviso("app-aviso","Salve a obra antes de adicionar estacas.","erro"); return; }
-  // Mesma normalização (UPPER + trim) dos imports e do trigger SQL: sem isso,
-  // "b12" manual e "B12" importada coexistiam (UNIQUE é case-sensitive).
+
+
   const numero = normalizarNumeroEstacaEstacas($("est-numero").value);
   if(!numero){ aviso("app-aviso","Informe o nº da estaca.","erro"); return; }
 
@@ -977,12 +977,12 @@ async function salvarEstaca(){
     coord_y: $("est-coord-y").value !== "" ? Number($("est-coord-y").value) : null,
     observacoes: $("est-obs").value.trim() || null
   };
-  // fase 75: gravar a profundidade de projeto (alterada ou confirmada) tira o "projeto a confirmar"
+
   if(_estacaEdit?.projeto_pendente && reg.profundidade_m != null
      && (reg.profundidade_m !== Number(_estacaEdit.profundidade_m) || $("est-proj-confirmado")?.checked))
     reg.projeto_pendente = false;
 
-  // fase 184b (#302): nome novo igual ao de outra estaca do mesmo local e bloco → oferece juntar (execuções vão para a outra)
+
   if(_estacaEdit && _estacaEdit.id){
     const chave = (e) => [(e.local || "").trim().toUpperCase(), (e.bloco || "").trim().toUpperCase(), (e.numero || "").trim().toUpperCase()].join("|");
     const outra = (_estacas || []).find(e => e.id !== _estacaEdit.id && chave(e) === chave(reg));
@@ -1006,7 +1006,7 @@ async function salvarEstaca(){
   if(result.error){
     const m = (result.error.message||"").toLowerCase();
     if(m.includes("duplicate") || m.includes("unique"))
-      aviso("app-aviso", `Já existe a estaca ${($("est-numero")?.value || "").trim().toUpperCase()} ${($("est-local")?.value || "").trim() ? "no local " + ($("est-local").value || "").trim() : "sem local"} nesta obra.`, "erro");   // lote S61 (#267)
+      aviso("app-aviso", `Já existe a estaca ${($("est-numero")?.value || "").trim().toUpperCase()} ${($("est-local")?.value || "").trim() ? "no local " + ($("est-local").value || "").trim() : "sem local"} nesta obra.`, "erro");
     else
       aviso("app-aviso","Não foi possível salvar: "+result.error.message,"erro");
     return;
@@ -1019,15 +1019,15 @@ async function salvarEstaca(){
 async function excluirEstaca(id){
   if(!confirm("Excluir esta estaca? A ação não pode ser desfeita.")) return;
   const { error } = await sb.from("estacas").delete().eq("id", id);
-  // fase 184b (#302): com execução ligada o banco recusa ("tem N execuções: descarte ou realoque antes")
+
   if(error){ aviso("app-aviso","Não foi possível excluir: "+error.message,"erro"); return; }
   aviso("app-aviso","Estaca excluída.","ok");
   await carregarEstacasDaObra(obraEditId);
 }
 
-/* lote S45 (L6): o tipo que a prévia mostra é o que grava. Estaca sem tipo no arquivo (IA, planilha) herda o tipo
-   mais usado nas estacas já cadastradas da obra; obra sem estaca cadastrada → "outro". Antes o select mostrava
-   "Hélice contínua" (1ª opção, nada selecionado) e a gravação escrevia "outro". */
+
+
+
 function tipoPadraoImportEstacas(){
   const cont = {};
   (_estacas || []).forEach(e => { if(e.tipo && e.tipo !== "outro") cont[e.tipo] = (cont[e.tipo] || 0) + 1; });
@@ -1037,10 +1037,10 @@ function tipoPadraoImportEstacas(){
 function renderImportPreview(observacoes, meta, contId = "est-import-preview-conteudo", wrapId = "est-import-preview"){
   if($(wrapId)) $(wrapId).style.display = "";
   const tipoPadrao = tipoPadraoImportEstacas();
-  _importPreview.forEach(e => { if(!e.tipo){ e.tipo = tipoPadrao; e._tipoHerdado = true; } });   // lote S45 (L6)
+  _importPreview.forEach(e => { if(!e.tipo){ e.tipo = tipoPadrao; e._tipoHerdado = true; } });
   const herdados = _importPreview.filter(e => e._tipoHerdado).length;
   const temCoord = _importPreview.some(e => e.coord_x != null || e.coord_y != null);
-  // Unidade das coordenadas: detectada (IA/heurística) e confirmada pela pessoa; vale para a obra inteira
+
   let blocoUnidade = "";
   if(temCoord){
     const sug = _importUnidade || unidadeSugeridaCoords(_importPreview) || _unidadeCoord || "mm";
@@ -1055,7 +1055,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   const obs = observacoes ? `<p style="font-size:var(--txt-sm);color:var(--txt-fraco);margin:0 0 8px;"><b>Notas da IA:</b> ${esc(observacoes)}</p>` : "";
   const metaTxt = meta ? `<p style="font-size:var(--txt-xs);color:var(--txt-sutil);margin:0 0 8px;">Modelo: ${esc(meta.modelo)} · Tokens: ${esc(meta.tokens_input)}/${esc(meta.tokens_output)}</p>` : "";
 
-  // Conta quantas precisam de cada campo
+
   const semDiam = _importPreview.filter(e => e.diametro_mm == null).length;
   const semProf = _importPreview.filter(e => e.profundidade_m == null).length;
   const semTipo = _importPreview.filter(e => e.tipo === "outro").length;
@@ -1079,7 +1079,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     observacoes: "Observações"
   };
 
-  // Barra de reorganização de colunas
+
   const reorganizador = `
     <div style="background:#f0f7ff;border:1px solid #b6d4f5;border-radius:6px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:var(--txt-sm);color:var(--acao-txt);margin-bottom:8px;font-weight:600;">🔀 Reorganizar colunas (se a IA interpretou errado)</div>
@@ -1110,7 +1110,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
       </div>
     </div>`;
 
-  // Barra de mass-edit
+
   const massEdit = `
     <div style="background:var(--sup-2);border:1px solid var(--borda-forte);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:var(--txt-sm);color:var(--txt-sec);margin-bottom:8px;font-weight:600;">📋 Aplicar a TODAS as estacas</div>
@@ -1161,19 +1161,19 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
   }).join("");
 
   $(contId).innerHTML = `
-    ${obs}${metaTxt}${/* html */ blocoUnidade}${alerta}${reorganizador}${massEdit}
+    ${obs}${metaTxt}${  blocoUnidade}${alerta}${reorganizador}${massEdit}
     <div class="tabela-rola">
       <table>
         <thead><tr>
           <th>Nº</th><th>Local</th><th title="Agrupamento da estaca (${esc(String(_importNomenclatura || "bloco").toLowerCase())}) — faz parte da identidade: E1 do BL-01 e E1 do BL-02 são estacas diferentes">${esc(rotuloAgrupamento())}</th><th>Tipo</th><th>Ø (mm)</th><th>Prof. (m)</th>${temCoord ? "<th>X</th><th>Y</th>" : ""}<th>Obs.</th><th></th>
         </tr></thead>
-        <tbody>${/* html */ linhas}</tbody>
+        <tbody>${  linhas}</tbody>
       </table>
     </div>
     <p style="margin-top:8px;font-size:var(--txt-sm);color:var(--txt-fraco);">${_importPreview.length} estacas${temCoord ? " (com coordenadas)" : " extraídas"}. Edite o que precisar antes de importar. <span style="background:var(--aviso-bg);padding:1px 6px;">células amarelas</span> = campos vazios.</p>
   `;
 
-  // listeners de edição inline
+
   $(contId).querySelectorAll(".prev-input").forEach(inp => {
     inp.addEventListener("input", (e) => {
       const idx = Number(e.target.dataset.idx);
@@ -1181,7 +1181,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
       let v = e.target.value;
       if(field === "diametro_mm" || field === "profundidade_m" || field === "coord_x" || field === "coord_y") v = v !== "" ? Number(v) : null;
       _importPreview[idx][field] = v;
-      if(field === "tipo") delete _importPreview[idx]._tipoHerdado;   // lote S45 (L6): escolhido à mão deixa de contar como herdado
+      if(field === "tipo") delete _importPreview[idx]._tipoHerdado;
     });
   });
   $(contId).querySelectorAll(".prev-del").forEach(b => {
@@ -1191,7 +1191,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     });
   });
 
-  // Reorganizador de colunas
+
   function aplicarReorg(acao, a, b){
     if(a === b && acao !== "limpar"){
       aviso("app-aviso","Escolha colunas diferentes pra A e B.","erro");
@@ -1216,7 +1216,7 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     aplicarReorg("swap", "numero", "bloco");
   });
 
-  // Mass-edit
+
   $("btn-mass-aplicar")?.addEventListener("click", () => {
     const soVazios = $("mass-so-vazios").checked;
     const vDiam = $("mass-diam").value !== "" ? Number($("mass-diam").value) : null;
@@ -1235,16 +1235,16 @@ function renderImportPreview(observacoes, meta, contId = "est-import-preview-con
     aviso("app-aviso", `Aplicado a ${alterados || _importPreview.length} estacas.`, "ok");
     renderImportPreview(observacoes, meta, contId, wrapId);
   });
-  if(typeof epjImportBloco === "function") epjImportBloco(contId);   // caixa "atualizar a profundidade de projeto das que já existem" (js/estacas_prof_projeto.js)
+  if(typeof epjImportBloco === "function") epjImportBloco(contId);
 }
 
-/* Aviso visível dentro do modal de import aberto (PDF ou DXF) — o app-aviso do topo
-   fica atrás do modal e a pessoa não vê o erro ("parecia que não tinha clicado"). */
+
+
 function avisoImport(msg, tipo){
   aviso("app-aviso", msg, tipo);
   const aberto = id => { const m = $(id); return m && m.style.display !== "none" && m.style.display !== ""; };
-  // lote S45 (L6): cada modal tem o seu aviso — est-dxf-aviso no DXF, est-xlsx-aviso na planilha (o modal do PDF saiu na
-  // fase 175a); est-import-aviso é o do modal de reconciliação (fallback).
+
+
   const alvo = aberto("est-dxf-modal") ? $("est-dxf-aviso") : aberto("est-xlsx-modal") ? $("est-xlsx-aviso")
              : null;
   const el = alvo || $("est-import-aviso");
@@ -1282,8 +1282,8 @@ async function confirmarImportEstacas(){
     }));
   if(!regs.length){ avisoImport("Nenhuma estaca válida (todas sem nº).","erro"); return; }
 
-  // Duplicidade = mesmo número NO MESMO LOCAL E NO MESMO AGRUPAMENTO (bloco/anel/pilar):
-  // E1 do BL-01 e E1 do BL-02 são estacas diferentes (índice único do banco: obra, local, bloco, numero).
+
+
   const chave = (r) => String(r.local || "").trim().toUpperCase() + "|" + String(r.bloco || "").trim().toUpperCase() + "|" + String(r.numero || "").toUpperCase();
   const existentes = new Set(_estacas.map(chave));
   const vistos = new Set();
@@ -1292,8 +1292,8 @@ async function confirmarImportEstacas(){
     const k = chave(r);
     if(existentes.has(k) || vistos.has(k)) repetidos.push(r); else { vistos.add(k); novos.push(r); }
   });
-  // "Atualizar as que já existem" (js/estacas_prof_projeto.js): com a caixa da prévia marcada, as repetidas não são ignoradas,
-  // recebem a profundidade de projeto da lista pela RPC (prévia do banco e confirmação lá); as novas entram como sempre
+
+
   const epjAtualiza = typeof epjImportMarcado === "function" && epjImportMarcado();
   if(!novos.length){
     if(epjAtualiza){
@@ -1308,7 +1308,7 @@ async function confirmarImportEstacas(){
   if(repetidos.length && !confirm(`${repetidos.length} estaca(s) já existem no mesmo local/${rotuloAgrupamento().toLowerCase()} e ${epjAtualiza ? "não entram de novo: só a profundidade de projeto delas é atualizada, com a prévia a seguir" : "serão ignoradas"} (${repetidos.slice(0,8).map(r => [r.bloco, r.numero].filter(Boolean).join(" ")).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?`)) return;
   regs.length = 0; novos.forEach(r => regs.push(r));
 
-  // lote S46 (#96): estaca sem Ø na lista recebe o Ø do serviço da obra (único por tipo) ou o informado aqui
+
   const semDiam = regs.filter(r => !(Number(r.diametro_mm) > 0));
   for(const tipo of [...new Set(semDiam.map(r => r.tipo))]){
     const doTipo = semDiam.filter(r => r.tipo === tipo);
@@ -1317,7 +1317,7 @@ async function confirmarImportEstacas(){
     if(d != null) doTipo.forEach(r => { r.diametro_mm = d; });
   }
 
-  // Unidade das coordenadas escolhida no preview → obra (a planta converte para metros a partir dela)
+
   const unSel = $("import-unidade")?.value || _importUnidade;
   if(unSel && FATOR_UNIDADE[unSel] && unSel !== _unidadeCoord && regs.some(r => r.coord_x != null)){
     const { error: errUn } = await sb.from("obras").update({ unidade_coordenadas: unSel }).eq("id", obraEditId);
@@ -1328,7 +1328,7 @@ async function confirmarImportEstacas(){
     avisoImport("Erro ao importar: " + error.message,"erro");
     return;
   }
-  const epjFim = epjAtualiza ? await epjImportGravar() : null;   // as que já existiam: profundidade de projeto pela RPC, depois de as novas entrarem
+  const epjFim = epjAtualiza ? await epjImportGravar() : null;
   avisoImport(`${regs.length} estacas importadas com sucesso.${epjFim ? " " + epjFim.msg : ""}`, epjFim && !epjFim.ok ? "aviso" : "ok");
   _importPreview = [];
   fecharModalImport();
@@ -1347,13 +1347,13 @@ function abrirModalImport(){
   $("est-import-preview").style.display = "none";
   $("est-import-preview-conteudo").innerHTML = "";
   $("est-import-modal").style.display = "flex";
-  estOfertaLeituraOrc();   // fase 174b
+  estOfertaLeituraOrc();
 }
 
-/* Fase 174b (D12): obra criada de um orçamento cujo projeto foi lido no assistente. A extrair-estacas-pdf procura a leitura
-   guardada (contrato do cliente → orçamento → orcamento_arquivos → ia_leituras), sem PDF e sem chamada paga. Contrato sem
-   orçamento ligado: a oferta não aparece (nunca se liga por número ou nome). A prévia é a mesma do PDF; nada é gravado
-   antes de "Importar todas". */
+
+
+
+
 async function estOfertaLeituraOrc(){
   const box = $("est-orc-leitura");
   if(!box) return;
@@ -1366,7 +1366,7 @@ async function estOfertaLeituraOrc(){
     const n = data.leituras.reduce((s, l) => s + (Number(l.estacas) || 0), 0);
     $("est-orc-leitura-txt").textContent = `Projeto lido no orçamento ${data.orcamento_numero || ""}: ${n} estaca(s). Sem nova leitura paga.`;
     box.style.display = "";
-  } catch(_){ /* sem oferta */ }
+  } catch(_){   }
 }
 async function estUsarLeituraOrc(){
   const btn = $("btn-est-orc-leitura");
@@ -1376,7 +1376,7 @@ async function estUsarLeituraOrc(){
       "A busca da leitura do orçamento demorou demais. Tente de novo.", 60000);
     if(error){
       let msg = error.message;
-      try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){ /* corpo ilegível */ }
+      try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){   }
       throw new Error(msg);
     }
     if(data?.error) throw new Error(data.error);
@@ -1403,13 +1403,13 @@ function fecharModalImport(){
   _importPreview = [];
 }
 
-/* ====================================================================
-   IMPORTAÇÃO por PLANILHA (lote S43, chamado #55 do Jonathan)
-   Projeto sem numeração, ou que a IA não leu direito, entra por .xlsx/.csv (SheetJS já carregado) ou
-   pelas linhas coladas do Excel. Modelo para baixar. A prévia (renderImportPreview) e a gravação
-   (confirmarImportEstacas: nome único por obra/local/agrupamento, duplicados avisados, unidade das
-   coordenadas confirmada) são as mesmas do import por PDF.
-   ==================================================================== */
+
+
+
+
+
+
+
 const EST_XLSX_COLUNAS = ["Nome", "Ø (mm)", "Prof. projeto (m)", "Bloco", "Local", "X", "Y"];
 function abrirModalXlsx(){
   limparAvisoImport();
@@ -1431,7 +1431,7 @@ function baixarModeloXlsx(){
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "ESTACAS");
   XLSX.writeFile(wb, "modelo-estacas-projeto.xlsx");
 }
-/* cabeçalho → campo da estaca (aceita variações: "Nº", "Estaca", "Diâmetro", "Profundidade", "Anel/Pilar", "Leste/Norte"…) */
+
 function estXlsxCampoDoCabecalho(h){
   const t = String(h || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ø/g, "diam").replace(/[^a-z0-9]/g, "");
   if(!t) return null;
@@ -1458,7 +1458,7 @@ function estXlsxTipo(v){
   if(t.includes("escav")) return "escavada";
   return null;
 }
-/* texto colado ou CSV → matriz de células (tab, ponto e vírgula ou vírgula; aspas simples do Excel) */
+
 function estXlsxLinhasDoTexto(txt){
   const linhas = String(txt || "").replace(/\r/g, "").split("\n").filter(l => l.trim() !== "");
   if(!linhas.length) return [];
@@ -1466,14 +1466,14 @@ function estXlsxLinhasDoTexto(txt){
   const sep = primeira.includes("\t") ? "\t" : (primeira.split(";").length > primeira.split(",").length ? ";" : ",");
   return linhas.map(l => l.split(sep).map(c => c.trim().replace(/^"(.*)"$/, "$1")));
 }
-/* matriz → _importPreview, no mesmo formato do import por PDF */
+
 function estXlsxMontarPreview(matriz){
   const linhas = matriz.filter(r => Array.isArray(r) && r.some(c => String(c ?? "").trim() !== ""));
   if(!linhas.length) return { erro: "Planilha vazia." };
   let mapa = linhas[0].map(estXlsxCampoDoCabecalho);
   const temCabecalho = mapa.includes("numero") || mapa.filter(Boolean).length >= 2;
   if(!temCabecalho){
-    // sem cabeçalho reconhecido: ordem do modelo (Nome, Ø, Prof., Bloco, Local, X, Y)
+
     mapa = ["numero", "diametro_mm", "profundidade_m", "bloco", "local", "coord_x", "coord_y"];
   }
   if(!mapa.includes("numero")) return { erro: "Não achei a coluna Nome (ou Nº / Estaca). Use o modelo ou nomeie a primeira coluna como Nome." };
@@ -1532,17 +1532,17 @@ async function lerPlanilhaEstacas(){
   avisoImport(`${_importPreview.length} estaca(s) lida(s)${r.temCabecalho ? "" : " (sem cabeçalho: ordem do modelo)"} · colunas: ${r.colunas.join(", ")}${r.avisos.length ? " · " + r.avisos.join(" · ") : ""}. Revise antes de importar.`, r.avisos.length ? "aviso" : "ok");
 }
 
-/* ====================================================================
-   IMPORTAÇÃO via DXF (CAD) — parser client-side, sem servidor.
-   DWG é binário proprietário da Autodesk; peça ao projetista/CAD para
-   exportar em DXF (ou use o ODA File Converter, grátis) antes de importar.
-   ==================================================================== */
 
-/* Limpa formatação de MTEXT (\A1;  {\fArial...}  \P  etc) deixando só o texto */
+
+
+
+
+
+
 function _limparTextoDXF(s){
   if(!s) return "";
   return String(s)
-    .replace(/\\[A-Za-z][^;]*;/g, "")   // \A1;  \fArial|b0;  \H2.5x;
+    .replace(/\\[A-Za-z][^;]*;/g, "")
     .replace(/[{}]/g, "")
     .replace(/\\P/g, " ")
     .replace(/\\~/g, " ")
@@ -1550,8 +1550,8 @@ function _limparTextoDXF(s){
     .trim();
 }
 
-/* Parser DXF: percorre pares (código, valor) e extrai entidades da seção
-   ENTITIES. Retorna { entidades:[{tipo,layer,x,y,r,texto,bloco}], layers:{} } */
+
+
 function parsearDXF(texto){
   const L = texto.split(/\r\n|\r|\n/);
   const ents = [];
@@ -1586,12 +1586,12 @@ function parsearDXF(texto){
       case 40: cur.r = parseFloat(v); break;
       case 1:  cur.texto = _limparTextoDXF(cur.texto + " " + v); break;
       case 3:  cur.texto = _limparTextoDXF(cur.texto + v); break;
-      case 2:  cur.bloco = v; break;   // nome do bloco no INSERT
+      case 2:  cur.bloco = v; break;
     }
   }
   if(inEntities && cur) ents.push(cur);
 
-  // Resumo por layer (contagem por tipo relevante)
+
   const layers = {};
   const TIPOS = ["POINT","CIRCLE","INSERT","TEXT","MTEXT"];
   ents.forEach(e => {
@@ -1630,13 +1630,13 @@ async function lerArquivoDXF(){
   }
 }
 
-/* Monta a UI de seleção: qual layer/tipo = estacas, e de onde vêm os rótulos */
+
 function renderDXFConfig(){
   const box = $("est-dxf-config");
   if(!box || !_dxfParsed) return;
   const layers = _dxfParsed.layers;
 
-  // Layers candidatas a geometria (têm POINT/CIRCLE/INSERT)
+
   const geomLayers = Object.entries(layers)
     .filter(([,c]) => c.POINT + c.CIRCLE + c.INSERT > 0)
     .sort((a,b) => (b[1].POINT+b[1].CIRCLE+b[1].INSERT) - (a[1].POINT+a[1].CIRCLE+a[1].INSERT));
@@ -1685,7 +1685,7 @@ function renderDXFConfig(){
   $("btn-dxf-extrair")?.addEventListener("click", extrairEstacasDXF);
 }
 
-/* Casa cada geometria (estaca) com o texto mais próximo dentro de um raio */
+
 function extrairEstacasDXF(){
   if(!_dxfParsed){ avisoImport("Leia um DXF primeiro.","erro"); return; }
   const layerGeom = $("dxf-layer-geom")?.value;
@@ -1707,10 +1707,10 @@ function extrairEstacasDXF(){
       (modoTexto === "__auto__" || e.layer === modoTexto));
   }
 
-  // Raio de busca do rótulo: metade do espaçamento médio entre estacas
+
   let raio = Infinity;
   if(geoms.length > 1){
-    // diagonal do bbox / sqrt(n) ≈ espaçamento típico
+
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
     geoms.forEach(g => { if(g.x<minX)minX=g.x; if(g.x>maxX)maxX=g.x; if(g.y<minY)minY=g.y; if(g.y>maxY)maxY=g.y; });
     const diag = Math.hypot(maxX-minX, maxY-minY) || 1;
@@ -1731,7 +1731,7 @@ function extrairEstacasDXF(){
 
   _importPreview = geoms.map(g => {
     const numero = acharTexto(g.x, g.y);
-    // círculo: diâmetro em unidades do desenho — não assume mm (deixa o usuário definir)
+
     return {
       numero: numero || "",
       bloco: blocoDaLayer ? layerGeom : "",
@@ -1776,11 +1776,11 @@ function fecharModalDXF(){
   _dxfParsed = null;
 }
 
-/* ====================================================================
-   PLANTA SVG
-   ==================================================================== */
 
-/* Extrai bloco de uma estaca (pode estar no campo bloco ou em observacoes "Bloco X · ...") */
+
+
+
+
 function extrairBloco(e){
   if(e.bloco) return e.bloco;
   const obs = e.observacoes || "";
@@ -1788,9 +1788,9 @@ function extrairBloco(e){
   return m ? m[1] : "";
 }
 
-/* Gera posições em grid agrupando por bloco quando estacas não têm coordenadas */
+
 function gerarGridParaSemCoords(estacas){
-  // Agrupa por bloco
+
   const blocos = {};
   estacas.forEach(e => {
     const k = extrairBloco(e) || "_SEM_BLOCO";
@@ -1800,7 +1800,7 @@ function gerarGridParaSemCoords(estacas){
   const nomesBlocos = Object.keys(blocos).sort();
   const numBlocos = nomesBlocos.length;
 
-  // Layout: distribui blocos numa grade (até 3 colunas) e dentro do bloco as estacas em mini-grid
+
   const VIEW_W = 600, VIEW_H = 400;
   const PADDING = 25;
   const colsB = Math.min(3, numBlocos);
@@ -1808,7 +1808,7 @@ function gerarGridParaSemCoords(estacas){
   const blocoW = (VIEW_W - PADDING * 2) / colsB;
   const blocoH = (VIEW_H - PADDING * 2) / rowsB;
 
-  const posicoes = new Map(); // id -> {x, y, blocoNome, blocoOriginX, blocoOriginY, blocoW, blocoH}
+  const posicoes = new Map();
 
   nomesBlocos.forEach((nome, bIdx) => {
     const estsBloco = blocos[nome];
@@ -1818,7 +1818,7 @@ function gerarGridParaSemCoords(estacas){
     const y0 = PADDING + bRow * blocoH;
     const innerPad = 18;
     const inW = blocoW - innerPad * 2;
-    const inH = blocoH - innerPad * 2 - 12; // -12 pro título do bloco
+    const inH = blocoH - innerPad * 2 - 12;
     const n = estsBloco.length;
     const cols = Math.ceil(Math.sqrt(n * (inW / Math.max(inH, 1))));
     const rows = Math.ceil(n / cols);
@@ -1836,10 +1836,10 @@ function gerarGridParaSemCoords(estacas){
   return posicoes;
 }
 
-/* Auto-escala: mapeia coordenadas reais (UTM/metros, valores grandes) para
-   o viewBox 600×400, preservando proporção e invertendo o eixo Y (norte pra
-   cima). Retorna uma função (x,y) -> {vx, vy}. As coordenadas reais continuam
-   intactas nos dados (a validação de distância usa os metros de verdade). */
+
+
+
+
 function _transformCoords(estsComCoord){
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   estsComCoord.forEach(e => {
@@ -1854,19 +1854,19 @@ function _transformCoords(estsComCoord){
   const offY = (VH - s*dy) / 2;
   const tf = (x, y) => ({
     vx: offX + (Number(x) - minX) * s,
-    vy: offY + (maxY - Number(y)) * s   // flip Y
+    vy: offY + (maxY - Number(y)) * s
   });
-  // s = pixels do viewBox por metro; usado para desenhar em escala real
+
   Object.assign(tf, { s, minX, maxX, minY, maxY, offX, offY });
   return tf;
 }
 
-/* ---------- Desenho "de projeto" (escala real) ----------
-   Com coordenadas reais a planta deixa de ser um mapa de bolinhas e vira um
-   desenho de locação: estaca no diâmetro real, malha em metros com eixos
-   N/E, contorno dos blocos, cotas entre vizinhas (vermelhas abaixo da
-   distância mínima), barra de escala e norte. Tudo dentro do <g> de
-   pan/zoom, então escala e cotas continuam verdadeiras ao dar zoom. */
+
+
+
+
+
+
 function raioEstacaPx(e, s){
   const d = Number(e.diametro_mm) || 400;
   return Math.max(6, Math.min(40, (d / 2000) * s));
@@ -1890,7 +1890,7 @@ function desenharFundoProjeto(g, ns, tf, ests){
   const fundo = mk("g", {}, "planta-fundo");
   g.appendChild(fundo);
 
-  // 1) Malha em metros reais + eixos (E embaixo, N à esquerda)
+
   const passo = _passoGrade(s);
   const wx0 = tf.minX - tf.offX / s, wx1 = tf.minX + (600 - tf.offX) / s;
   const wy0 = tf.maxY - (400 - tf.offY) / s, wy1 = tf.maxY + tf.offY / s;
@@ -1910,12 +1910,12 @@ function desenharFundoProjeto(g, ns, tf, ests){
     if(forte){ const t = mk("text", { x: 3, y: vy - 2 }, "planta-eixo"); t.textContent = "N " + _fmtM(y, passo); fundo.appendChild(t); }
   }
 
-  // 2) Contorno dos blocos (caixa das estacas do bloco + folga de 35 cm)
+
   const porBloco = new Map();
   ests.forEach(e => {
     const b = String(e.bloco || "").trim();
     if(!b) return;
-    const k = String(e.local || "") + "|" + b; // BL03 existe em mais de um local
+    const k = String(e.local || "") + "|" + b;
     if(!porBloco.has(k)) porBloco.set(k, []);
     porBloco.get(k).push(e);
   });
@@ -1927,10 +1927,10 @@ function desenharFundoProjeto(g, ns, tf, ests){
       x1 = Math.min(x1, p.vx - r); x2 = Math.max(x2, p.vx + r);
       y1 = Math.min(y1, p.vy - r); y2 = Math.max(y2, p.vy + r);
     });
-    // folga de 35 cm em volta da estaca, limitada para o contorno não sair da área (PAD 56 − raio 40)
+
     const folga = Math.min(Math.max(8, 0.35 * s), 28);
     fundo.appendChild(mk("rect", { x: x1 - folga, y: y1 - folga, width: (x2 - x1) + 2*folga, height: (y2 - y1) + 2*folga, rx: 2 }, "planta-bloco"));
-    // rótulo acima do contorno; se o bloco encosta na borda de cima, vai para dentro
+
     const ly = (y1 - folga - 3) < 8 ? Math.max(y1 - folga + 9, 9) : (y1 - folga - 3);
     const lx = Math.max(x1 - folga + 2, 3);
     const t = mk("text", { x: lx, y: ly }, "planta-bloco-lbl");
@@ -1938,8 +1938,8 @@ function desenharFundoProjeto(g, ns, tf, ests){
     fundo.appendChild(t);
   });
 
-  // 3) Cotas entre vizinhas (2 mais próximas de cada estaca; em obras grandes
-  //    só os pares abaixo do mínimo) — vermelho abaixo da distância mínima
+
+
   const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
   const todas = ests.length <= 80;
   const pares = new Map();
@@ -1947,7 +1947,7 @@ function desenharFundoProjeto(g, ns, tf, ests){
     const viz = [];
     for(let j = 0; j < ests.length; j++){
       if(i === j) continue;
-      if((ests[i].local || "") !== (ests[j].local || "")) continue; // cotas só dentro do mesmo local
+      if((ests[i].local || "") !== (ests[j].local || "")) continue;
       const d = dist(ests[i], ests[j]);
       if(todas || d < distMinEntre(ests[i], ests[j])) viz.push({ j, d });
     }
@@ -1961,10 +1961,10 @@ function desenharFundoProjeto(g, ns, tf, ests){
     const pa = tf(p.a.coord_x, p.a.coord_y), pb = tf(p.b.coord_x, p.b.coord_y);
     const ra = raioEstacaPx(p.a, s), rb = raioEstacaPx(p.b, s);
     const dx = pb.vx - pa.vx, dy = pb.vy - pa.vy, L = Math.hypot(dx, dy) || 1;
-    if(L <= ra + rb + 6) return; // círculos encostados: sem espaço para a cota
+    if(L <= ra + rb + 6) return;
     const ux = dx / L, uy = dy / L;
     const x1 = pa.vx + ux * ra, y1 = pa.vy + uy * ra, x2 = pb.vx - ux * rb, y2 = pb.vy - uy * rb;
-    // vermelho: fere a locação (3×Ø) · âmbar: abaixo da distância de execução (cura) · cinza: ok
+
     const loc = distMinLocacao(p.a, p.b);
     const cls = (loc && p.d < loc) ? " perigo" : (p.d < distMinEntre(p.a, p.b) ? " atencao" : "");
     fundo.appendChild(mk("line", { x1, y1, x2, y2 }, "planta-cota" + cls));
@@ -1973,7 +1973,7 @@ function desenharFundoProjeto(g, ns, tf, ests){
     fundo.appendChild(t);
   });
 
-  // 4) Barra de escala (canto inferior esquerdo) + norte (canto superior direito)
+
   const escM = _passoGrade(s, 60);
   const escPx = escM * s, bx = 14, by = 378;
   fundo.appendChild(mk("line", { x1: bx, y1: by, x2: bx + escPx, y2: by }, "planta-escala"));
@@ -1989,14 +1989,14 @@ function desenharFundoProjeto(g, ns, tf, ests){
   fundo.appendChild(tn);
 }
 
-// Duas regras geométricas, independentes da sequência:
-//  • LOCAÇÃO (projeto): todo par deve ter d >= fatorLocacao × Ø → abaixo disso é erro de projeto (vermelho)
-//  • EXECUÇÃO (cura): pares abaixo de fator × Ø não podem ser executados em seguida pela mesma máquina (âmbar)
+
+
+
 function _avisoParesProximos(comCoord){
   if(comCoord.length < 2) return "";
   const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
-  // Sanidade da unidade: distâncias (já em metros) todas < 5 cm ou a vizinha mais próxima > 500 m
-  // significam que a unidade da obra não bate com a das coordenadas gravadas.
+
+
   {
     let dmin = Infinity, dmax = 0;
     for(let i = 0; i < comCoord.length; i++) for(let j = i + 1; j < comCoord.length; j++){
@@ -2013,7 +2013,7 @@ function _avisoParesProximos(comCoord){
   for(let i = 0; i < comCoord.length; i++){
     for(let j = i + 1; j < comCoord.length; j++){
       const a = comCoord[i], b = comCoord[j];
-      if((a.local || "") !== (b.local || "")) continue; // locais diferentes = plantas diferentes
+      if((a.local || "") !== (b.local || "")) continue;
       const d = dist(a, b);
       const loc = distMinLocacao(a, b);
       if(loc && d < loc){ locacao.push({ a, b, d, min: loc }); continue; }
@@ -2040,11 +2040,11 @@ function renderPlantaSVG(){
   if(!svg) return;
   const ns = "http://www.w3.org/2000/svg";
 
-  // Uma aba por LOCAL (= um PDF de projeto): plantas de locais diferentes têm
-  // referenciais diferentes e não cabem na mesma escala (Bernardo, 02/09/2026).
+
+
   renderAbasLocaisPlanta();
 
-  // Aplica filtros (mesma lógica que a lista)
+
   const fStatus = $("est-f-status")?.value || "";
   const fTipo   = $("est-f-tipo")?.value || "";
   const fLocal  = $("est-f-local")?.value || "";
@@ -2058,11 +2058,11 @@ function renderPlantaSVG(){
       if(!alvo.includes(termo)) return false;
     }
     return true;
-  }).map(_coordM); // planta e cotas sempre em metros
+  }).map(_coordM);
 
   svg.innerHTML = "";
 
-  // Mapa de máquinas presentes (para colorir/legenda por máquina)
+
   Object.keys(_mapaMaquinas).forEach(k => delete _mapaMaquinas[k]);
   _estacas.forEach(e => {
     if(e.equipamento_id && !_mapaMaquinas[e.equipamento_id]){
@@ -2072,16 +2072,16 @@ function renderPlantaSVG(){
   });
   renderLegendaPlanta();
   renderConflitosDistancia(filtradas);
-  preencherRegraDistUI(); // texto da regra depende dos tipos de estaca carregados
+  preencherRegraDistUI();
 
-  // Grupo que carrega o transform pan/zoom
+
   const g = document.createElementNS(ns, "g");
   g.setAttribute("id", "planta-g");
   g.setAttribute("transform", `translate(${_plantaState.panX}, ${_plantaState.panY}) scale(${_plantaState.zoom})`);
   svg.appendChild(g);
 
-  // Delegação de eventos: 1 handler para todos os círculos (em vez de 3 por
-  // estaca recriados a cada render). Lookup O(1) pelo data-id.
+
+
   const porId = new Map(filtradas.map(e => [e.id, e]));
   const alvo = (ev) => {
     const c = ev.target && ev.target.closest ? ev.target.closest(".estaca-circ") : null;
@@ -2100,11 +2100,11 @@ function renderPlantaSVG(){
   let grid = null;
   let usandoGrid = false;
   if(semCoords.length && semCoords.length === filtradas.length){
-    // todas sem coords: usa grid pra todas
+
     grid = gerarGridParaSemCoords(filtradas);
     usandoGrid = true;
   } else if(semCoords.length){
-    // mistura: grid só pras sem coord (posiciona no rodapé)
+
     grid = gerarGridParaSemCoords(semCoords);
   }
 
@@ -2117,7 +2117,7 @@ function renderPlantaSVG(){
     g.appendChild(txt);
   }
 
-  // Se usando grid, desenha contornos dos blocos
+
   if(usandoGrid){
     const blocosVistos = new Set();
     grid.forEach(p => {
@@ -2148,12 +2148,12 @@ function renderPlantaSVG(){
 
   const hoje = hojeISO();
 
-  // Transform de auto-escala a partir das estacas com coordenadas reais
+
   const comCoordF = filtradas.filter(e => e.coord_x != null && e.coord_y != null);
   const tf = comCoordF.length ? _transformCoords(comCoordF) : null;
   if(tf) desenharFundoProjeto(g, ns, tf, comCoordF);
 
-  // Desenha cada estaca (com coords reais auto-escaladas OU do grid)
+
   filtradas.forEach(e => {
     let x, y;
     if(e.coord_x != null && e.coord_y != null && tf){
@@ -2169,13 +2169,13 @@ function renderPlantaSVG(){
     desenharEstaca(g, ns, e, x, y, hoje, raio);
   });
 
-  // Atualiza barra de progresso (sobre o que está filtrado)
+
   const total = filtradas.length;
   const exec = filtradas.filter(e => e.status === "executada").length;
   const pct = total ? Math.round((exec/total) * 100) : 0;
   const fill = $("planta-progresso-fill");
   if(fill) fill.style.width = pct + "%";
-  // Resumo da planta para leitores de tela (o SVG é decorativo sem isso)
+
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", `Planta de locação: ${exec} de ${total} estacas executadas (${pct}%)`);
   const txt = $("planta-progresso-texto");
@@ -2189,7 +2189,7 @@ function renderPlantaSVG(){
   }
 }
 
-/* Legenda da planta: por status (fixa) ou por máquina (dinâmica) */
+
 function renderLegendaPlanta(){
   const box = $("planta-legenda");
   if(!box) return;
@@ -2200,8 +2200,8 @@ function renderLegendaPlanta(){
       return `<span><i style="background:${corDaMaquina(id)}"></i>${esc(m.codigo || m.nome || "?")}</span>`;
     }).join("") || `<span class="meta">nenhuma máquina atribuída às estacas</span>`;
   } else {
-    // A amostra da legenda repete o CONTORNO usado nos círculos (cor + forma):
-    // quem não distingue as cores ainda separa prevista / em andamento / executada / refurada
+
+
     const contorno = {
       prevista: "1.5px solid var(--sup-3)",
       em_execucao: "2px dashed var(--txt-sec)", perfuracao_concluida: "2px dashed var(--txt-sec)", armacao_aplicada: "2px dashed var(--txt-sec)",
@@ -2213,15 +2213,15 @@ function renderLegendaPlanta(){
   }
 }
 
-/* Validação de distância (regra de cura): dentro da sequência de cada
-   máquina (ordenada por ordem_execucao), acusa quando uma estaca é
-   executada perto demais de outra recém-concretada da mesma máquina.
-   Só roda quando há coordenadas; sem elas, orienta como habilitar. */
+
+
+
+
 function renderConflitosDistancia(filtradas){
   const box = $("planta-conflitos");
   if(!box) return;
 
-  const comCoord = _estacas.filter(e => e.coord_x != null && e.coord_y != null).map(_coordM); // em metros
+  const comCoord = _estacas.filter(e => e.coord_x != null && e.coord_y != null).map(_coordM);
   const comOrdem = _estacas.filter(e => e.ordem_execucao != null && e.equipamento_id);
   const htmlProx = _avisoParesProximos(comCoord);
   if(comCoord.length < 2 || comOrdem.length < 2){
@@ -2233,7 +2233,7 @@ function renderConflitosDistancia(filtradas){
 
   const dist = (a, b) => Math.hypot(Number(a.coord_x) - Number(b.coord_x), Number(a.coord_y) - Number(b.coord_y));
 
-  // agrupa por máquina, ordena pela sequência
+
   const porMaq = {};
   comCoord.forEach(e => {
     if(e.ordem_execucao == null || !e.equipamento_id) return;
@@ -2241,11 +2241,11 @@ function renderConflitosDistancia(filtradas){
   });
 
   const conflitos = [];
-  // Para cada estaca, checa contra a ANTERIOR na sequência da mesma máquina
+
   Object.values(porMaq).forEach(lista => {
     lista.sort((a, b) => a.ordem_execucao - b.ordem_execucao);
     for(let i = 1; i < lista.length; i++){
-      if((lista[i].local || "") !== (lista[i - 1].local || "")) continue; // mudou de local/planta
+      if((lista[i].local || "") !== (lista[i - 1].local || "")) continue;
       const d = dist(lista[i], lista[i - 1]);
       const min = distMinEntre(lista[i - 1], lista[i]);
       if(d < min){
@@ -2281,12 +2281,12 @@ function desenharEstaca(g, ns, e, x, y, hoje, r = 11){
   circ.setAttribute("cx", x);
   circ.setAttribute("cy", y);
   circ.setAttribute("r", r);
-  // via style, e não setAttribute: atributo de apresentação do SVG ignora tokens CSS
+
   circ.style.fill = cor;
-  // Redundância à cor (daltônicos): o CONTORNO codifica o status —
-  // prevista: fino e claro · em andamento (execução/perfuração/armação):
-  // tracejado · executada: contorno escuro sólido · refurada: tracejado curto
-  // escuro. Assim executada ≠ refurada mesmo sem enxergar verde/vermelho.
+
+
+
+
   const traco = {
     prevista:             { stroke: "var(--sup-0)",   w: "1.5", dash: "" },
     em_execucao:          { stroke: "var(--txt-sec)", w: "2",   dash: "4 2" },
@@ -2299,14 +2299,14 @@ function desenharEstaca(g, ns, e, x, y, hoje, r = 11){
   circ.style.strokeWidth = traco.w;
   if(traco.dash) circ.setAttribute("stroke-dasharray", traco.dash);
   circ.dataset.id = e.id;
-  // Acessível: nome + status lidos pelo leitor de tela; tabindex/role vêm do
-  // observer global (core.js) e Enter dispara o click delegado.
+
+
   circ.setAttribute("role", "button");
   circ.setAttribute("aria-label", `Estaca ${e.numero || ""}, ${(ESTACA_STATUS[e.status] || {}).label || e.status || ""}`);
   g.appendChild(circ);
 
   const label = document.createElementNS(ns, "text");
-  // Número dentro do círculo quando cabe; acima dele quando a estaca é pequena na escala
+
   label.setAttribute("class", "estaca-label" + (r < 8 ? " fora" : ""));
   label.setAttribute("x", x);
   label.setAttribute("y", r < 8 ? y - r - 3 : y);
@@ -2315,11 +2315,11 @@ function desenharEstaca(g, ns, e, x, y, hoje, r = 11){
   label.textContent = so_num || (e.numero || "").slice(0,3);
   g.appendChild(label);
 
-  // Sem listeners por círculo: click/hover são delegados no <g id="planta-g">
-  // (renderPlantaSVG) — antes eram 3 listeners × N estacas a cada tecla da busca.
+
+
 }
 
-/* ---------- Tooltip ---------- */
+
 function mostrarTooltipPlanta(ev, e){
   let tip = $("est-planta-tooltip");
   if(!tip){
@@ -2341,7 +2341,7 @@ function esconderTooltipPlanta(){
   if(tip) tip.remove();
 }
 
-/* ---------- Pan & Zoom ---------- */
+
 function aplicarPlantaTransform(){
   const g = document.getElementById("planta-g");
   if(g) g.setAttribute("transform",
@@ -2350,7 +2350,7 @@ function aplicarPlantaTransform(){
 function plantaZoom(delta, cx, cy){
   const novo = Math.max(0.5, Math.min(5, _plantaState.zoom + delta));
   if(cx != null && cy != null){
-    // mantém o ponto sob o cursor estável
+
     _plantaState.panX = cx - (cx - _plantaState.panX) * (novo / _plantaState.zoom);
     _plantaState.panY = cy - (cy - _plantaState.panY) * (novo / _plantaState.zoom);
   }
@@ -2388,7 +2388,7 @@ function configurarPanZoom(){
     plantaZoom(e.deltaY < 0 ? 0.15 : -0.15, cx, cy);
   }, { passive: false });
 
-  // Touch (mobile) - pan com 1 dedo, pinch com 2
+
   let touchStart = null, pinchDist = null;
   svg.addEventListener("touchstart", (e) => {
     if(e.touches.length === 1){
@@ -2420,9 +2420,9 @@ function configurarPanZoom(){
   svg.addEventListener("touchend", () => { touchStart = null; pinchDist = null; });
 }
 
-/* ====================================================================
-   MODAL DE EXECUÇÃO RÁPIDA (clique na bolinha da planta)
-   ==================================================================== */
+
+
+
 
 async function carregarAuxiliaresExec(){
   if(_estacaFuncs.length && _estacaEquips.length) return;
@@ -2432,7 +2432,7 @@ async function carregarAuxiliaresExec(){
   ]);
   _estacaFuncs = f.data || [];
   _estacaEquips = eq.data || [];
-  // popula selects
+
   $("exec-equipamento").innerHTML = `<option value="">— nenhum —</option>` +
     _estacaEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome)}</option>`).join("");
   $("exec-operador").innerHTML = `<option value="">— nenhum —</option>` +
@@ -2467,7 +2467,7 @@ function fecharModalExecucao(){
   _estExecId = null;
 }
 
-/* fase 141: Refurada só com motivo. Quem escolhe Refurada no campo Status e salva também passa pelo modal. */
+
 let _estRfChips = null;
 function abrirModalRefurar(){
   if(!_estExecId) return;
@@ -2493,7 +2493,7 @@ async function salvarRefurar(){
   if(!id) return;
   if(!motivo){ aviso("app-aviso", "Escolha o motivo da Refurada.", "erro"); return; }
   if(motivo === "outro" && obs.length < 5){ aviso("app-aviso", "Com o motivo Outro, escreva o que houve (ao menos 5 caracteres).", "erro"); $("est-rf-obs").focus(); return; }
-  // o que estava preenchido na execução vale; o status é da RPC, que também grava o motivo e o histórico
+
   const { error: errCampos } = await sb.from("estacas").update(execCamposDoModal()).eq("id", id);
   if(errCampos){ aviso("app-aviso", "Erro ao salvar: " + errCampos.message, "erro"); return; }
   const { data, error } = await sb.rpc("estaca_refurar", { p_estaca: id, p_motivo: motivo, p_obs: obs || null });
@@ -2516,27 +2516,27 @@ async function salvarExecucao(novoStatus){
   await carregarEstacasDaObra(obraEditId);
 }
 
-/* ====================================================================
-   RECONCILIAÇÃO DE ESTACAS ÓRFÃS (execuções sem estaca vinculada)
-   ==================================================================== */
 
-let _recOrfas = [];      // execuções órfãs
-let _recPrevs = [];      // estacas previstas da obra
-let _recVinculos = {};   // { execucao_id: estaca_id_escolhida }
-let _confDuplicadas = []; // grupos: [{ numero, estacas:[...] }, ...]
-let _confRefuradas = [];  // estacas com status='refugada' (na tela, "Refurada")
-let _confAlteradas = [];  // estacas com 2+ execuções: [{ estaca, execs:[...] }]
+
+
+
+let _recOrfas = [];
+let _recPrevs = [];
+let _recVinculos = {};
+let _confDuplicadas = [];
+let _confRefuradas = [];
+let _confAlteradas = [];
 let _confAbaAtual = "orfas";
-let _confTemMotivo = false; // fase 141: vw_estacas_refuradas disponível
-let _confRefuros = [];      // fase 141d: estacas que não são Refuradas, mas têm execução de refuro
-let _confCobranca = null;   // fase 145a: execuções de refuro com a cobrança (vw_refuros_cobranca); null = sem a migration
+let _confTemMotivo = false;
+let _confRefuros = [];
+let _confCobranca = null;
 
 function confSuspeitas(alteradas){
-  // fase 184a: estaca raiz conta pela situação do histórico (js/estacas_raiz_conf.js); as outras pela regra de sempre
+
   return alteradas.filter(g => g.raiz ? g.raiz.situacao !== "normal" : g.execs.some(e => e.modalidade_execucao !== "refuro")).length;
 }
 
-/* hotfix Conferência: leitura e conta únicas do botão e das abas */
+
 async function confCarregarDados(obraId){
   const COLS_RDO = "rdo_id,obra_id,data,rdo_equipamento_id";
   const execsDaObra = (cols) => sb.from("vw_rdo_execucoes_obra").select(`${cols},${COLS_RDO}`).eq("obra_id", obraId);
@@ -2547,9 +2547,9 @@ async function confCarregarDados(obraId){
       .eq("obra_id", obraId)
       .order("numero")),
     lerTudo(() => execsDaObra("id,estaca_id,estaca_numero,estaca_numero_corrigido,perfuracao_inicio,perfuracao_de_m,perfuracao_ate_m,profundidade_executada,volume_concreto_m3,modalidade_execucao,etapa_final,ferramental,numero_boletim_fisico,equipamento_id,maquina_codigo").not("estaca_id", "is", null)),
-    // fase 141: motivo e substituta da Refurada; sem a migration a aba segue sem a coluna
+
     lerTudo(() => sb.from("vw_estacas_refuradas").select("estaca_id,motivo,refuro_obs,substituta_id,substituta_numero,maquina,execucoes_refuro,data_refuro").eq("obra_id", obraId), "estaca_id"),
-    // fase 145a: cobrança de cada execução de refuro (com ou sem estaca); sem a migration o bloco não aparece
+
     lerTudo(() => sb.from("vw_refuros_cobranca").select("execucao_id,data,estaca_id,estaca_numero,profundidade_executada,maquina,motivo,refuro_obs,cobranca,responsabilidade,decidido_em,decidido_por_nome,fotos,pode_decidir,modalidade").eq("obra_id", obraId).order("data"), "execucao_id")
   ]);
   _confCobranca = cobRes.error ? null : (cobRes.data || []);
@@ -2557,11 +2557,11 @@ async function confCarregarDados(obraId){
   _confTemMotivo = !refRes.error;
   (refRes.data || []).forEach(r => { const e = estacas.find(x => x.id === r.estaca_id); if(e) e.ref = r; });
 
-  // Detecta duplicadas pela IDENTIDADE da estaca (fase 42b): local + bloco + número,
-  // a mesma chave única do banco (estacas_obra_local_bloco_numero_key). E1 do bloco B404
-  // e E1 do bloco B405 são estacas distintas — antes agrupava só pelo número e acusava
-  // "E1 aparece 242×" numa obra com 1 E1 por bloco (15/09/2026). Nome LITERAL (UPPER + trim):
-  // BB1.1 e B1.1 continuam distintas.
+
+
+
+
+
   const grupos = {};
   estacas.forEach(e => {
     const k = [(e.local||"").trim().toUpperCase(), (e.bloco||"").trim().toUpperCase(), (e.numero||"").trim().toUpperCase()].join("|");
@@ -2572,14 +2572,14 @@ async function confCarregarDados(obraId){
     .filter(ests => ests.length > 1)
     .map(ests => ({ numero: (ests[0].numero||"").trim().toUpperCase(), bloco: ests[0].bloco || "", local: ests[0].local || "", estacas: ests }));
 
-  // Estacas alteradas (2+ execuções) — agrupar todas execs por estaca_id e filtrar
+
   const porEstaca = {};
   vinculadasRes.data.map(execComRdo).forEach(re => {
     if(!porEstaca[re.estaca_id]) porEstaca[re.estaca_id] = [];
     porEstaca[re.estaca_id].push(re);
   });
-  // fase 184a (#241): estaca raiz pelo histórico de trechos (js/estacas_raiz_conf.js). Entra com 2+ execuções ou com alerta
-  // (execução de outra obra, início maior que o fim...); as outras continuam só com 2+ execuções.
+
+
   const estPorId = new Map(estacas.map(e => [e.id, e]));
   const temRaiz = typeof confClassificarGrupo === "function" && estacas.some(e => e.tipo === "raiz");
   let extras = null;
@@ -2593,7 +2593,7 @@ async function confCarregarDados(obraId){
   const alteradas = Object.entries(porEstaca)
     .map(([estId, execs]) => {
       const estaca = estPorId.get(estId);
-      // Ordena por data (mais antiga primeiro)
+
       execs.sort((a,b) => (a.perfuracao_inicio||"").localeCompare(b.perfuracao_inicio||""));
       const g = { estaca, execs };
       if(temRaiz && estaca?.tipo === "raiz"){
@@ -2602,7 +2602,7 @@ async function confCarregarDados(obraId){
       }
       return g;
     })
-    .filter(g => g.estaca) // ignora se a estaca já foi deletada
+    .filter(g => g.estaca)
     .filter(g => g.execs.length > 1 || (g.raiz && g.raiz.situacao !== "normal"));
 
   return {
@@ -2619,37 +2619,37 @@ async function confCarregarDados(obraId){
 async function carregarContagemReconciliacao(obraId){
   const btn = $("btn-est-reconciliar");
   if(!btn) return;
-  // Botão sempre visível quando há obra carregada — permite conferência preventiva
+
   if(!obraId){ btn.style.display = "none"; return; }
   btn.style.display = "";
 
   const dados = await confCarregarDados(obraId);
-  if(obraId !== obraEditId) return; // outra obra aberta no meio
+  if(obraId !== obraEditId) return;
   confPintarBotao(dados);
 }
 
-/* Órfãs + alteradas suspeitas + duplicadas reais. Refurada é estado final válido: fica só na aba. */
+
 function confPintarBotao(dados){
   const badge = $("est-reconciliar-badge");
   const btn = $("btn-est-reconciliar");
   const erro = dados.erros.orfas || dados.erros.estacas || dados.erros.vinculadas;
   if(btn) btn.title = erro ? "Não foi possível conferir: " + erro.message : "";
   if(erro){
-    // Leitura falhou: sem número nem ✓, para não parecer que está tudo certo
+
     if(badge) badge.style.display = "none";
     return;
   }
   const dups = dados.duplicadas.reduce((s,g) => s + g.estacas.length, 0);
   const total = dados.orfas.length + confSuspeitas(dados.alteradas) + dups;
   if(total){
-    // Há pendências: badge vermelho com número
+
     if(badge){
       badge.textContent = total;
       badge.style.display = "";
       badge.style.background = "var(--perigo)";
     }
   } else {
-    // Tudo certo: badge verde com ✓ (botão ainda permite abrir pra ver o estado)
+
     if(badge){
       badge.textContent = "✓";
       badge.style.display = "";
@@ -2667,9 +2667,9 @@ async function abrirModalReconciliacao(){
 
   const obraId = obraEditId;
   const dados = await confCarregarDados(obraId);
-  if(obraId !== obraEditId) return; // outra obra aberta no meio
+  if(obraId !== obraEditId) return;
 
-  // Tratamento de erro visível (antes era silencioso e zerava _recPrevs)
+
   if(dados.erros.orfas){ aviso("app-aviso","Erro ao carregar órfãs: "+dados.erros.orfas.message,"erro"); }
   if(dados.erros.estacas){ aviso("app-aviso","Erro ao carregar previstas: "+dados.erros.estacas.message,"erro"); }
   if(dados.erros.vinculadas){ aviso("app-aviso","Erro ao carregar execuções: "+dados.erros.vinculadas.message,"erro"); }
@@ -2683,15 +2683,15 @@ async function abrirModalReconciliacao(){
   _confAlteradas = dados.alteradas;
   confPintarBotao(dados);
 
-  // Atualiza badges das abas
+
   atualizarBadgesConferencia();
-  // Renderiza tudo
+
   renderizarReconciliacao();
   renderizarAlteradas();
   renderizarDuplicadas();
   renderizarRefuradas();
-  // Abre na primeira aba que tem algo a conferir (antes ficava na última aba usada,
-  // então a obra seguinte abria direto em "duplicadas" mesmo sem duplicata).
+
+
   const altSuspeitas = confSuspeitas(_confAlteradas);
   _confAbaAtual = _recOrfas.length ? "orfas" : altSuspeitas ? "alteradas" : _confDuplicadas.length ? "duplicadas" : (_confRefuradas.length || _confRefuros.length || confCobPendentes()) ? "refuradas" : "orfas";
   ativarConfAba(_confAbaAtual);
@@ -2705,7 +2705,7 @@ function atualizarBadgesConferencia(){
     el.classList.toggle("zero", n === 0);
   };
   set("conf-tab-orfas-badge", _recOrfas.length);
-  set("conf-tab-alt-badge",  confSuspeitas(_confAlteradas)); // só conta as suspeitas (sem refuro explícito)
+  set("conf-tab-alt-badge",  confSuspeitas(_confAlteradas));
   set("conf-tab-dups-badge", _confDuplicadas.reduce((s,g) => s + g.estacas.length, 0));
   set("conf-tab-ref-badge", _confRefuradas.length + _confRefuros.length);
 }
@@ -2755,7 +2755,7 @@ function renderizarReconciliacao(){
     return;
   }
 
-  // Aviso útil quando não há previstas — não bloqueia, só orienta
+
   const semPrevistas = !_recPrevs.length;
   const avisoSemPrev = semPrevistas
     ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
@@ -2765,12 +2765,12 @@ function renderizarReconciliacao(){
        </div>`
     : "";
 
-  // Options das previstas montadas UMA vez (antes: re-escapadas por órfã, com
-  // um .find() por item — 100 órfãs × 160 previstas = 16k options recalculadas)
+
+
   const optPorId = new Map(_recPrevs.map(p => [p.id,
     `<option value="${esc(p.id)}">${esc(p.numero)}${p.status==='executada' ? " ⚠ já executada" : ""}</option>`]));
 
-  // Pra cada órfã, calcula sugestões e pré-seleciona a melhor
+
   const linhas = _recOrfas.map(o => {
     const sugs = _recPrevs
       .map(p => ({ p, score: scoreSimilaridade(o.estaca_numero, p.numero) }))
@@ -2792,9 +2792,9 @@ function renderizarReconciliacao(){
 
     const sugestaoTop = sugs[0];
     const sugId = sugestaoTop?.p.id || "";
-    const data = o.perfuracao_inicio ? dataBR(o.perfuracao_inicio) : ""; // fatia a string: sem conversão de fuso
+    const data = o.perfuracao_inicio ? dataBR(o.perfuracao_inicio) : "";
 
-    // Badge de confiança ao lado do select
+
     const badge = sugestaoTop
       ? `<span class="rec-badge rec-badge-${sugestaoTop.score >= 0.9 ? "alta" : sugestaoTop.score >= 0.6 ? "media" : "baixa"}" title="Confiança da sugestão">${(sugestaoTop.score*100).toFixed(0)}%</span>`
       : `<span class="rec-badge rec-badge-zero" title="Nenhuma estaca prevista parecida">sem match</span>`;
@@ -2807,7 +2807,7 @@ function renderizarReconciliacao(){
           <select class="rec-select" data-orfa-id="${esc(o.id)}" data-sugestao="${esc(sugId)}" style="flex:1;min-width:0;">
             <option value="">— não vincular —</option>
             ${optionsSugs ? `<optgroup label="🤖 Sugestões automáticas">${optionsSugs}</optgroup>` : ""}
-            ${optionsTodas ? `<optgroup label="Outras estacas previstas">${/* html */ optionsTodas}</optgroup>` : ""}
+            ${optionsTodas ? `<optgroup label="Outras estacas previstas">${  optionsTodas}</optgroup>` : ""}
           </select>
           ${badge}
         </div>
@@ -2832,12 +2832,12 @@ function renderizarReconciliacao(){
           <th>Sugestão · vincular a</th>
           <th class="col-acao" style="width:200px;text-align:right;">Ações</th>
         </tr></thead>
-        <tbody>${/* html */ linhas}</tbody>
+        <tbody>${  linhas}</tbody>
       </table>
     </div>
   `;
 
-  // Pré-seleciona a sugestão top em cada linha (UX: economiza um clique)
+
   cont.querySelectorAll(".rec-select").forEach(sel => {
     const sug = sel.dataset.sugestao;
     if(sug){ sel.value = sug; _recVinculos[sel.dataset.orfaId] = sug; }
@@ -2849,7 +2849,7 @@ function renderizarReconciliacao(){
       destacarConflitosVinculacao();
     });
   });
-  // Roda uma vez já após renderizar (caso pré-seleção tenha gerado conflitos)
+
   destacarConflitosVinculacao();
   cont.querySelectorAll(".btn-rec-vincular").forEach(b => {
     b.addEventListener("click", () => vincularIndividual(b.dataset.orfaId));
@@ -2875,8 +2875,8 @@ async function vincularIndividual(orfaId){
   if(typeof carregarEstacasDaObra === "function") await carregarEstacasDaObra(obraEditId);
 }
 
-/* lote S46 (#96): o Ø precifica a estaca. Ø do serviço da obra (itens do orçamento, pela RPC obra_diametros_servico,
-   filtrados pelo tipo) quando é único; senão pergunta. Devolve número, null (gravar sem Ø) ou undefined (cancelou). */
+
+
 async function estDiametroPadrao(tipo, rotulo){
   const { data, error } = await sb.rpc("obra_diametros_servico", { p_obra: obraEditId, p_tipo: tipo || null });
   const diams = error ? [] : (data || []).map(Number).filter(d => d > 0);
@@ -2894,10 +2894,10 @@ async function estDiametroPadrao(tipo, rotulo){
 async function criarPrevistaDaOrfa(orfaId, numero, profundidade){
   if(!obraEditId) return;
   const nomeNorm = normalizarNumeroEstacaEstacas(numero);
-  // Verifica se já existe (pode ter sido criada por outra órfã na mesma sessão)
+
   const { data: candidatas } = await sb.from("estacas")
     .select("id,local").eq("obra_id", obraEditId)
-    .eq("numero", nomeNorm).limit(2); // eq, não ilike: "_" e "%" são curingas no ILIKE
+    .eq("numero", nomeNorm).limit(2);
   if((candidatas || []).length > 1){
     aviso("app-aviso", `"${nomeNorm}" existe em mais de um local (${candidatas.map(c => c.local || "sem local").join(" / ")}). Vincule manualmente pela sugestão da Conferência.`, "erro");
     return;
@@ -2914,7 +2914,7 @@ async function criarPrevistaDaOrfa(orfaId, numero, profundidade){
       obra_id: obraEditId,
       numero: nomeNorm,
       diametro_mm: diam,
-      tipo: "helice_continua",  // default razoável; user ajusta depois
+      tipo: "helice_continua",
       status: "prevista",
       profundidade_m: profundidade ? Number(profundidade) : null,
       observacoes: "Criada automaticamente a partir de execução CSV"
@@ -2926,7 +2926,7 @@ async function criarPrevistaDaOrfa(orfaId, numero, profundidade){
     }
     estacaId = novo.id;
   }
-  // Vincula a execução
+
   const { error: errVinc } = await sb.from("rdo_execucao_estaca")
     .update({ estaca_id: estacaId })
     .eq("id", orfaId);
@@ -2940,7 +2940,7 @@ async function criarTodasPrevistasFaltantes(){
   if(!_recOrfas.length){ aviso("app-aviso","Sem órfãs.","erro"); return; }
   if(!confirm(`Criar ${_recOrfas.length} estacas previstas a partir das execuções e vincular todas? Tipo default: hélice contínua.`)) return;
 
-  // lote S46 (#96): órfã sem Ø recebe o do serviço da obra (único) ou o informado uma vez para todas
+
   let diamPadrao = null;
   const semDiam = _recOrfas.filter(o => !(Number(o.diametro_mm) > 0));
   if(semDiam.length){
@@ -2954,11 +2954,11 @@ async function criarTodasPrevistasFaltantes(){
   let criadas = 0, vinculadas = 0;
   for(const o of _recOrfas){
     const nomeNorm = normalizarNumeroEstacaEstacas(o.estaca_numero);
-    // Verifica/cria
+
     const { data: candidatas } = await sb.from("estacas")
       .select("id,local").eq("obra_id", obraEditId)
-      .eq("numero", nomeNorm).limit(2); // eq, não ilike: "_" e "%" são curingas no ILIKE
-    if((candidatas || []).length > 1) continue; // mesmo número em locais diferentes: fica para vínculo manual
+      .eq("numero", nomeNorm).limit(2);
+    if((candidatas || []).length > 1) continue;
     const existente = (candidatas || [])[0];
     let estacaId;
     if(existente){
@@ -3006,7 +3006,7 @@ function aplicarTodasSugestoes(){
   }
 }
 
-/* Conta quantas execuções estão apontando pra uma estaca que outra execução também aponta */
+
 function contarConflitosVinculacao(){
   const cont = {};
   Object.values(_recVinculos).forEach(v => { if(v){ cont[v] = (cont[v]||0) + 1; } });
@@ -3015,7 +3015,7 @@ function contarConflitosVinculacao(){
   return conflitos;
 }
 
-/* Marca em vermelho as linhas cujo select aponta pra mesma estaca que outra(s) linha(s) */
+
 function destacarConflitosVinculacao(){
   const cont = {};
   Object.entries(_recVinculos).forEach(([orfa, est]) => {
@@ -3039,13 +3039,13 @@ function destacarConflitosVinculacao(){
   });
 }
 
-/* Move TODOS os RDOs desta obra (com órfãs) pra outra obra e recasa via RPC. */
+
 async function moverExecucoesPraOutraObra(){
   const novaObraId = $("conf-mover-obra")?.value;
   if(!novaObraId){ aviso("app-aviso","Escolha a obra de destino.","erro"); return; }
   if(!confirm(`Mover todos os RDOs (e execuções) desta obra pra "${mapaObras[novaObraId]}"?\n\nVai recasar estacas automaticamente após o move.`)) return;
 
-  // 1. Move todos os RDOs pra nova obra
+
   const obraOrigem = obraEditId;
   const { data: rdos, error: errRdo } = await lerTudo(() => sb.from("rdo").select("id").eq("obra_id", obraOrigem));
   if(errRdo || !rdos || !rdos.length){
@@ -3056,13 +3056,13 @@ async function moverExecucoesPraOutraObra(){
     .update({ obra_id: novaObraId })
     .in("id", rdos.map(r => r.id));
   if(errMove){
-    // fase 134b: a chave do diário é obra + data + tipo + máquina + período; a obra de destino pode já ter um diário igual
+
     const dup = /duplicate/i.test(errMove.message || "");
     aviso("app-aviso", dup ? "Nada foi movido: a obra de destino já tem um diário da mesma máquina, data, tipo de serviço e período. Junte ou exclua o diário repetido antes de mover." : "Erro ao mover: " + errMove.message, "erro");
     return;
   }
 
-  // 2. Chama a RPC pra limpar estaca_id (que apontava pra obra antiga) e recasar com a nova
+
   const { data: result, error: errRpc } = await sb.rpc("recasar_execucoes_obra", { p_obra_id: novaObraId });
   if(errRpc){
     aviso("app-aviso", `Movidos ${rdos.length} RDOs, mas erro ao recasar: ${errRpc.message}`, "erro");
@@ -3078,9 +3078,9 @@ async function moverExecucoesPraOutraObra(){
   if(typeof carregarEstacasDaObra === "function") await carregarEstacasDaObra(obraEditId);
 }
 
-/* ====================================================================
-   ABA ALTERADAS — estacas com 2+ execuções (refuros legítimos OU mal-casadas)
-   ==================================================================== */
+
+
+
 
 function renderizarAlteradas(){
   const cont = $("conf-alteradas-conteudo");
@@ -3089,27 +3089,27 @@ function renderizarAlteradas(){
     cont.innerHTML = `<p class="vazio">🎉 Todas as estacas têm execução única ou são refuros marcados corretamente.</p>`;
     return;
   }
-  // fase 184a (#241): estaca raiz em cartões pelo histórico (js/estacas_raiz_conf.js); as outras seguem abaixo como sempre
+
   const gruposRaiz = _confAlteradas.filter(g => g.raiz);
   const gruposOutros = _confAlteradas.filter(g => !g.raiz);
 
   const linhas = gruposOutros.map(g => {
     const todasRefuro = g.execs.every(e => e.modalidade_execucao === "refuro" || g.execs.indexOf(e) === 0);
     const algumRefuro = g.execs.some(e => e.modalidade_execucao === "refuro");
-    const isSuspeito  = !algumRefuro;  // 2+ execs sem nenhuma marcada como refuro = suspeito
+    const isSuspeito  = !algumRefuro;
     const corTopo = isSuspeito ? "var(--perigo-bg)" : "var(--aviso-bg)";
     const bordaTopo = isSuspeito ? "var(--perigo)" : "var(--aviso)";
     const tagTopo = isSuspeito
       ? `<span class="rec-badge rec-badge-baixa">⚠️ SUSPEITO</span>`
       : `<span class="rec-badge rec-badge-alta">✓ Refuro confirmado</span>`;
 
-    // Linhas das execuções
+
     const linhasExec = g.execs.map((re, idx) => {
-      const data = re.perfuracao_inicio ? dataBR(re.perfuracao_inicio) : "—"; // sem conversão de fuso
+      const data = re.perfuracao_inicio ? dataBR(re.perfuracao_inicio) : "—";
       const tag = re.modalidade_execucao === "refuro"
         ? `<span class="rec-badge rec-badge-alta">REFURO</span>`
         : (idx === 0 ? `<span class="rec-badge" style="background:var(--info-bg);color:var(--acao-txt);">furo original</span>` : `<span class="rec-badge rec-badge-baixa">extra</span>`);
-      // Select só com estacas AINDA PREVISTAS (não faz sentido realocar pra uma já executada)
+
       const optsPrev = _recPrevs
         .filter(p => p.id !== g.estaca.id && p.status === "prevista")
         .map(p => `<option value="${esc(p.id)}">${esc(p.numero)}</option>`).join("");
@@ -3122,7 +3122,7 @@ function renderizarAlteradas(){
            </select>
            <button type="button" class="btn btn-sm btn-alt-realocar" data-exec-id="${esc(re.id)}" data-estaca-orig="${esc(g.estaca.id)}">→ Realocar</button>`;
       return `<tr>
-        <td>${/* html */ tag}</td>
+        <td>${  tag}</td>
         <td>${esc(data)}</td>
         <td class="num">${num(re.profundidade_executada || 0)} m</td>
         <td class="num">${num(re.volume_concreto_m3 || 0)} m³</td>
@@ -3158,11 +3158,11 @@ function renderizarAlteradas(){
       Refuros legítimos (mesmo nome + R no CSV) já vêm marcados em verde.
       Casos suspeitos em <strong>vermelho</strong> precisam de revisão.
     </div>
-    ${/* html */ linhas}` : ""}</div>
+    ${  linhas}` : ""}</div>
   `;
-  if(gruposRaiz.length) crzRender($("crz-bloco"), gruposRaiz);   // liga as próprias ações
+  if(gruposRaiz.length) crzRender($("crz-bloco"), gruposRaiz);
 
-  // Listeners (só os cartões de hélice; os da raiz são ligados pelo crzRender)
+
   const outras = $("conf-alt-outras");
   outras.querySelectorAll(".btn-alt-realocar").forEach(b => {
     b.addEventListener("click", () => realocarExecucao(b.dataset.execId, b.dataset.estacaOrig));
@@ -3176,7 +3176,7 @@ async function realocarExecucao(execId, estacaOrigId){
   const sel = document.querySelector(`.alt-realoc-sel[data-exec-id="${execId}"]`);
   const novaEstacaId = sel?.value;
   if(!novaEstacaId){ aviso("app-aviso","Escolha a estaca de destino no select.","erro"); return; }
-  // Busca nomes pra mensagem de motivo
+
   const orig = _recPrevs.find(p => p.id === estacaOrigId);
   const dest = _recPrevs.find(p => p.id === novaEstacaId);
   if(!confirm(`Realocar esta execução de "${orig?.numero||"?"}" pra "${dest?.numero||"?"}"? A estaca antiga ficará só com as execuções restantes.`)) return;
@@ -3186,7 +3186,7 @@ async function realocarExecucao(execId, estacaOrigId){
     .eq("id", execId);
   if(error){ aviso("app-aviso","Erro ao realocar: "+error.message,"erro"); return; }
 
-  // Registra ALTERAÇÃO MANUAL nas DUAS estacas (origem e destino)
+
   const motivoOrig = `Execução realocada para "${dest?.numero||"?"}" via Conferência`;
   const motivoDest = `Execução recebida de "${orig?.numero||"?"}" via Conferência`;
   await Promise.all([
@@ -3201,15 +3201,15 @@ async function realocarExecucao(execId, estacaOrigId){
 
 async function marcarComoRefuro(execId){
   if(!confirm("Marcar esta execução como REFURO? Os dados da estaca pai não serão sobrescritos por ela.")) return;
-  // Busca a execução pra saber qual estaca registrar
+
   const { data: execData } = await sb.from("rdo_execucao_estaca").select("estaca_id").eq("id", execId).single();
   const { error } = await sb.from("rdo_execucao_estaca")
     .update({ modalidade_execucao: "refuro" })
     .eq("id", execId);
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
 
-  // Registra alteração manual na estaca
-  let erroRegistro = null;   // fase 142 (EST-04)
+
+  let erroRegistro = null;
   if(execData?.estaca_id){
     ({ error: erroRegistro } = await sb.rpc("registrar_alteracao_estaca", {
       p_estaca_id: execData.estaca_id,
@@ -3223,9 +3223,9 @@ async function marcarComoRefuro(execId){
   if(typeof carregarEstacasDaObra === "function") await carregarEstacasDaObra(obraEditId);
 }
 
-/* ====================================================================
-   ABA DUPLICADAS — grupos de estacas com mesmo número
-   ==================================================================== */
+
+
+
 
 function renderizarDuplicadas(){
   const cont = $("conf-duplicadas-conteudo");
@@ -3261,7 +3261,7 @@ function renderizarDuplicadas(){
           <th>#</th><th>Número</th><th>Local</th><th>${esc(rotuloAgrupamento())}</th><th>Tipo</th>
           <th class="num">Ø</th><th class="num">Prof.</th><th>Status</th><th class="col-acao"></th>
         </tr></thead>
-        <tbody>${/* html */ linhas}</tbody></table></div>
+        <tbody>${  linhas}</tbody></table></div>
     </div>`;
   }).join("");
   cont.innerHTML = blocos;
@@ -3292,7 +3292,7 @@ async function renomearEstacaDuplicada(id, numAtual){
 }
 
 async function excluirEstacaDuplicada(id, num){
-  // fase 184b (#302): estaca com execução não se exclui (o banco recusa); descarte ou realoque antes
+
   if(!confirm(`Excluir esta estaca "${num}"? A ação não pode ser desfeita.\n(Estaca com execução ligada não se exclui: descarte ou realoque a execução antes).`)) return;
   const { error } = await sb.from("estacas").delete().eq("id", id);
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
@@ -3301,11 +3301,11 @@ async function excluirEstacaDuplicada(id, num){
   if(typeof carregarEstacasDaObra === "function") await carregarEstacasDaObra(obraEditId);
 }
 
-/* ====================================================================
-   ABA REFURADAS — estacas com status=refugada
-   ==================================================================== */
 
-/* fase 141d: motivo do refuro sem mudar o status da estaca (estaca_refuro_motivo) */
+
+
+
+
 let _estRmChips = null, _estRmId = null;
 function abrirModalMotivoRefuro(id){
   const e = _confRefuros.find(x => x.id === id);
@@ -3355,9 +3355,9 @@ function renderizarRefuradas(){
     <td>${dataBR(e.data_execucao)}</td>
     <td>${e.ref?.motivo ? `<span class="tag ambar">${esc(motivoRefuradaLbl(e.ref.motivo))}</span>` : `<span class="meta">sem motivo</span>`}${e.ref?.refuro_obs ? `<div class="meta">${esc(e.ref.refuro_obs)}</div>` : ""}${e.ref?.substituta_numero ? `<div class="meta">Substituta: ${esc(e.ref.substituta_numero)}</div>` : ""}</td>
     <td>${esc(e.observacoes || "—")}</td>
-    <td class="col-acao">${/* html */ acoes(e)}</td>
+    <td class="col-acao">${  acoes(e)}</td>
   </tr>`).join("");
-  // fase 141d: a estaca segue com o status dela e conta no avanço; aqui entra só o motivo do refuro
+
   const podeMotivo = typeof geoPodeOperar === "function" && geoPodeOperar();
   const linhasRefuro = _confRefuros.map(e => `<tr data-id="${esc(e.id)}">
     <td><strong>${esc(e.numero)}</strong></td>
@@ -3374,15 +3374,15 @@ function renderizarRefuradas(){
       <th>Nº</th><th>Bloco</th><th class="num">Ø</th><th class="num">Profund.</th>
       <th>Data</th><th>Motivo</th><th>Observação</th><th class="col-acao"></th>
     </tr></thead>
-    <tbody>${/* html */ linhas}</tbody></table></div>` : `<p class="vazio">Nenhuma estaca com status Refurada nesta obra.</p>`}
+    <tbody>${  linhas}</tbody></table></div>` : `<p class="vazio">Nenhuma estaca com status Refurada nesta obra.</p>`}
     ${_confRefuros.length ? `<h4 class="titulo-linha">Execuções de refuro em estacas que não são Refuradas</h4>
     <p class="meta">A estaca continua com o status dela e conta no avanço. O motivo fica só nas execuções de refuro.</p>
     <div class="tabela-rola"><table>
       <thead><tr>
         <th>Nº</th><th>Bloco</th><th>Último refuro</th><th>Máquina</th><th class="num">Refuros</th><th>Status</th><th>Motivo</th><th class="col-acao"></th>
       </tr></thead>
-      <tbody>${/* html */ linhasRefuro}</tbody></table></div>` : ""}
-    ${/* html */ confHtmlCobranca()}`;
+      <tbody>${  linhasRefuro}</tbody></table></div>` : ""}
+    ${  confHtmlCobranca()}`;
 
   confLigarCobranca(cont);
   cont.querySelectorAll(".btn-ref-motivo").forEach(b => {
@@ -3396,14 +3396,14 @@ function renderizarRefuradas(){
   });
 }
 
-/* ====================================================================
-   FASE 145a — Cobrança do refuro (spec docs/specs/fase-145-refuro-cobranca-lancamento.md)
-   Uma linha por execução de refuro (vw_refuros_cobranca), com ou sem estaca. O engenheiro responsável da obra decide
-   (sem ele, o gestor do serviço; o diretor sempre) pela RPC estaca_refuro_cobranca. Refuro pendente trava a medição do
-   período no banco (trg_medicoes_refuro_trava). Período já medido = fora_de_medicao, sem decisão.
-   ==================================================================== */
+
+
+
+
+
+
 let _estRcIds = [], _estRcCob = null, _estRcResp = null;
-/* Fase 145b: a limpeza segue a mesma decisão do refuro; a linha diz qual é */
+
 function rcEhLimpeza(r){ return r && r.modalidade === "limpeza"; }
 function rcRotulo(r){ return rcEhLimpeza(r) ? "limpeza" : "refuro"; }
 function confCobPendentes(){ return (_confCobranca || []).filter(r => r.cobranca === "pendente").length; }
@@ -3438,7 +3438,7 @@ function confHtmlCobranca(){
         <th style="width:28px;">${podeAlgum ? `<input type="checkbox" id="est-rc-todos" aria-label="Marcar todos os pendentes">` : ""}</th>
         <th>Data</th><th>Estaca</th><th>Máquina</th><th class="num">Profund.</th><th>Motivo</th><th>Foto</th><th>Cobrança</th><th class="col-acao"></th>
       </tr></thead>
-      <tbody>${/* html */ linhas}</tbody></table></div>`;
+      <tbody>${  linhas}</tbody></table></div>`;
 }
 function confLigarCobranca(cont){
   cont.querySelectorAll(".btn-rc-decidir").forEach(b => b.addEventListener("click", () => abrirModalCobrancaRefuro([b.dataset.id])));
@@ -3460,7 +3460,7 @@ function abrirModalCobrancaRefuro(ids){
   $("est-rc-info").textContent = regs.length === 1
     ? `${r0.profundidade_executada != null ? num(r0.profundidade_executada) + " m" : "Sem profundidade"} · ${r0.motivo ? "Motivo: " + motivoRefuradaLbl(r0.motivo) : "sem motivo"} · ${Number(r0.fotos) ? r0.fotos + " foto(s)" : "sem foto"}`
     : `${regs.length} execuções · ${semMotivo} sem motivo · ${semFoto} sem foto`;
-  // responsabilidade sugerida pelo motivo (só quando todos sugerem a mesma); quem decide é o engenheiro
+
   const sug = [...new Set(regs.map(r => REFURO_RESP_SUGERIDA[r.motivo] || ""))];
   const respIni = regs.length === 1 && r0.responsabilidade ? r0.responsabilidade : (sug.length === 1 && sug[0] ? sug[0] : null);
   const cobIni = regs.length === 1 && ["cobrar", "nao_cobrar"].includes(r0.cobranca) ? r0.cobranca : (respIni === "cgl" ? "nao_cobrar" : null);
@@ -3489,7 +3489,7 @@ async function salvarCobrancaRefuro(){
   const obraId = obraEditId, dados = await confCarregarDados(obraId);
   if(obraId === obraEditId){ _confRefuradas = dados.refuradas; _confRefuros = dados.refuros; atualizarBadgesConferencia(); renderizarRefuradas(); }
 }
-/* Atalho da medição e do "Para regularizar": abre a obra, a Conferência e a aba Refuradas */
+
 async function confAbrirRefurosDaObra(obraId){
   if(!obraId || !irParaSecao("obras") || typeof abrirObra !== "function") return;
   await abrirObra(obraId);
@@ -3513,7 +3513,7 @@ async function criarSubstitutaRefurada(idOriginal, numOriginal){
     tipo: original.tipo || "outro",
     status: "prevista",
     diametro_mm: original.diametro_mm,
-    profundidade_m: original.profundidade_m,  // copia profundidade projetada
+    profundidade_m: original.profundidade_m,
     observacoes: `Substituta de ${numOriginal} (refurada)` + (original.observacoes ? ` · ${original.observacoes}` : "")
   };
   if(_confTemMotivo) reg.substituta_de_id = idOriginal;
@@ -3550,7 +3550,7 @@ async function confirmarReconciliacao(){
     return;
   }
 
-  // Bloqueia confirmar se há 2+ execuções apontando pra mesma estaca (a menos que usuário confirme intencionalmente)
+
   const conflitos = contarConflitosVinculacao();
   if(conflitos > 0){
     const ok = confirm(
@@ -3563,7 +3563,7 @@ async function confirmarReconciliacao(){
   }
   if(!confirm(`Vincular ${escolhidos.length} execução(ões) às estacas escolhidas? Isso atualiza status pra 'executada' e profundidade.`)) return;
 
-  // Desabilita o botão pra evitar duplo-clique
+
   const btn = $("btn-est-rec-confirmar");
   if(btn){ btn.disabled = true; btn.textContent = "Vinculando..."; }
 
@@ -3577,14 +3577,14 @@ async function confirmarReconciliacao(){
     else { sucesso++; }
   }
 
-  // Toast de aviso (continua) — mas NÃO fecha mais o modal de cara
+
   aviso("app-aviso", `✅ ${sucesso} vinculada(s)${falhas ? ` · ${falhas} falha(s)` : ""}.`, sucesso > 0 ? "ok" : "erro");
 
-  // Atualiza dados em background
+
   if(typeof carregarEstacasDaObra === "function") await carregarEstacasDaObra(obraEditId);
   if(typeof carregarContagemReconciliacao === "function") await carregarContagemReconciliacao(obraEditId);
 
-  // Recarrega modal (vai mostrar 0 órfãs se tudo OK) e injeta banner de resumo no topo
+
   await abrirModalReconciliacao();
   const cont = $("est-reconciliar-conteudo");
   if(cont){
@@ -3600,26 +3600,26 @@ async function confirmarReconciliacao(){
     const banner = `
       <div style="background:${esc(cor)};border-left:4px solid ${borda};padding:14px 18px;margin-bottom:14px;border-radius:4px;">
         <div style="font-size:var(--txt-base);font-weight:600;color:var(--marca-txt);">${icone} ${titulo}</div>
-        ${/* html */ detalhe}
+        ${  detalhe}
       </div>`;
     cont.insertAdjacentHTML("afterbegin", banner);
   }
 }
 
-/* ---------- Listeners ---------- */
-/* ====================================================================
-   FASE 94 (#80) — ABA "VINCULAR ESTACAS" DA FICHA DA OBRA (prefixo estv-)
-   Execuções do campo sem estaca_id (órfãs) ou "a revisar" (vinculadas a um nome diferente do do campo sem
-   estaca_numero_corrigido, isto é, casadas antes da fase 94) × estacas do projeto. Sugestão pela chave do lote S44
-   (estNormalizarNome) com a confiança do que precisou mudar (estvConfianca); vincular, desvincular, "é estaca nova
-   do campo" (projeto_pendente = true) e trocar prefixo em lote passam pelas RPCs rdo_exec_vincular_estaca e
-   estaca_criar_do_campo, que gravam registros_log na execução e na estaca. Estaca já medida (estacas_medidas) pede
-   confirmação. Usuário de revisão vê a lista sem botões. Teste: scripts/testar-normalizar-estaca.js.
-   ==================================================================== */
-let _estvExecs = [];          // execuções da obra com o rdo (data, máquina)
-let _estvEstacas = [];        // estacas do projeto
-let _estvMedidas = new Set(); // ids de estacas já medidas (estacas_medidas)
-let _estvFiltro = "orfas";    // orfas | revisar | todas
+
+
+
+
+
+
+
+
+
+
+let _estvExecs = [];
+let _estvEstacas = [];
+let _estvMedidas = new Set();
+let _estvFiltro = "orfas";
 let _estvObra = null;
 const ESTV_CONF = {
   igual:         { lbl: "igual",             nivel: "alta" },
@@ -3628,39 +3628,39 @@ const ESTV_CONF = {
   zeros:         { lbl: "só zeros",          nivel: "alta" },
   prefixo_zeros: { lbl: "prefixo e zeros",   nivel: "media" },
   parecida:      { lbl: "parecida",          nivel: "baixa" },
-  bloco:         { lbl: "só o bloco",        nivel: "alta" },    // fase 175c: B2P10A → P10A do BLOCO 02
+  bloco:         { lbl: "só o bloco",        nivel: "alta" },
   bloco_sem_local: { lbl: "só o bloco, estaca sem local", nivel: "media" },
   bloco_outro:   { lbl: "nome igual, outro bloco", nivel: "baixa" }
 };
 const ESTV_NIVEL = { alta: 0, media: 1, baixa: 2 };
-let _estvPrefixos = new Set(); // fase 175c: prefixos de bloco desta obra (estvPrefixosBloco), refeitos a cada leitura
-let _estvFiltroLocal = "";    // lote S48 (#80): filtro de local/bloco nas sugestões ("" = todos)
+let _estvPrefixos = new Set();
+let _estvFiltroLocal = "";
 
-/* lote S48 (#80, reaberto pelo Isaque): travessia/bloco no nome do campo — "T1.07" = travessia 1, estaca 07;
-   "T7.03" = travessia 7, estaca 03 (uma ou duas letras opcionais, número, ponto ou vírgula, número). */
+
+
 function estvGrupo(nome){
   const t = String(nome || "").toUpperCase().replace(/\s+/g, "").replace(/,/g, ".");
   const m = t.match(/^[A-Z]{0,2}(\d{1,3})\.(\d+[A-Z]?)$/);
   return m ? { g: parseInt(m[1], 10), resto: m[2] } : null;
 }
-/* números do local/bloco da estaca do projeto: "TRAVESSIA 01" → 1, "T1" → 1, "BL1" → 1 */
+
 function estvLocalNums(p){
   const s = `${(p && p.local) || ""} ${(p && p.bloco) || ""}`;
   return new Set((s.match(/\d+/g) || []).map(n => parseInt(n, 10)));
 }
 function estvLocalTxt(p){ return [p.local, p.bloco].filter(Boolean).join(" · "); }
-/* mesmo nome (chave de sugestão) em outra estaca do projeto, em outro local/bloco: nunca pré-selecionar */
+
 function estvEmpate(p){
   const k = estNormalizarNome(p.numero);
   return !!k && _estvEstacas.some(q => q.id !== p.id && estNormalizarNome(q.numero) === k);
 }
-/* ordem da travessia: mesma travessia e mesmo número (T1.07 → E07 da TRAVESSIA 01) · mesmo número em outra travessia ·
-   mesma travessia com outro número · o resto */
+
+
 function estvRankTravessia(s){ return s.mesma && s.mesmoNum ? 0 : s.mesmoNum ? 1 : s.mesma ? 2 : 3; }
 
-/* Confiança da sugestão entre o nome do campo e o do projeto (tabela do chamado #78): igual · só vírgula/espaço ·
-   só prefixo (T1.85 → E1.85) · só zeros (081 → 81) · prefixo e zeros (P081 → E81) · parecida (mesmos dígitos,
-   scoreSimilaridade ≥ 0,6) · null. BB1.1 × B1.1 → null (prefixo de duas letras é outra estaca, 26/05/2026). */
+
+
+
 function estvConfianca(campo, projeto){
   const a = normalizarNumeroEstacaEstacas(campo), b = normalizarNumeroEstacaEstacas(projeto);
   if(!a || !b) return null;
@@ -3679,10 +3679,10 @@ function estvConfianca(campo, projeto){
 }
 function estvNorm(s){ return normalizarNumeroEstacaEstacas(s || ""); }
 
-/* Fase 175c: o prefixo do bloco no nome do campo. Na 8506 o campo escreve B2P10A ou B2-P10A para a estaca P10A da folha
-   do bloco 02. O prefixo é uma ou duas letras com o número do bloco, colado (ou com hífen) num nome que também começa por
-   letra e número; BB1.1, T1.07 e P10A não têm prefixo de bloco. Só vale a letra que a obra usa: a que aparece em pelo
-   menos duas execuções ou é a inicial de um local com número (BLOCO 02 → B). Serve só para sugerir; nada vincula sozinho. */
+
+
+
+
 const ESTV_BLOCO_RE = /^([A-Z]{1,2})0*(\d{1,3})-?(?=[A-Z]{1,2}\d)/;
 const estvLimpo = (s) => String(s || "").toUpperCase().replace(/\s+/g, "").replace(/,/g, ".");
 function estvPrefixosBloco(nomes, locais){
@@ -3698,21 +3698,21 @@ function estvPrefixosBloco(nomes, locais){
   }
   return pref;
 }
-/* { nome: "P10A", num: 2, prefixo: "B" } para B2P10A / B2-P10A, ou null (sem prefixo, ou letra que a obra não usa) */
+
 function estvSemBloco(nome, prefixos){
   const t = estvLimpo(nome), m = t.match(ESTV_BLOCO_RE);
   if(!m || !prefixos || typeof prefixos.has !== "function" || !prefixos.has(m[1])) return null;
   return { nome: t.slice(m[0].length), num: parseInt(m[2], 10), prefixo: m[1] };
 }
-/* chave do nome para "nome igual": sem espaço, vírgula vira ponto e sem os zeros logo depois das letras (P03 = P3) */
+
 function estvChaveNome(s){ return estvLimpo(s).replace(/^([A-Z]*)0+(?=\d)/, "$1"); }
-/* a confiança pelo bloco: o nome sem o prefixo é o da estaca; o local (ou bloco) da estaca tem o número do prefixo? */
+
 function estvConfBloco(semB, p){
   if(!semB || !p || estvChaveNome(semB.nome) !== estvChaveNome(p.numero)) return null;
   const nums = estvLocalNums(p);
   return nums.has(semB.num) ? "bloco" : nums.size ? "bloco_outro" : "bloco_sem_local";
 }
-/* hotfix carga do banco: linha de vw_rdo_execucoes_obra no formato que as telas já liam (x.rdo) */
+
 function execComRdo(x){ x.rdo = { id: x.rdo_id, obra_id: x.obra_id, data: x.data, equipamento_id: x.rdo_equipamento_id }; return x; }
 function estvMaquina(x){
   const id = x.equipamento_id || (x.rdo && x.rdo.equipamento_id);
@@ -3724,14 +3724,14 @@ function estvARevisar(x){
   const p = estvEstacaDe(x);
   return !!(p && !x.estaca_numero_corrigido && estvNorm(x.estaca_numero) !== estvNorm(p.numero));
 }
-/* Até 8 sugestões para uma órfã: confiança alta primeiro; depois a travessia do nome do campo (lote S48, #80:
-   T1.07 → "E07 — TRAVESSIA 01" no topo, "E07 — TRAVESSIA 07" logo abaixo); depois o resto da confiança, estaca ainda
-   sem execução e o número. Com o filtro de local/bloco, só as estacas daquele local. */
-/* Fase 169a: a folha do projeto usa a mesma sugestão, com as estacas e o filtro dela (estacas, filtroLocal). Sem esses
-   dois, vale o que a aba tem carregado, como sempre. */
+
+
+
+
+
 function estvSugestoes(x, comExec, estacas, filtroLocal, prefixos){
   const g = estvGrupo(x.estaca_numero);
-  const semB = estvSemBloco(x.estaca_numero, prefixos || _estvPrefixos);   // fase 175c
+  const semB = estvSemBloco(x.estaca_numero, prefixos || _estvPrefixos);
   const chaveResto = g ? estNormalizarNome(g.resto) : "";
   const fLocal = estacas ? (filtroLocal || "") : _estvFiltroLocal;
   return (estacas || _estvEstacas)
@@ -3740,7 +3740,7 @@ function estvSugestoes(x, comExec, estacas, filtroLocal, prefixos){
       let conf = estvConfianca(x.estaca_numero, p.numero);
       const mesmoNum = !!chaveResto && estNormalizarNome(p.numero) === chaveResto;
       if(!conf && mesmoNum) conf = "parecida";
-      const cb = estvConfBloco(semB, p);   // fase 175c: B2P10A × P10A do BLOCO 02
+      const cb = estvConfBloco(semB, p);
       if(cb && conf !== "igual" && (!conf || ESTV_NIVEL[ESTV_CONF[cb].nivel] <= ESTV_NIVEL[ESTV_CONF[conf].nivel])) conf = cb;
       return { p, conf, mesmoNum, mesma: (!!g && estvLocalNums(p).has(g.g)) || cb === "bloco" };
     })
@@ -3753,24 +3753,24 @@ function estvSugestoes(x, comExec, estacas, filtroLocal, prefixos){
       || estvLocalTxt(s1.p).localeCompare(estvLocalTxt(s2.p), "pt-BR", { numeric: true }))
     .slice(0, 8);
 }
-// melhor sugestão quando é de alta confiança e a única de alta (é o que o lote "✨" vincula sem perguntar estaca a estaca).
-// lote S48 (#80): nome repetido em outro local/bloco (E07 da TRAVESSIA 01 e da 07) nunca é pré-selecionado.
+
+
 function estvSugestaoAltaUnica(x, comExec){
-  if(x.desvinculo_manual) return null;   // lote S49 (#130): desvinculada à mão não volta sozinha (nem pelo lote ✨)
+  if(x.desvinculo_manual) return null;
   const sugs = estvSugestoes(x, comExec);
   const top = sugs[0];
   if(!top || ESTV_CONF[top.conf].nivel !== "alta" || sugs.some((s, i) => i > 0 && ESTV_CONF[s.conf].nivel === "alta")) return null;
-  return top.conf !== "bloco" && estvEmpate(top.p) ? null : top.p;   // fase 175c: o número do bloco desempata
+  return top.conf !== "bloco" && estvEmpate(top.p) ? null : top.p;
 }
 
 async function estvCarregar(obraId){
   const cont = $("estv-conteudo");
   if(!cont) return;
   if(!obraId){ cont.innerHTML = `<p class="vazio">Salve a obra primeiro.</p>`; return; }
-  if(obraId !== _estvObra) _estvFiltroLocal = "";   // lote S48 (#80): o filtro de local vale para a obra aberta
+  if(obraId !== _estvObra) _estvFiltroLocal = "";
   _estvObra = obraId;
   cont.innerHTML = `<p class="vazio">Carregando...</p>`;
-  // lote S49 (#130): desvinculo_manual só existe depois da migration 20261022_loteS49_vincular_estacas; sem ela, lê sem a coluna
+
   const COLS_EXEC = "id,estaca_id,estaca_numero,estaca_numero_corrigido,profundidade_executada,perfuracao_ate_m,perfuracao_inicio,equipamento_id,maquina_codigo,modalidade_execucao,etapa_final,rdo_id,obra_id,data,rdo_equipamento_id";
   const lerExecs = async () => {
     const ler = (cols) => sb.from("vw_rdo_execucoes_obra").select(cols).eq("obra_id", obraId).limit(5000);
@@ -3783,17 +3783,17 @@ async function estvCarregar(obraId){
     sb.rpc("estacas_medidas", { p_obra: obraId }),
     _equipamentosCache.length ? Promise.resolve({ data: _equipamentosCache }) : sb.from("equipamentos").select("id,codigo,nome").eq("ativo", true).order("codigo")
   ]);
-  if(obraId !== obraEditId) return; // outra obra aberta no meio
+  if(obraId !== obraEditId) return;
   if(execsRes.error || estsRes.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc((execsRes.error || estsRes.error).message)}</p>`; return; }
   if(!_equipamentosCache.length && eqRes.data) _equipamentosCache = eqRes.data;
   _estvExecs = (execsRes.data || []).filter(x => x.obra_id === obraId).map(execComRdo);
   _estvEstacas = estsRes.data || [];
-  _estvPrefixos = estvPrefixosBloco(_estvExecs.map(x => x.estaca_numero), _estvEstacas.map(p => p.local));   // fase 175c
+  _estvPrefixos = estvPrefixosBloco(_estvExecs.map(x => x.estaca_numero), _estvEstacas.map(p => p.local));
   _estvMedidas = new Set(medRes.error ? [] : (medRes.data || []));
   estvRender();
 }
 
-// lote S48 (#80): "E07 — TRAVESSIA 01"; lote S49: também na troca direta
+
 function estvRotulo(p){ return `${p.numero}${estvLocalTxt(p) ? " — " + estvLocalTxt(p) : ""}`; }
 function estvOpcaoSug(s, comExec){
   return `<option value="${esc(s.p.id)}">${esc(estvRotulo(s.p))} · ${esc(ESTV_CONF[s.conf].lbl)}${s.mesma ? " · ★ mesma travessia" : ""}${comExec.has(s.p.id) ? " ⚠ já tem execução" : ""}${_estvMedidas.has(s.p.id) ? " · medida" : ""}</option>`;
@@ -3810,7 +3810,7 @@ function estvRender(){
   const semExec = _estvEstacas.filter(p => !comExec.has(p.id));
   const lista = _estvFiltro === "orfas" ? orfas : _estvFiltro === "revisar" ? revisar : execs;
   const altas = orfas.filter(x => estvSugestaoAltaUnica(x, comExec)).length;
-  // lote S48 (#80): locais/blocos do projeto para o filtro das sugestões
+
   const locais = [...new Set(_estvEstacas.map(estvLocalTxt).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
   if(_estvFiltroLocal && !locais.includes(_estvFiltroLocal)) _estvFiltroLocal = "";
 
@@ -3847,7 +3847,7 @@ function estvRender(){
     return;
   }
   const preSel = {};
-  const empates = new Set();   // lote S48 (#80): execuções cuja melhor sugestão tem o mesmo nome em outro local
+  const empates = new Set();
   const linhas = lista.map(x => {
     const p = estvEstacaDe(x);
     const medida = p && _estvMedidas.has(p.id);
@@ -3867,13 +3867,13 @@ function estvRender(){
       const top = sugs[0];
       const alta = estvSugestaoAltaUnica(x, comExec);
       if(alta) preSel[x.id] = alta.id;
-      // lote S48 (#80): mesmo nome em outro local/bloco fica sem pré-seleção e marcado em amarelo
+
       const rotulo = estvRotulo;
       if(top && estvEmpate(top.p) && sugs.some((s, i) => i > 0 && estNormalizarNome(s.p.numero) === estNormalizarNome(top.p.numero))) empates.add(x.id);
       const opts = sugs.map(s => estvOpcaoSug(s, comExec)).join("");
       const seloTrav = top && top.mesma ? ` <span class="rec-badge rec-badge-alta" title="O local/bloco da estaca do projeto tem o mesmo número do nome do campo (T1.07 → travessia 1)">mesma travessia</span>` : "";
       const seloEmpate = empates.has(x.id) ? ` <span class="rec-badge rec-badge-media" title="Há estaca com o mesmo nome em outro local/bloco: confira a travessia antes de vincular">mesmo nome em outro local</span>` : "";
-      // lote S49 (#130): desvinculada à mão não é religada pelo nome nem pré-selecionada
+
       const seloDesv = x.desvinculo_manual ? ` <span class="rec-badge rec-badge-media" title="Desvinculada à mão: não volta sozinha pelo nome, nem pela sugestão pré-selecionada, nem pelo lote ✨">desvinculada</span>` : "";
       colVinculo = ro
         ? (top ? `<span class="meta">sugestão: ${esc(rotulo(top.p))} (${esc(ESTV_CONF[top.conf].lbl)})</span>${seloTrav}${seloEmpate}${seloDesv}` : `<span class="meta">sem sugestão</span>${seloDesv}`)
@@ -3886,7 +3886,7 @@ function estvRender(){
           ${top ? `<span class="rec-badge rec-badge-${esc(ESTV_CONF[top.conf].nivel)}" title="Confiança da melhor sugestão">${esc(ESTV_CONF[top.conf].lbl)}</span>` : `<span class="rec-badge rec-badge-zero">sem par</span>`}${seloTrav}${seloEmpate}${seloDesv}
         </div>`;
     }
-    // lote S49 (#130): vinculada ganha "Trocar" (troca direta, sem desvincular antes)
+
     const acoes = ro ? "" : (p
       ? `<button type="button" class="btn-sec btn-sm estv-trocar" data-exec="${esc(x.id)}" title="Troca a estaca do projeto desta execução sem desvincular antes (fica registrado)">⇄ Trocar</button>
          <button type="button" class="btn-sec btn-sm estv-desv" data-exec="${esc(x.id)}" title="Tira o vínculo com ${esc(p.numero)}: a execução volta para Sem vínculo e não é religada sozinha (fica registrado)">⨯ Desvincular</button>`
@@ -3898,18 +3898,18 @@ function estvRender(){
       <td>${esc(estvMaquina(x))}</td>
       <td class="num">${metr ? num(metr) + " m" : "—"}${acum ? ` <span class="meta">(até ${num(acum)})</span>` : ""}</td>
       <td>${etapa}</td>
-      <td class="estv-col-vinc">${/* html */ colVinculo}</td>
+      <td class="estv-col-vinc">${  colVinculo}</td>
       <td class="col-acao" style="white-space:nowrap;text-align:right;">${acoes}</td>
     </tr>`;
   }).join("");
   cont.innerHTML = ind + topo + `<div class="tabela-rola"><table>
     <thead><tr><th>Nome no campo</th><th>Data</th><th>Máquina</th><th class="num">Metragem</th><th title="Etapa final reconhecida (fase 94)">Etapa</th><th>Estaca do projeto · sugestão</th><th class="col-acao"></th></tr></thead>
-    <tbody>${/* html */ linhas}</tbody></table></div>`;
+    <tbody>${  linhas}</tbody></table></div>`;
   Object.entries(preSel).forEach(([execId, estId]) => { const s = cont.querySelector(`.estv-sel[data-exec="${execId}"]`); if(s) s.value = estId; });
   estvLigar(cont);
 }
 
-// "outra estaca do projeto…" no select de vínculo (órfã) e no de troca (lote S49)
+
 function estvLigarSelOutra(sel){
   sel.addEventListener("change", () => {
     if(sel.value !== "__outra") return;
@@ -3923,8 +3923,8 @@ function estvLigarSelOutra(sel){
     sel.appendChild(opt); sel.value = cands[0].id;
   });
 }
-/* lote S49 (#130): troca direta. A linha vinculada vira um select com as sugestões (sem a estaca atual) e "✓ Trocar";
-   a RPC grava a troca (tipo troca_estaca) e refaz o status da estaca antiga. */
+
+
 function estvAbrirTroca(execId){
   const cont = $("estv-conteudo");
   const tr = cont && cont.querySelector(`tr[data-exec="${execId}"]`);
@@ -3961,25 +3961,25 @@ function estvLigar(cont){
     estvVincular(b.dataset.exec, sel.value, "vinculo_estaca");
   }));
   cont.querySelectorAll(".estv-desv").forEach(b => b.addEventListener("click", () => estvVincular(b.dataset.exec, null, null)));
-  cont.querySelectorAll(".estv-trocar").forEach(b => b.addEventListener("click", () => estvAbrirTroca(b.dataset.exec)));   // lote S49 (#130)
+  cont.querySelectorAll(".estv-trocar").forEach(b => b.addEventListener("click", () => estvAbrirTroca(b.dataset.exec)));
   cont.querySelectorAll(".estv-nova").forEach(b => b.addEventListener("click", () => estvNovaDoCampo(b.dataset.exec)));
   $("btn-estv-lote-alta")?.addEventListener("click", estvVincularSugestoesAltas);
   $("btn-estv-prefixo")?.addEventListener("click", estvTrocarPrefixo);
-  $("estv-f-local")?.addEventListener("change", e => { _estvFiltroLocal = e.target.value; estvRender(); });   // lote S48 (#80)
+  $("estv-f-local")?.addEventListener("change", e => { _estvFiltroLocal = e.target.value; estvRender(); });
 }
 async function estvDepois(){
   await estvCarregar(_estvObra);
   if(typeof carregarEstacasDaObra === "function" && obraEditId) carregarEstacasDaObra(obraEditId);
   if(typeof carregarAbasObra === "function" && obraEditId) carregarAbasObra(obraEditId);
 }
-/* lote S49 (#130): o mesmo nome do campo em outros dias com o mesmo vínculo (ou também sem vínculo) — o chamado pede
-   corrigir "todos os registros correspondentes de uma vez, com confirmação" */
+
+
 function estvIrmas(x){
   const nome = estvNorm(x.estaca_numero);
   return _estvExecs.filter(o => o.id !== x.id && estvNorm(o.estaca_numero) === nome && (o.estaca_id || null) === (x.estaca_id || null));
 }
-/* Fase 169a: a gravação do vínculo num ponto só, para a aba e para a folha do projeto. A RPC confere o cargo, refaz o
-   status da estaca e registra em registros_log. Devolve a resposta da RPC ({ error }). */
+
+
 function estvGravarVinculo(execId, estacaId, motivo){
   return sb.rpc("rdo_exec_vincular_estaca", { p_exec: execId, p_estaca: estacaId || null, p_motivo: motivo || null });
 }
@@ -3988,7 +3988,7 @@ async function estvVincular(execId, estacaId, motivo){
   if(!x) return;
   const alvo = estacaId ? _estvEstacas.find(p => p.id === estacaId) : null;
   const atual = estvEstacaDe(x);
-  const troca = !!(atual && estacaId && atual.id !== estacaId);   // lote S49 (#130): troca direta
+  const troca = !!(atual && estacaId && atual.id !== estacaId);
   const verbo = troca ? "Trocar" : estacaId ? "Vincular" : "Desvincular";
   const medida = (alvo && _estvMedidas.has(alvo.id)) || (atual && _estvMedidas.has(atual.id));
   if(medida && !confirm(`A estaca ${(alvo || atual).numero} já entrou em medição. ${verbo} mesmo assim? Fica registrado no histórico.`)) return;
@@ -4051,12 +4051,12 @@ async function estvTrocarPrefixo(){
   await estvVincularLote(pares, `Trocar o prefixo "${de}" por "${para}" em ${pares.length} execução(ões) e vincular (ex.: ${pares[0].x.estaca_numero} → ${pares[0].p.numero})?`);
 }
 
-/* ====================================================================
-   FASE 94 (#81) — HISTÓRICO POR ESTACA (prefixo esth-), aba "Histórico" da ficha da estaca
-   Lê vw_estaca_historico (execuções, trechos de solo/ferramental e medições que cobrem a estaca). Metros por
-   ferramental: pelos trechos quando o boletim raiz detalha, senão pelo ferramental da execução. Exporta PDF
-   (html2pdf, estilo inline) e planilha (SheetJS). Aberta da lista (✏️) e da planta (execução → 📜 Histórico).
-   ==================================================================== */
+
+
+
+
+
+
 let _esthLinhas = [];
 let _esthEstaca = null;
 const ESTH_FERR = { coroa: "Coroa", tricone: "Tricone", martelo_fundo: "Martelo de fundo", revestimento: "Revestimento", trado: "Trado / hélice", outro: "Outro", nao_informado: "Não informado" };
@@ -4076,7 +4076,7 @@ async function esthCarregar(estacaId){
   if(cont) cont.innerHTML = `<p class="vazio">Carregando...</p>`;
   const { data, error } = await sb.from("vw_estaca_historico").select("*").eq("estaca_id", estacaId).limit(2000);
   if(error){ if(cont) cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
-  // dia, execução (medição do dia por último), execução antes dos seus trechos, trechos por "de"
+
   _esthLinhas = (data || []).sort((a, b) => String(a.data || "").localeCompare(String(b.data || ""))
     || (a.tipo === "medicao" ? 1 : 0) - (b.tipo === "medicao" ? 1 : 0)
     || String(a.perfuracao_inicio || "").localeCompare(String(b.perfuracao_inicio || ""))
@@ -4110,12 +4110,12 @@ function esthConsumos(l){
   return [l.pressao_injecao_kgcm2 != null ? `${num(l.pressao_injecao_kgcm2)} kg/cm²` : "",
     l.consumo_cimento_raiz ? `cimento ${l.consumo_cimento_raiz} ${l.consumo_cimento_unidade || ""}`.trim() : "",
     l.consumo_areia_raiz ? `areia ${l.consumo_areia_raiz} ${l.consumo_areia_unidade || ""}`.trim() : "",
-    l.agua_l != null ? `água ${num(l.agua_l)} L` : "",   // fase 101 (#99)
+    l.agua_l != null ? `água ${num(l.agua_l)} L` : "",
     l.volume_injetado_m3 != null ? `${num(l.volume_injetado_m3)} m³ injetados` : "",
     l.volume_concreto_m3 != null ? `${num(l.volume_concreto_m3)} m³` : "",
     l.torque != null ? `torque ${num(l.torque)}` : ""].filter(Boolean).join(" · ");
 }
-/* fase 101 (#99): consumos de injeção (cimento, areia, água, m³ injetado) somados por etapa da execução */
+
 function esthConsumosPorEtapaHTML(execs){
   if(typeof rdoTotaisInjecao !== "function" || typeof rdoTotaisInjecaoTxt !== "function") return "";
   const porEtapa = {};
@@ -4160,7 +4160,7 @@ function esthRender(){
     : `<tr><td colspan="5" class="vazio">Nenhuma medição cobre as execuções desta estaca (ou o seu perfil não lê medições).</td></tr>`;
   cont.innerHTML = ind + `<div class="tabela-rola" style="max-height:38vh;overflow-y:auto;"><table class="itens-tabela">
     <thead><tr><th>Data · horas</th><th>Máquina</th><th>Operador</th><th>Etapa</th><th class="num">De–até (m)</th><th>Ferramental</th><th>Pressão · consumos</th><th>Observação</th></tr></thead>
-    <tbody>${/* html */ linhas}</tbody></table></div>
+    <tbody>${  linhas}</tbody></table></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
       <div><h4 class="titulo-linha" style="margin-bottom:4px;">Metros por ferramental</h4><table class="itens-tabela"><tbody>${tabFerr || '<tr><td class="vazio">Sem ferramental informado nas execuções</td></tr>'}</tbody></table></div>
       <div><h4 class="titulo-linha" style="margin-bottom:4px;">Execuções por etapa</h4><table class="itens-tabela"><thead><tr><th>Etapa</th><th class="num">Dias</th><th class="num">Metros</th></tr></thead><tbody>${tabEtapa}</tbody></table></div>
@@ -4175,7 +4175,7 @@ function esthNomeArquivo(ext){
   const limpo = (s) => String(s || "").replace(/[^\w.-]+/g, "_");
   return `estaca-${limpo(e.numero)}${obra ? "-" + limpo(obra).slice(0, 30) : ""}.${ext}`;
 }
-/* PDF: estilo inline com hex, como os outros geradores (roda fora do CSS do app) */
+
 function esthExportarPDF(){
   if(!_esthLinhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
   if(typeof html2pdf === "undefined"){ aviso("app-aviso", "Biblioteca de PDF não carregou. Recarregue a página.", "erro"); return; }
@@ -4196,7 +4196,7 @@ function esthExportarPDF(){
     <table style="width:100%;border-collapse:collapse;margin-bottom:8px;"><tr>
       <td ${td}><b>Dias de trabalho</b><br>${esc(t.dias)}</td><td ${td}><b>Execuções</b><br>${t.execs.length}${t.refuros ? " (" + esc(t.refuros) + " refuro)" : ""}</td><td ${td}><b>Metros perfurados</b><br>${num(t.metros)} m</td><td ${td}><b>Profundidade atingida</b><br>${t.acum ? num(t.acum) + " m" : "—"}</td><td ${td}><b>Status</b><br>${esc((ESTACA_STATUS[e.status] || {}).label || e.status || "")}</td>
     </tr></table>
-    <table style="width:100%;border-collapse:collapse;"><thead><tr><th ${th}>Data · horas</th><th ${th}>Máquina</th><th ${th}>Operador</th><th ${th}>Etapa</th><th ${th}>De–até (m)</th><th ${th}>Ferramental</th><th ${th}>Pressão · consumos · observação</th></tr></thead><tbody>${/* html */ linhas}</tbody></table>
+    <table style="width:100%;border-collapse:collapse;"><thead><tr><th ${th}>Data · horas</th><th ${th}>Máquina</th><th ${th}>Operador</th><th ${th}>Etapa</th><th ${th}>De–até (m)</th><th ${th}>Ferramental</th><th ${th}>Pressão · consumos · observação</th></tr></thead><tbody>${  linhas}</tbody></table>
     <div style="display:flex;gap:12px;margin-top:10px;">
       <table style="border-collapse:collapse;flex:1;"><thead><tr><th ${th} colspan="2">Metros por ferramental</th></tr></thead><tbody>${Object.entries(t.porFerr).sort((a, b) => b[1] - a[1]).map(([k, m]) => `<tr><td ${td}>${esc(ESTH_FERR[k] || k)}</td><td ${tdn}>${num(m)} m</td></tr>`).join("") || `<tr><td ${td} colspan="2">Sem ferramental informado</td></tr>`}</tbody></table>
       <table style="border-collapse:collapse;flex:1;"><thead><tr><th ${th}>Etapa</th><th ${th}>Dias</th><th ${th}>Metros</th></tr></thead><tbody>${Object.entries(t.porEtapa).map(([k, v]) => `<tr><td ${td}>${esc(ESTH_ETAPA[k] || k)}</td><td ${tdn}>${esc(v.n)}</td><td ${tdn}>${v.m ? num(v.m) + " m" : "—"}</td></tr>`).join("")}</tbody></table>
@@ -4242,9 +4242,9 @@ function ligarEstacas(){
     if(!obraEditId){ aviso("app-aviso","Salve a obra antes de adicionar estacas.","erro"); return; }
     abrirModalEstaca(null);
   });
-  // fase 175a: planilha e DXF abrem de dentro da janela Projeto do cliente (js/planta_projeto.js); a barra tem o botão dela
+
   $("btn-est-projeto-cliente")?.addEventListener("click", () => { if(typeof ppjAbrirJanela === "function") ppjAbrirJanela(); });
-  // fase 175a: do modal antigo do PDF fica só a leitura do orçamento (fase 174b), aberta pela janela Projeto do cliente
+
   $("btn-est-orc-leitura")?.addEventListener("click", estUsarLeituraOrc);
   $("btn-est-confirmar-import")?.addEventListener("click", () => comBotaoTravado("btn-est-confirmar-import", confirmarImportEstacas));
   $("btn-est-fechar-import")?.addEventListener("click", fecharModalImport);
@@ -4252,40 +4252,40 @@ function ligarEstacas(){
   $("btn-dxf-ler")?.addEventListener("click", lerArquivoDXF);
   $("btn-est-dxf-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-est-dxf-confirmar", confirmarImportEstacas));
   $("btn-est-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-salvar", salvarEstaca));
-  // fase 75: mexer na profundidade de projeto de uma estaca "projeto a confirmar" já conta como confirmação
+
   $("est-profundidade")?.addEventListener("input", () => { const c = $("est-proj-confirmado"); if(c && _estacaEdit?.projeto_pendente) c.checked = true; });
   $("btn-est-cancelar")?.addEventListener("click", fecharModalEstaca);
-  // fase 94 (#81): abas da ficha da estaca, histórico e exportações; planta → modal de execução → 📜 Histórico
+
   document.querySelectorAll("#est-modal-notebook button").forEach(b => b.addEventListener("click", () => ativarTabEstacaModal(b.dataset.estTab)));
   $("btn-est-fechar-hist")?.addEventListener("click", fecharModalEstaca);
   $("btn-esth-pdf")?.addEventListener("click", esthExportarPDF);
   $("btn-esth-xlsx")?.addEventListener("click", esthExportarXlsx);
   $("btn-exec-historico")?.addEventListener("click", () => { const id = _estExecId; fecharModalExecucao(); if(id) abrirModalEstaca(id, "historico"); });
 
-  // lote S43 (#55): planilha
+
   $("btn-est-fechar-xlsx")?.addEventListener("click", fecharModalXlsx);
   $("btn-est-xlsx-modelo")?.addEventListener("click", baixarModeloXlsx);
   $("btn-est-xlsx-ler")?.addEventListener("click", () => comBotaoTravado("btn-est-xlsx-ler", lerPlanilhaEstacas));
   $("btn-est-xlsx-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-est-xlsx-confirmar", confirmarImportEstacas));
 
-  // Conferência do Projeto (modal expandido)
+
   $("btn-est-reconciliar")?.addEventListener("click", abrirModalReconciliacao);
   $("btn-est-rec-fechar")?.addEventListener("click", fecharModalReconciliacao);
 
-  // Switcher das abas internas do modal (event delegation)
+
   document.body.addEventListener("click", (e) => {
     const t = e.target.closest("#conf-notebook button[data-conf-tab]");
     if(t) ativarConfAba(t.dataset.confTab);
   });
 
   $("est-lote-tipo")?.addEventListener("change", e => alterarTipoEmLote(e.target.value));
-  montarSelectsTipoEstaca(); // selects começam com os tipos ativos (a obra acrescenta os legados)
+  montarSelectsTipoEstaca();
   ["est-busca","est-f-status","est-f-tipo","est-f-local","est-f-prof"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "est-busca" ? "input" : "change", id === "est-busca" ? debounce(renderEstacas) : renderEstacas);
   });
 
-  // Toggle Lista | Planta
+
   document.querySelectorAll("[data-est-view]").forEach(b => {
     b.addEventListener("click", () => {
       document.querySelectorAll("[data-est-view]").forEach(x => x.classList.remove("ativo"));
@@ -4296,7 +4296,7 @@ function ligarEstacas(){
     });
   });
 
-  // Colorir planta por status / por máquina
+
   document.querySelectorAll("[data-planta-cor]").forEach(b => {
     b.addEventListener("click", () => {
       document.querySelectorAll("[data-planta-cor]").forEach(x => x.classList.remove("ativo"));
@@ -4306,13 +4306,13 @@ function ligarEstacas(){
     });
   });
 
-  // Zoom buttons
+
   $("btn-planta-zoom-in")?.addEventListener("click", () => plantaZoom(0.2));
   $("btn-planta-zoom-out")?.addEventListener("click", () => plantaZoom(-0.2));
   $("btn-planta-zoom-fit")?.addEventListener("click", plantaZoomFit);
   $("btn-regra-salvar")?.addEventListener("click", () => comBotaoTravado("btn-regra-salvar", salvarRegraDist));
 
-  // Modal de execução rápida
+
   $("btn-exec-fechar")?.addEventListener("click", fecharModalExecucao);
   $("btn-exec-salvar")?.addEventListener("click", () => comBotaoTravado("btn-exec-salvar", () => salvarExecucao()));
   $("btn-exec-iniciar")?.addEventListener("click", () => salvarExecucao("em_execucao"));
@@ -4327,7 +4327,7 @@ function ligarEstacas(){
   $("btn-est-rf-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rf-salvar", salvarRefurar));
   $("btn-est-rm-fechar")?.addEventListener("click", fecharModalMotivoRefuro);
   $("btn-est-rm-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rm-salvar", salvarMotivoRefuro));
-  $("btn-est-rc-fechar")?.addEventListener("click", fecharModalCobrancaRefuro);   // fase 145a
+  $("btn-est-rc-fechar")?.addEventListener("click", fecharModalCobrancaRefuro);
   $("btn-est-rc-salvar")?.addEventListener("click", () => comBotaoTravado("btn-est-rc-salvar", salvarCobrancaRefuro));
 }
 

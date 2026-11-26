@@ -1,27 +1,27 @@
-/* ====================================================================
-   Início — Sala de Comando (fase 63, 05/10/2026)
-   O Início abre pelo que está errado: faixa do período, "Exige ação hoje",
-   "Minha fila" e abas (frota, obras em execução, operadores, produção).
-   Tudo calculado no banco nas views vw_sc_* (security_invoker: cada cargo
-   vê o que as policies deixam); o front só desenha.
-   Carga em duas ondas: 1) faixa + ações + fila; 2) abas e o resumo antigo.
-   ==================================================================== */
+
+
+
+
+
+
+
+
 
 const DASH_PERIODOS = { hoje: "hoje", "7d": "nos últimos 7 dias", mes: "no mês", mes_ant: "no mês anterior" };
 let _dashPeriodo = "mes";
-try { const p = localStorage.getItem("dash-periodo"); if(DASH_PERIODOS[p]) _dashPeriodo = p; } catch(_e) { /* sem storage: fica no mês */ }
-let _dashProd = [];        // vw_sc_producao_dia do período atual e do anterior
-let _dashFrota = [];       // vw_sc_frota
-let _dashViagens = [];     // viagens planejadas e em trânsito (fase 89, aba Frota)
-let _dashObrasAnd = [];    // vw_sc_obra_andamento
-let _dashAcoes = [];       // vw_sc_acoes
-let _dashFila = [];        // vw_sc_minha_fila
-let _dashMencoes = [];     // vw_sc_minha_fila_mencoes (lote S57b, #218: card no topo, fora da Minha fila)
-let _dashReg = [];         // vw_sc_regularizar (fase 75)
-let _dashObraMat = {};     // vw_sc_obra_material (fase 83): obra_id → separações abertas
-let _dashRitmo = {};       // vw_sc_ritmo_maquina (fase 140): equipamento_id → linha agregada da máquina
+try { const p = localStorage.getItem("dash-periodo"); if(DASH_PERIODOS[p]) _dashPeriodo = p; } catch(_e) {   }
+let _dashProd = [];
+let _dashFrota = [];
+let _dashViagens = [];
+let _dashObrasAnd = [];
+let _dashAcoes = [];
+let _dashFila = [];
+let _dashMencoes = [];
+let _dashReg = [];
+let _dashObraMat = {};
+let _dashRitmo = {};
 let _dashFrotaFiltro = "todas";
-let _dashCargaN = 0;       // descarta resposta de carga antiga quando o período muda no meio
+let _dashCargaN = 0;
 const DASH_NIVEL = {
   critico:      { label: "Crítico",      cor: "vermelho", ordem: 1 },
   atencao:      { label: "Atenção",      cor: "ambar",    ordem: 2 },
@@ -30,16 +30,16 @@ const DASH_NIVEL = {
 };
 const DASH_SETOR = { obras: "Obras", frota: "Frota", financeiro: "Financeiro", compras: "Compras",
   mobilizacao: "Mobilização", chamados: "Chamados", contratos: "Contratos e propostas", almoxarifado: "Almoxarifado", oficina: "Oficina", manutencao: "Manutenção",
-  rh: "RH",   // fase 93a: plano de cargos (vw_sc_regularizar_rh)
-  sesmt: "SESMT",   // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt)
-  logistica: "Logística",   // fase 151: baixadas e alocação (vw_sc_regularizar_log)
-  geodigitus: "Geodigitus",   // fase 107a: computador de bordo e estacas do S3 (vw_sc_regularizar_geo)
-  campo: "Campo",   // fase 129c: diário do operador enviado, devolvido e pendências do app (vw_sc_regularizar_campo)
+  rh: "RH",
+  sesmt: "SESMT",
+  logistica: "Logística",
+  geodigitus: "Geodigitus",
+  campo: "Campo",
   mobilizacoes: "Mobilizações",
-  comercial: "Comercial" };   // lote S66-g: liberação do catálogo a vencer (vw_sc_regularizar_cat); fase 157a: obra sem mobilização, viagem de ida e volta, desmobilização prevista (vw_sc_regularizar_mob): diário do operador enviado, devolvido e pendências do app (vw_sc_regularizar_campo)
-/* Decisão do Bernardo (05/10/2026): alerta vai para o gestor daquele segmento, não vira chamado.
-   "Exige ação hoje" mostra a cada cargo só os setores que ele gere; diretor e admin veem todos.
-   As policies continuam filtrando por baixo (quem não lê contrato não vê a linha de contrato). */
+  comercial: "Comercial" };
+
+
+
 const DASH_SETOR_GESTORES = {
   obras:       ["engenheiro", "assistente_engenharia", "encarregado"],
   frota:       ["mecanico", "logistica", "gestor_acessorios", "gestor_manutencao", "gestor_frota"],
@@ -48,20 +48,20 @@ const DASH_SETOR_GESTORES = {
   mobilizacao: ["logistica", "engenheiro"],
   chamados:    [],
   contratos:   ["comercial"],
-  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios", "gestor_manutencao", "auxiliar_almoxarifado"],   // fase 83: separações; fase 90: equipe do Julio
-  oficina:     ["mecanico", "gestor_acessorios", "gestor_manutencao", "logistica", "almoxarife", "engenheiro"],   // fase 84: ordens de fabricação
-  manutencao:  ["gestor_manutencao", "mecanico", "engenheiro", "gestor_frota", "logistica"],   // fase 92: preventivas vencidas e checklist de mobilização
-  rh:          ["rh"],   // fase 93a: mudanças de função do plano de cargos
-  sesmt:       ["sesmt", "almoxarife", "rh"]   // fase 100: EPI por colaborador
+  almoxarifado: ["almoxarife", "logistica", "comprador", "gestor_acessorios", "gestor_manutencao", "auxiliar_almoxarifado"],
+  oficina:     ["mecanico", "gestor_acessorios", "gestor_manutencao", "logistica", "almoxarife", "engenheiro"],
+  manutencao:  ["gestor_manutencao", "mecanico", "engenheiro", "gestor_frota", "logistica"],
+  rh:          ["rh"],
+  sesmt:       ["sesmt", "almoxarife", "rh"]
 };
 function dashGereSetor(setor){
   const cargo = usuarioAtual?.cargo;
-  if(["diretor", "admin", "auditor"].includes(cargo)) return true; // fase 79: auditor confere a Sala de Comando inteira
+  if(["diretor", "admin", "auditor"].includes(cargo)) return true;
   return (DASH_SETOR_GESTORES[setor] || []).includes(cargo);
 }
-/* Fase 90: o auxiliar de almoxarifado (equipe do Julio) só tem "Exige ação hoje" (setor almoxarifado) e "Minha fila".
-   Faixa do período, "Para regularizar", abas (frota, obras, operadores, produção), financeiro, orçamentos e atividade
-   não aparecem nem são consultados; as views vw_sc_* já filtram por pode_ler_* no banco. */
+
+
+
 function dashSoAlmoxarifado(){ return !!usuarioAtual && usuarioAtual.cargo === "auxiliar_almoxarifado"; }
 const DASH_SITUACAO = {
   produzindo:   { label: "Produzindo hoje",      cor: "verde" },
@@ -70,7 +70,7 @@ const DASH_SITUACAO = {
   sem_obra:     { label: "Sem obra",             cor: "cinza" }
 };
 
-/* Período escolhido → datas (fuso local) e o período anterior de mesmo tamanho */
+
 function dashIntervalo(p){
   const hoje = new Date(hojeISO() + "T12:00:00");
   const soma = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -82,7 +82,7 @@ function dashIntervalo(p){
   return { ini: dataLocalISO(ini), fim: dataLocalISO(fim), antIni: dataLocalISO(soma(ini, -dias)), antFim: dataLocalISO(soma(ini, -1)), dias };
 }
 
-/* Toda leitura do Início passa por aqui: erro vira mensagem no próprio card, nunca card vazio */
+
 async function dashLer(fonte, ajustar, alvo){
   const q = typeof ajustar === "function" ? ajustar(sb.from(fonte)) : sb.from(fonte).select("*");
   const { data, error } = await q;
@@ -95,7 +95,7 @@ async function dashLer(fonte, ajustar, alvo){
   if(alvo) dashCarimbo(alvo);
   return data || [];
 }
-/* Fase 140 (FO-12): carimbo "atualizado às HH:MM" no topo de cada bloco da Sala, só depois de ler sem erro */
+
 const dashHoraAgora = () => "atualizado às " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 function dashCarimbo(alvo){
   const el = $(alvo);
@@ -105,80 +105,80 @@ function dashCarimbo(alvo){
   if(!c){ c = document.createElement("span"); c.className = "dmh-retrato"; topo.appendChild(c); }
   c.textContent = dashHoraAgora();
 }
-/* fase 99b (decisão 4): "Medido no período" e "A receber" são somatórios financeiros: podeVerKpiFinanceiro() (core.js) =
-   diretor, financeiro e auditor (o admin saiu em 21/10/2026). O argumento é a regra anterior, que volta se KPI_FIN_RESTRITO = false
-   (Medido: diretoria + quem vê contas a pagar, inclusive o comprador; A receber: a mesma lista de hoje). */
+
+
+
 const dashPodeVerMedido = () => podeVerKpiFinanceiro(() => dashEhDiretoria() || (typeof podeVerContasPagar === "function" && podeVerContasPagar()));
-/* fase 96: KPI "A receber" (medições + vendas de bens) — diretoria e financeiro (admin saiu em 21/10/2026; auditor lê o que a diretoria lê) */
+
 const dashPodeVerReceber = () => podeVerKpiFinanceiro(() => !!usuarioAtual && ["diretor", "financeiro", "auditor"].includes(usuarioAtual.cargo));
-/* fase 99b: card Segurança (vw_sc_seguranca) — diretor, admin e auditor; o banco devolve vazio aos demais */
+
 const dashPodeVerSeguranca = () => !!usuarioAtual && ["diretor", "admin", "auditor"].includes(usuarioAtual.cargo);
-/* fase 100: card EPI (vw_sc_epi) — SESMT, almoxarife, RH e diretoria (podeVerEpi em js/epi.js = pode_ver_epi() no banco) */
+
 const dashPodeVerEpi = () => typeof podeVerEpi === "function" && podeVerEpi();
-/* fase 109d: card Segurança do trabalho (sst_indicadores) — quem lê ocorrências de SST (ssoPodeLerOcorrencias em js/sesmt_ocorrencias.js =
-   sst_ocorrencias_pode_ler() no banco: SESMT, rh, auditor, engenharia, gestor de manutenção e diretoria) */
+
+
 const dashPodeVerSst = () => typeof ssoPodeLerOcorrencias === "function" && ssoPodeLerOcorrencias();
 
 async function carregarDashboard(){
   const carga = ++_dashCargaN;
-  // Saudação
+
   const nome = (typeof usuarioAtual !== "undefined" && usuarioAtual?.nome) ? usuarioAtual.nome.split(" ")[0] : "";
   if($("dash-saudacao")) $("dash-saudacao").textContent = nome ? `👋 Olá, ${nome} · Sala de Comando` : "👋 Sala de Comando";
   if($("dash-data-hoje")) $("dash-data-hoje").textContent = new Date().toLocaleDateString("pt-BR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
   document.querySelectorAll("#dash-periodo [data-periodo]").forEach(b => b.classList.toggle("ativo", b.dataset.periodo === _dashPeriodo));
   if($("dash-card-medido")) $("dash-card-medido").style.display = dashPodeVerMedido() ? "" : "none";
   if($("dash-card-custo"))  $("dash-card-custo").style.display  = dashEhDiretoria() ? "" : "none";
-  if($("dash-card-receber")) $("dash-card-receber").style.display = dashPodeVerReceber() ? "" : "none";   // fase 96
-  if($("dash-seguranca-card")) $("dash-seguranca-card").style.display = dashPodeVerSeguranca() ? "" : "none";   // fase 99b
-  if($("dash-epi-card")) $("dash-epi-card").style.display = dashPodeVerEpi() ? "" : "none";   // fase 100
-  if($("dash-sst-card")) $("dash-sst-card").style.display = dashPodeVerSst() ? "" : "none";   // fase 109d
+  if($("dash-card-receber")) $("dash-card-receber").style.display = dashPodeVerReceber() ? "" : "none";
+  if($("dash-seguranca-card")) $("dash-seguranca-card").style.display = dashPodeVerSeguranca() ? "" : "none";
+  if($("dash-epi-card")) $("dash-epi-card").style.display = dashPodeVerEpi() ? "" : "none";
+  if($("dash-sst-card")) $("dash-sst-card").style.display = dashPodeVerSst() ? "" : "none";
   const finEl = $("dash-financeiro");
   if(finEl) finEl.style.display = dashEhDiretoria() ? "" : "none";
-  // fase 90: auxiliar de almoxarifado vê só "Exige ação hoje" e "Minha fila"
+
   const soAlmox = dashSoAlmoxarifado();
   [$("dash-faixa"), $("dash-periodo"), $("dash-regularizar")?.closest(".card"), document.querySelector("#sec-inicio .dash-abas"), $("dash-card-orc")?.closest(".dash-duas-col")]
     .forEach(el => { if(el) el.style.display = soAlmox ? "none" : ""; });
 
-  // 1ª onda: o que o usuário olha primeiro
+
   const t0 = performance.now();
   await Promise.all([soAlmox ? null : carregarDashFaixa(carga), dashCarregarAcoes(), dashCarregarFila(), soAlmox ? null : dashCarregarRegularizar()]);
   if(carga !== _dashCargaN) return;
   console.info(`Início: 1ª onda em ${Math.round(performance.now() - t0)} ms`);
   if($("dash-atualizado")) $("dash-atualizado").textContent = dashHoraAgora();
-  if(soAlmox){ ligarCliquesDashboard(); return; }   // fase 90: sem abas, resumo nem atividade para o auxiliar
+  if(soAlmox){ ligarCliquesDashboard(); return; }
 
-  // 2ª onda: abas e o resumo do fim da página
+
   await Promise.all([
-    dmhCarregar(),                 // fase 139: aba Máquinas hoje
-    dashCarregarRitmo(),           // fase 140: coluna Ritmo da aba Frota
+    dmhCarregar(),
+    dashCarregarRitmo(),
     dashCarregarObrasAndamento(),
     carregarDashGraficoProducao(),
     carregarDashTopObras(),
     carregarDashAtividade(),
     carregarDashOrcamentos(),
-    dashPodeVerSeguranca() ? dashCarregarSeguranca() : Promise.resolve(),   // fase 99b
-    dashPodeVerEpi() ? dashCarregarEpi() : Promise.resolve(),               // fase 100
-    dashPodeVerSst() ? dashCarregarSst() : Promise.resolve(),               // fase 109d
-    (typeof geoPodeVerCard === "function" && geoPodeVerCard()) ? geoCarregarCardSala() : Promise.resolve(),   // fase 107a: card Geodigitus
+    dashPodeVerSeguranca() ? dashCarregarSeguranca() : Promise.resolve(),
+    dashPodeVerEpi() ? dashCarregarEpi() : Promise.resolve(),
+    dashPodeVerSst() ? dashCarregarSst() : Promise.resolve(),
+    (typeof geoPodeVerCard === "function" && geoPodeVerCard()) ? geoCarregarCardSala() : Promise.resolve(),
     dashEhDiretoria() ? carregarDashFinanceiro() : Promise.resolve(),
     dashEhDiretoria() ? carregarDashIA() : Promise.resolve()
   ]);
   if(carga !== _dashCargaN) return;
-  ["dash-seguranca", "dash-epi", "dash-sst", "dash-geo"].forEach(dashCarimbo);   // fase 140 (FO-12): cards com leitura própria
+  ["dash-seguranca", "dash-epi", "dash-sst", "dash-geo"].forEach(dashCarimbo);
   renderDashFrota();
   await renderDashOperadores();
 
-  // A posição de estoque (aba antiga, oculta) NÃO carrega mais no boot: eram
-  // 9.479 produtos + 9.479 <tr> a cada login (~60% do payload inicial).
-  // Passou a carregar sob demanda ao abrir a seção Estoque (core.js, nav).
+
+
+
   ligarCliquesDashboard();
 }
 
-/* ---------- Faixa de indicadores ---------- */
+
 async function carregarDashFaixa(carga){
   const iv = dashIntervalo(_dashPeriodo);
   const verReceber = dashPodeVerReceber();
-  // fase 105c: retenções federais entram no líquido a receber (medLiquido); colunas lidas só depois da migration
+
   const retCols = verReceber && typeof fiscalColunaExiste === "function" && await fiscalColunaExiste("medicoes", "ret_irrf")
     ? ",ret_irrf,ret_pis,ret_cofins,ret_csll,ret_inss" : "";
   const [prod, frota, obras, rdos, meds, custos, viagens, recMed, recVendas] = await Promise.all([
@@ -186,17 +186,17 @@ async function carregarDashFaixa(carga){
     dashLer("vw_sc_frota", q => q.select("*"), "dash-frota-lista"),
     dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-k-obras-sub"),
     dashLer("rdo", q => q.select("obra_id").gte("data", iv.ini).lte("data", iv.fim), "dash-k-obras-sub"),
-    dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada","recebida"]).eq("em_revisao", false).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),   // fase 91: recebida conta como medida; fase 177a: em revisão fica fora
+    dashPodeVerMedido() ? dashLer("medicoes", q => q.select("valor_final,valor_medido").in("status", ["aprovada","faturada","recebida"]).eq("em_revisao", false).gte("data_medicao", iv.ini).lte("data_medicao", iv.fim), "dash-k-medido-sub") : Promise.resolve([]),
     dashEhDiretoria() ? dashLer("vw_custos", q => q.select("valor").gte("data", iv.ini).lte("data", iv.fim), "dash-k-custo-sub") : Promise.resolve([]),
-    // fase 89: viagens em trânsito agora e planejadas sem caminhão/motorista (aba Frota)
+
     dashLer("viagens", q => q.select("id,numero,data,status,finalidade,caminhao_id,funcionario_id,destino_tipo,destino_obra_id,destino_descricao,data_saida,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome)").in("status", ["planejada", "em_transito"]).order("data")),
-    // fase 96: "A receber" = NFs de medição não recebidas (mesma regra da fase 91) + saldo das vendas de bens
+
     verReceber ? dashLer("medicoes", q => q.select("valor_final,valor_medido,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,nf_numero,nf_vencimento,status" + retCols).in("status", ["aprovada", "faturada"]).not("nf_numero", "is", null), "dash-k-receber-sub") : Promise.resolve(null),
     verReceber && typeof vbResumoAReceber === "function" ? vbResumoAReceber() : Promise.resolve(null)
   ]);
   if(carga !== _dashCargaN) return;
   _dashProd = prod || []; _dashFrota = frota || []; _dashObrasAnd = obras || []; _dashViagens = viagens || [];
-  if(frota && $("dash-frota-carimbo")) $("dash-frota-carimbo").textContent = dashHoraAgora();   // fase 140 (FO-12)
+  if(frota && $("dash-frota-carimbo")) $("dash-frota-carimbo").textContent = dashHoraAgora();
   if(obras && $("dash-obras-carimbo")) $("dash-obras-carimbo").textContent = dashHoraAgora();
   const set = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   const vazio = (id, cond) => { const el = $(id); if(el) el.classList.toggle("dash-num-vazio", !!cond); };
@@ -210,8 +210,8 @@ async function carregarDashFaixa(carga){
     const varia = mAnt > 0 ? Math.round((m - mAnt) / mAnt * 100) : null;
     set("dash-k-producao-sub", `${e} estaca(s) ${quando} · ${varia == null ? "sem base no período anterior" : (varia >= 0 ? "▲ " : "▼ ") + Math.abs(varia) + "% vs. anterior"}`);
   }
-  // 20/10/2026 (Bernardo): o card "Máquinas ativas" (máquinas com execução ÷ em obra) saiu do Início — era a métrica de
-  // cobrança por máquina do Maya e não diz nada para a CGL. A frota continua na lista "Frota" abaixo (_dashFrota).
+
+
   if(obras && rdos){
     const ids = new Set(_dashObrasAnd.map(o => o.obra_id));
     const com = new Set((rdos || []).map(r => r.obra_id).filter(id => ids.has(id))).size;
@@ -228,7 +228,7 @@ async function carregarDashFaixa(carga){
     set("dash-k-custo", brl(v)); vazio("dash-k-custo", !(v > 0));
     set("dash-k-custo-sub", `${custos.length} lançamento(s) ${quando}`);
   }
-  // fase 96: A receber (não depende do período: é o saldo de hoje), em duas linhas no detalhe
+
   if(verReceber && recMed){
     const hoje = hojeISO();
     const liq = (m) => typeof medLiquido === "function" ? medLiquido(m) : (Number(m.valor_final) || Number(m.valor_medido) || 0) - (Number(m.retencao_valor) || 0) - (m.iss_retido_fonte === false ? 0 : (Number(m.iss_valor) || 0));
@@ -244,31 +244,31 @@ async function carregarDashFaixa(carga){
   }
 }
 
-/* ---------- Exige ação hoje ---------- */
+
 async function dashCarregarAcoes(){
   const cont = $("dash-acoes");
   if(!cont) return;
-  // fase 83: as separações vêm numa view à parte (vw_sc_acoes_sep); fase 84: a fabricação idem (vw_sc_acoes_fab); entram na mesma lista
-  // fase 91: caução vencida / a vencer e NF vencida sem recebimento (setor financeiro) em vw_sc_acoes_fin
-  // fase 92: preventiva vencida/vencendo e mobilização sem checklist aprovado (setor manutenção) em vw_sc_acoes_man
-  // fase 108b: chave de dono do custo pendente do usuário logado (vw_pedidos_aprovacao_pendente.dono_meu) entra em Compras
-  // lote S63-0: cotação parada, recebimento sem conferência e saída sem custo saíram de vw_sc_acoes (carga) e vêm de
-  // vw_sc_acoes_cmp, marcadas como "acoes" para o "o que é este número" seguir igual. Pendência nova: view própria, nunca vw_sc_acoes
-  // hotfix NF-e de remessa A: cliente sem cadastro fiscal com remessa a caminho (vw_pendencias_cliente_fiscal; o banco só
-  // devolve a linha do cliente ao financeiro, à diretoria e ao auditor), um item por cliente no setor financeiro
-  // fase 195c: pedidos do site com o prazo prometido vencido ou hoje (73) e sem resposta (74) em vw_sc_acoes_psi, setor
-  // "Contratos e propostas"; marcadas como "acoes" para o "o que é este número" (acoes:73 e acoes:74)
+
+
+
+
+
+
+
+
+
+
   const [dados, sep, fab, fin, man, ass, cmp, cliFis, psi] = await Promise.all([dashLer("vw_sc_acoes", q => q.select("*"), "dash-acoes"), dashLer("vw_sc_acoes_sep", q => q.select("*")), dashLer("vw_sc_acoes_fab", q => q.select("*")), dashLer("vw_sc_acoes_fin", q => q.select("*")), dashLer("vw_sc_acoes_man", q => q.select("*")),
     dashLer("vw_pedidos_aprovacao_pendente", q => q.select("pedido_id,numero,total,quem_assina,criado_em").eq("dono_meu", true).order("criado_em")),
     dashLer("vw_sc_acoes_cmp", q => q.select("*")),
     dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "cliente").order("cliente_nome")),
     dashLer("vw_sc_acoes_psi", q => q.select("*"))]);
   if(!dados) return;
-  // fase 164: cada lista leva a fonte de onde veio; a chave do "o que é este número" é fonte:ordem[:nível], nunca o título
+
   dashMarcarFonte(dados, "acoes"); dashMarcarFonte(cmp, "acoes"); dashMarcarFonte(psi, "acoes");dashMarcarFonte(sep, "sep"); dashMarcarFonte(fab, "fab"); dashMarcarFonte(fin, "fin"); dashMarcarFonte(man, "man");
   const cliNfe = dashMarcarFonte(dashAcoesClienteFiscal(cliFis || []), "fin");
   _dashAcoes = dados.concat(cmp || [], psi || [], sep || [], fab || [], fin || [], cliNfe, man || []).filter(a => dashGereSetor(a.setor))
-    .concat(dashAcoesAssinatura(ass || []))   // é do usuário (ele é o dono do custo): não passa pelo filtro de setor
+    .concat(dashAcoesAssinatura(ass || []))
     .sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   const porNivel = {};
   _dashAcoes.forEach(a => { porNivel[a.nivel] = (porNivel[a.nivel] || 0) + 1; });
@@ -276,7 +276,7 @@ async function dashCarregarAcoes(){
     ? Object.entries(DASH_NIVEL).filter(([k]) => porNivel[k]).map(([k, o]) => `<span class="tag ${esc(o.cor)}">${esc(porNivel[k])} ${esc(o.label.toLowerCase())}</span>`).join(" ")
     : "";
   if(!_dashAcoes.length){ cont.innerHTML = `<p class="vazio">Nada exigindo ação nos setores que você acompanha.</p>`; return; }
-  // agrupado por setor, setores na ordem do item mais urgente
+
   const setores = [];
   _dashAcoes.forEach(a => { if(!setores.includes(a.setor)) setores.push(a.setor); });
   cont.innerHTML = setores.map(s => `<div class="dash-setor">
@@ -284,9 +284,9 @@ async function dashCarregarAcoes(){
       ${_dashAcoes.map((a, i) => a.setor !== s ? "" : dashLinhaAcao(a, i, "acao")).join("")}
     </div>`).join("");
 }
-/* Hotfix NF-e de remessa A: um item por cliente com o cadastro incompleto para a NF-e e remessa a caminho (mobilização
-   prevista ou em andamento, ou remessa em rascunho). Abre a ficha do cliente na aba Fiscal. O que falta vem do banco
-   (fiscal_cliente_pendencias, a mesma regra da function focus-nfe). */
+
+
+
 function dashAcoesClienteFiscal(linhas){
   return (linhas || []).map(l => ({
     setor: "financeiro", nivel: "atencao", ordem: 42, quantidade: 1, secao: "clientes", registro_id: l.cliente_id,
@@ -295,8 +295,8 @@ function dashAcoesClienteFiscal(linhas){
     detalhe: [`falta ${(l.falta || []).join(", ")}`, l.obra_codigo ? `obra ${l.obra_codigo}` : "", (l.motivos || []).join(", ")].filter(Boolean).join(" · ")
   }));
 }
-/* Hotfix NF-e de remessa A: obras com o endereço incompleto (local de entrega da nota) e remessa a caminho, uma linha por
-   papel (responsável da obra, ou o gestor do serviço enquanto não houver; diretoria). Abre a obra na aba Endereço. */
+
+
 function dashRegObraEndereco(linhas){
   const porPapel = {};
   (linhas || []).forEach(l => { (porPapel[l.papel] = porPapel[l.papel] || []).push(l); });
@@ -307,9 +307,9 @@ function dashRegObraEndereco(linhas){
     obra_ids: ls.map(l => l.obra_id), obra_id: ls.length === 1 ? ls[0].obra_id : null
   }));
 }
-/* Fase 108b: uma linha por pedido com chave de dono do custo pendente que é do usuário logado (engenheiro responsável
-   da obra, gestor de manutenção ou de frota da TAG, responsável do centro). Abre a ficha do pedido para assinar, mesmo
-   para quem não tem Compras no menu (cmpAbrirParaAssinar em js/compras.js). */
+
+
+
 function dashAcoesAssinatura(linhas){
   const porPedido = {};
   linhas.forEach(l => { (porPedido[l.pedido_id] = porPedido[l.pedido_id] || []).push(l); });
@@ -322,23 +322,23 @@ function dashAcoesAssinatura(linhas){
 }
 function dashLinhaAcao(a, i, tipo){
   const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
-  const chave = dashExplicaDaLinha(a, tipo === "fila" ? "fila" : "acoes");   // fase 164
+  const chave = dashExplicaDaLinha(a, tipo === "fila" ? "fila" : "acoes");
   return `<div class="dash-pendencia-item clicavel" data-${esc(tipo)}="${i}"${chave ? ` data-explica="${esc(chave)}"` : ""} title="Abrir">
       <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(dashTituloAcao(a.titulo))}</strong>${a.quantidade > 1 ? ` <span class="contador">(${esc(a.quantidade)})</span>` : ""}
         ${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}</div>
-      ${/* html */ dashBotaoExplica(chave)}<span class="dash-pend-seta">›</span>
+      ${  dashBotaoExplica(chave)}<span class="dash-pend-seta">›</span>
     </div>`;
 }
-/* ---------- Fase 164: "o que é este número" ----------
-   Os textos e a regra da chave ficam em js/dash_explica.js. Aqui: marcar a fonte de cada lista, desenhar o "?" e
-   abrir o painel logo abaixo da linha (um aberto por bloco), sem navegar para a tela de origem. */
+
+
+
 function dashMarcarFonte(lista, fonte){ (lista || []).forEach(a => { if(a) a._fonte = fonte; }); return lista; }
 const _dashExplicaAvisadas = new Set();
 function dashExplicaDaLinha(a, bloco){
   const chave = typeof dashExplicaChave === "function" ? dashExplicaChave(a, bloco) : null;
   if(!chave && a){
-    // sem texto conferido: a linha sai sem o "?" e a chave fica no console (uma vez) para quem for escrever o texto
+
     const id = bloco === "regularizar" ? `regularizar:${a.filtro}` : `${a._fonte}:${a.ordem}:${a.nivel}`;
     if(!_dashExplicaAvisadas.has(id)){ _dashExplicaAvisadas.add(id); console.warn("Sala de Comando: pendência sem texto de explicação:", id); }
   }
@@ -348,8 +348,8 @@ function dashBotaoExplica(chave){
   return chave ? `<button type="button" class="dash-ajuda" data-explica-btn aria-expanded="false" aria-label="O que é este número" title="O que é este número">?</button>` : "";
 }
 let _dashExplicaSeq = 0;
-/* Abre ou fecha o painel do "?" clicado. ancora = elemento depois do qual o painel entra (a linha, ou o rótulo do indicador);
-   escopo = bloco em que só um painel fica aberto; html = conteúdo já escapado (dashExplicaHTML / dashExplicaFaixaHTML). */
+
+
 function dashAlternarExplica(btn, ancora, escopo, html){
   if(!btn || !ancora || !escopo) return;
   const aberto = btn.getAttribute("aria-expanded") === "true";
@@ -366,16 +366,16 @@ function dashAlternarExplica(btn, ancora, escopo, html){
   btn.setAttribute("aria-expanded", "true");
   btn.setAttribute("aria-controls", p.id);
 }
-/* Clique num "?" de linha de pendência: devolve true quando tratou (quem chama não abre a tela de origem) */
+
 function dashCliqueExplica(e, escopo){
   const btn = e.target.closest("[data-explica-btn]");
-  if(!btn) return !!e.target.closest(".dash-explica");   // clique dentro do painel aberto também não navega
+  if(!btn) return !!e.target.closest(".dash-explica");
   e.stopPropagation();
   const linha = btn.closest("[data-explica]");
   if(linha) dashAlternarExplica(btn, linha, escopo, dashExplicaHTML(linha.dataset.explica));
   return true;
 }
-// tipos de pendência de contrato vêm como texto sem acento do banco (vw_pendencias_contratos)
+
 const DASH_TIPO_CONTRATO = { "composicao divergente": "composição divergente", "quadro parcial": "quadro de orçamento lido em parte",
   "aditivo sem valor": "aditivo sem valor", "valor provisorio": "valor provisório", "sem assinatura": "sem assinatura",
   "saldo negativo": "saldo negativo (precisa aditivo)", "aditivo pendente": "aditivo pendente",
@@ -385,31 +385,31 @@ function dashTituloAcao(t){
   return m ? "Contrato: " + (DASH_TIPO_CONTRATO[m[1]] || m[1]) : t;
 }
 
-/* ---------- Minha fila ---------- */
+
 async function dashCarregarFila(){
   const cont = $("dash-fila");
   if(!cont) return;
-  // fase 83: separações; lote S55 (#176): menções "@usuário" não lidas (vw_sc_minha_fila_mencoes, ordem 45; tolerante à ausência da view)
-  // fase 146: vw_sc_minha_fila_custo, um cartão por produto que saiu sem custo (só almoxarife e comprador)
-  // lote S63-i (#280): vw_sc_minha_fila_sst, ação de ocorrência SST atribuída a mim (a fazer ou em andamento), com o prazo
-  // fase 187c (#324): vw_sc_minha_fila_retornos, retorno ao cliente agendado na aba Negociação do orçamento (hoje ou vencido)
-  // fase 180e: vw_sc_minha_fila_modelos, "Aprovar modelo" (diretor) e "Modelo devolvido" (autor do rascunho; jurídico ou diretor)
-  // fase 180f: vw_sc_minha_fila_prc, audiência e prazo de processo vencidos ou nos próximos 7 dias (jurídico e diretor)
+
+
+
+
+
+
   const lerMdl = typeof ehJuridico === "function" && usuarioAtual && (usuarioAtual.cargo === "diretor" || ehJuridico());
   const lerPrc = usuarioAtual && ["diretor", "juridico"].includes(usuarioAtual.cargo);
   const [dados, sep, menc, custo, sst, ret, mdl, prc] = await Promise.all([dashLer("vw_sc_minha_fila", q => q.select("*"), "dash-fila"), dashLer("vw_sc_minha_fila_sep", q => q.select("*")), dashLer("vw_sc_minha_fila_mencoes", q => q.select("*")), dashLer("vw_sc_minha_fila_custo", q => q.select("*")), dashLer("vw_sc_minha_fila_sst", q => q.select("*")), dashLer("vw_sc_minha_fila_retornos", q => q.select("*")), lerMdl ? dashLer("vw_sc_minha_fila_modelos", q => q.select("*")) : null, lerPrc ? dashLer("vw_sc_minha_fila_prc", q => q.select("*")) : null]);
   if(!dados) return;
   if(typeof histMencoesPendentesDefinir === "function") histMencoesPendentesDefinir((menc || []).map(m => m.registro_id));
-  if(menc) dashRenderMencoes(menc);   // lote S57b (#218): menções no card do topo e no badge do menu, não na fila
-  dashMarcarFonte(dados, "fila"); dashMarcarFonte(sep, "fila_sep"); dashMarcarFonte(custo, "fila_custo"); dashMarcarFonte(sst, "fila_sst"); dashMarcarFonte(ret, "fila_ret"); dashMarcarFonte(mdl, "fila_mdl"); dashMarcarFonte(prc, "fila_prc");   // fase 164
+  if(menc) dashRenderMencoes(menc);
+  dashMarcarFonte(dados, "fila"); dashMarcarFonte(sep, "fila_sep"); dashMarcarFonte(custo, "fila_custo"); dashMarcarFonte(sst, "fila_sst"); dashMarcarFonte(ret, "fila_ret"); dashMarcarFonte(mdl, "fila_mdl"); dashMarcarFonte(prc, "fila_prc");
   _dashFila = dados.concat(sep || [], custo || [], sst || [], ret || [], mdl || [], prc || []).sort((a, b) => (DASH_NIVEL[a.nivel]?.ordem || 9) - (DASH_NIVEL[b.nivel]?.ordem || 9) || a.ordem - b.ordem);
   if($("dash-fila-cont")) $("dash-fila-cont").textContent = _dashFila.length ? `(${_dashFila.length})` : "";
   cont.innerHTML = _dashFila.length
     ? _dashFila.map((a, i) => dashChamadoEsperando(a) || dashChamadoConfirmar(a) ? dashLinhaFilaChamado(a, i) : dashLinhaAcao(a, i, "fila")).join("")
     : `<p class="vazio">Nada no seu nome agora. Aqui entram comentário em que você foi marcado, pendência de mobilização sua, ação de ocorrência SST com você como responsável, requisição para você aprovar, chamado esperando a sua resposta e separação atribuída a você. O que é da empresa está ao lado.</p>`;
 }
-/* Lote S57b (#218): "Você foi mencionado (N)" no topo do Início (entre o cabeçalho e a faixa) e badge no item Início do
-   menu. Some com N = 0; ao abrir a ficha, historico.js marca como lida e chama dashCarregarFila, que refaz os dois. */
+
+
 function dashRenderMencoes(menc){
   _dashMencoes = (menc || []).slice().sort((a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0));
   dashBadgeMencoes(_dashMencoes.length);
@@ -429,23 +429,23 @@ function dashBadgeMencoes(n){
   b.textContent = n > 0 ? String(n) : "";
   b.title = n > 0 ? `${n} menção(ões) não lida(s)` : "";
 }
-/* Timer de 5 min (core.js) e volta à aba: só a contagem, sem refazer o Início */
+
 async function dashAtualizarBadgeMencoes(){
   if(typeof usuarioAtual === "undefined" || !usuarioAtual || typeof sb === "undefined") return;
   const { count, error } = await sb.from("vw_sc_minha_fila_mencoes").select("registro_id", { count: "exact", head: true });
   if(!error) dashBadgeMencoes(count || 0);
 }
-/* Lote S47: chamado esperando a minha resposta (ramo 41 de vw_sc_minha_fila) mostra a pergunta e, quando há
-   resposta sugerida, aprova com um clique (RPC chamado_aprovar, que aplica o status sugerido). */
+
+
 const dashChamadoEsperando = (a) => !!a && a.secao === "chamados" && Number(a.ordem) === 41 && !!a.registro_id;
-/* Lote S55 (#185): "Confira: #n" (ramo 42) com "✅ Funcionou" inline (RPC chamado_confirmar, só o autor); o card sai da fila. */
+
 const dashChamadoConfirmar = (a) => !!a && a.secao === "chamados" && Number(a.ordem) === 42 && !!a.registro_id;
 function dashLinhaFilaChamado(a, i){
   const n = DASH_NIVEL[a.nivel] || { label: a.nivel, cor: "cinza" };
   const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
   const sugerida = dashChamadoEsperando(a) && /^Resposta sugerida:/.test(a.detalhe || "") && !leitura;
   const confirmar = dashChamadoConfirmar(a) && !leitura;
-  const chave = dashExplicaDaLinha(a, "fila");   // fase 164
+  const chave = dashExplicaDaLinha(a, "fila");
   return `<div class="dash-pendencia-item clicavel" data-fila="${i}"${chave ? ` data-explica="${esc(chave)}"` : ""} title="Abrir o chamado">
       <span class="tag ${esc(n.cor)}">${esc(n.label)}</span>
       <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong>${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}
@@ -455,7 +455,7 @@ function dashLinhaFilaChamado(a, i){
           <button type="button" class="btn-sec btn-sm" data-fila-abrir="${i}">Abrir</button>
         </div>
       </div>
-      ${/* html */ dashBotaoExplica(chave)}
+      ${  dashBotaoExplica(chave)}
     </div>`;
 }
 async function dashConfirmarChamadoFila(a){
@@ -474,55 +474,55 @@ async function dashAprovarChamadoFila(btn, a){
   await dashCarregarFila();
   if(typeof carregarChamados === "function" && typeof _chamCarregado !== "undefined" && _chamCarregado) carregarChamados(true);
 }
-// Compatibilidade: a aba Timeline da obra (obra_abas.js) recarrega "pendências" ao resolver comentário
+
 function carregarDashPendencias(){ return Promise.all([dashCarregarAcoes(), dashCarregarFila(), dashCarregarRegularizar()]); }
 
-/* ---------- Para regularizar (fase 75) ----------
-   Cadastro incompleto que o responsável corrige quando tiver tempo. O destino vem do banco
-   (vw_sc_regularizar + responsaveis_servico): o que é seu primeiro, depois o total da
-   diretoria, por último o que você só acompanha.
-   Fase 164: o papel que cada linha já traz vira três visões (Meus, Da empresa, Acompanho); a regra das visões fica em
-   js/dash_explica.js (dashRegContar, dashRegFiltrar, dashRegVisaoInicial). A ordem das linhas não muda. */
+
+
+
+
+
+
 const DASH_REG_PAPEL = { responsavel: { ordem: 1 }, diretoria: { ordem: 2 }, acompanha: { ordem: 3 } };
 const DASH_REG_VISAO_TITLE = { meus: "O que está no seu nome", empresa: "O total da empresa", acompanho: "O responsável é outra pessoa; você acompanha" };
-let _dashRegVisao = null;   // escolha da sessão
-try { _dashRegVisao = sessionStorage.getItem("dash-reg-visao"); } catch(_e) { /* sem storage: abre pelo padrão */ }
+let _dashRegVisao = null;
+try { _dashRegVisao = sessionStorage.getItem("dash-reg-visao"); } catch(_e) {   }
 async function dashCarregarRegularizar(){
   const cont = $("dash-regularizar");
   if(!cont) return;
-  // fase 91: cauções com previsão de devolução vencida (financeiro) em vw_sc_regularizar_fin, mesmas colunas
-  // fase 92: OS atrasadas e leitura parada (vw_sc_regularizar_man); fase 93a: plano de cargos (vw_sc_regularizar_rh); fase 93c: horas a liberar há 15+ dias (vw_sc_regularizar_rhh); mesmas colunas
-  // fase 100: EPI com troca vencida e saída de EPI sem pessoa (vw_sc_regularizar_sesmt; só quem vê EPI consulta)
-  // fase 109d: ocorrências de SST sem classificação, ação do plano vencida (o responsável da ação pode ser qualquer usuário, por isso
-  // todo mundo consulta; a view devolve só o que a RLS deixa) e sem eficácia verificada (vw_sc_regularizar_sst_ocorrencias)
-  // fase 107a: computador de bordo e estacas do Geodigitus (vw_sc_regularizar_geo; a view devolve a cada um só o papel dele)
-  // fase 141: peça de desgaste perto do fim da vida (vw_sc_regularizar_ace; a view devolve a cada um só o papel dele)
-  // fase 151: baixada vencida ou a vencer e diário fora da alocação (vw_sc_regularizar_log; só contagens, logística e diretoria)
-  // fase 129c: diário do campo enviado sem conferência, devolvido sem reenvio e pendências do app (vw_sc_regularizar_campo; a view
-  // devolve a cada um só o papel dele)
-  // fase 179: diário sem estaca e sem parada, a partir da data de corte (vw_sc_regularizar_rdo_dia; view própria, fora de vw_sc_acoes)
-  // fase 180c: "Emitir boleto da parcela NN/TT · comprador" (vw_sc_regularizar_vbol; view própria, fora de vw_sc_acoes)
+
+
+
+
+
+
+
+
+
+
+
+
   const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia, refuro, ctr, cat, vbol, obraFis] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
-    (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,   // fase 109a: o engenheiro com o extra sesmt também
+    (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
     dashLer("vw_sc_regularizar_ace", q => q.select("*")),
     dashLer("vw_sc_regularizar_log", q => q.select("*")),
     dashLer("vw_sc_regularizar_campo", q => q.select("*")),
-    // fase 156a: horas de fim de semana e feriado esperando aprovação (só quem aprova: diretor, gestor de manutenção e de acessórios)
+
     usuarioAtual && ["diretor", "gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_apt", q => q.select("*")) : null,
-    dashLer("vw_sc_regularizar_mob", q => q.select("*")),   // fase 157a: mobilizações (a view devolve a cada um só o papel dele)
-    // lote S63-d (#276): Atualizar estoque em 7 dias (setor dono) e saída em rascunho e contagem esperando o diretor (vw_sc_regularizar_est)
+    dashLer("vw_sc_regularizar_mob", q => q.select("*")),
+
     usuarioAtual && (["diretor", "admin", "almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo) || (typeof sstPodeOperar === "function" && sstPodeOperar())) ? dashLer("vw_sc_regularizar_est", q => q.select("*")) : null,
-    // lote S63-b (#272): produto aguardando aprovação do almoxarifado (view própria; quem aprova e a diretoria)
+
     usuarioAtual && ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado", "logistica"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_prod", q => q.select("*")) : null,
-    dashLer("vw_sc_regularizar_rdo_dia", q => q.select("*")),   // a view devolve a cada um só o papel dele
-    dashLer("vw_sc_regularizar_refuro", q => q.select("*")),   // fase 145a: refuro sem decisão de cobrança (engenheiro da obra ou gestor)
-    // fase 180b: obrigação de contrato vencida (view própria; a RLS das obrigações limita ao lado que cada um lê)
+    dashLer("vw_sc_regularizar_rdo_dia", q => q.select("*")),
+    dashLer("vw_sc_regularizar_refuro", q => q.select("*")),
+
     typeof podeVerContratos === "function" && podeVerContratos() ? dashLer("vw_sc_regularizar_ctr", q => q.select("*")) : null,
-    usuarioAtual?.cargo === "diretor" ? dashLer("vw_sc_regularizar_cat", q => q.select("*")) : null,   // lote S66-g: liberação do catálogo vence em 7 dias
+    usuarioAtual?.cargo === "diretor" ? dashLer("vw_sc_regularizar_cat", q => q.select("*")) : null,
     usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_vbol", q => q.select("*")) : null,
-    // hotfix NF-e de remessa A: obra com endereço incompleto e remessa a caminho (a view devolve a cada um só o papel dele)
+
     dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "obra").order("obra_codigo"))]);
   if(!dados) return;
   const obrEnd = dashRegObraEndereco(obraFis || []);
@@ -530,7 +530,7 @@ async function dashCarregarRegularizar(){
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   dashRenderRegularizar();
 }
-/* Desenha as visões e as linhas da visão escolhida. data-reg continua sendo a posição em _dashReg (a lista inteira). */
+
 function dashRenderRegularizar(){
   const cont = $("dash-regularizar"), visoes = $("dash-reg-visoes");
   if(!cont) return;
@@ -551,15 +551,15 @@ function dashRenderRegularizar(){
       return `<div class="dash-pendencia-item clicavel" data-reg="${i}"${chave ? ` data-explica="${esc(chave)}"` : ""} title="Abrir a tela para corrigir">
         <div class="dash-acao-txt"><strong>${esc(a.titulo)}</strong> <span class="contador">(${esc(a.quantidade)})</span>
           ${a.detalhe ? `<div class="meta" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ""}</div>
-        ${/* html */ dashBotaoExplica(chave)}<span class="dash-pend-seta">›</span>
+        ${  dashBotaoExplica(chave)}<span class="dash-pend-seta">›</span>
       </div>`;
     }).join("");
 }
-/* ---------- Segurança (fase 99b) ----------
-   vw_sc_seguranca (security_invoker sobre seguranca_alertas(), que só devolve linhas a diretor, admin e auditor):
-   usuários sem MFA em cargo que exige (com o prazo da carência), convites não aceitos há 7+ dias, trocas de cargo
-   e sessões encerradas à força nos últimos 30 dias, leituras de ficha sensível acima do limite por dia, webhook
-   recusado nas últimas 24 h. Sem a migration aplicada (view inexistente) o card some, sem erro na tela. */
+
+
+
+
+
 const DASH_SEG_TIPO = {
   sem_mfa:            "Sem MFA",
   convite_pendente:   "Convite pendente",
@@ -574,7 +574,7 @@ async function dashCarregarSeguranca(){
   if(!card || !cont) return;
   const { data, error } = await sb.from("vw_sc_seguranca").select("*");
   if(error){
-    // 42P01 / PGRST205: a migration da fase 99b ainda não foi aplicada
+
     if(error.code === "42P01" || error.code === "PGRST205"){ card.style.display = "none"; return; }
     cont.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message || "erro")}).</p>`;
     return;
@@ -600,9 +600,9 @@ async function dashCarregarSeguranca(){
     </div>`;
   }).join("");
 }
-/* ---------- EPI (fase 100) ----------
-   vw_sc_epi (uma linha, security_invoker, só para pode_ver_epi()): gasto do mês e do anterior, entregas, pessoas,
-   trocas vencidas, saídas de EPI sem pessoa e entregas sem assinatura. Sem a migration o card some, sem erro. */
+
+
+
 async function dashCarregarEpi(){
   const card = $("dash-epi-card"), cont = $("dash-epi");
   if(!card || !cont) return;
@@ -610,7 +610,7 @@ async function dashCarregarEpi(){
   if(btn && !btn.dataset.ligado){ btn.dataset.ligado = "1"; btn.addEventListener("click", () => { if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio("pessoa"); }); }
   const { data, error } = await sb.from("vw_sc_epi").select("*");
   if(error){
-    if(error.code === "42P01" || error.code === "PGRST205"){ card.style.display = "none"; return; }   // migration da fase 100 pendente
+    if(error.code === "42P01" || error.code === "PGRST205"){ card.style.display = "none"; return; }
     cont.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message || "erro")}).</p>`;
     return;
   }
@@ -628,9 +628,9 @@ async function dashCarregarEpi(){
     </div>`;
   cont.querySelectorAll("[data-epi-visao]").forEach(el => el.addEventListener("click", () => { if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio(el.dataset.epiVisao); }));
 }
-/* ---------- Segurança do trabalho (fase 109d, #108) ----------
-   sst_indicadores(ano) (security definer, só agregados, para quem lê ocorrências): acidentes e ocorrências do mês, dias sem
-   acidente, ocorrências abertas e sem classificação, ações do plano vencidas. Sem a migration (RPC inexistente) o card some. */
+
+
+
 async function dashCarregarSst(){
   const card = $("dash-sst-card"), cont = $("dash-sst");
   if(!card || !cont) return;
@@ -638,7 +638,7 @@ async function dashCarregarSst(){
   if(btn && !btn.dataset.ligado){ btn.dataset.ligado = "1"; btn.addEventListener("click", () => { if(irParaSecao("sesmt-ocorrencias") && typeof ssoAbrirPreset === "function") ssoAbrirPreset(null, null); }); }
   const { data: k, error } = await sb.rpc("sst_indicadores", { p_ano: new Date().getFullYear() });
   if(error){
-    if(["42P01", "PGRST205", "PGRST202", "42883"].includes(error.code)){ card.style.display = "none"; return; }   // migration da fase 109d pendente
+    if(["42P01", "PGRST205", "PGRST202", "42883"].includes(error.code)){ card.style.display = "none"; return; }
     cont.innerHTML = `<p class="vazio">Não foi possível carregar (${esc(error.message || "erro")}).</p>`;
     return;
   }
@@ -665,40 +665,40 @@ async function dashAbrirSeguranca(a){
   abrirUsuario(a.usuario_id);
 }
 
-/* Uma linha de "Para regularizar" → a tela de origem, já filtrada */
+
 async function dashAbrirRegularizar(a){
   if(!a) return;
   const ids = a.obra_ids || [];
-  // onde corrigir cada pendência de obra: aba e campo da ficha
+
   const FICHA = { sem_responsavel: { aba: "geral", foco: "obr-responsavel" },
                   responsavel_inativo: { aba: "geral", foco: "obr-responsavel" },
                   sem_jornada:     { aba: "parametros", foco: "obr-jornada-entrada" },
                   sem_estacas:     { aba: "estacas", foco: null },
-                  sem_contrato:    { aba: "contrato", foco: null },          // fase 204 (R4 da conciliação)
-                  aditivo_sem_assinatura: { aba: "contrato", foco: null },   // fase 204 (R9)
-                  sem_medicao:     { aba: "medicoes", foco: null },          // fase 204 (R6)
-                  obra_sem_ibge:   { aba: "endereco", foco: "obr-cep" },   // fase 105a: o CEP preenche o IBGE
-                  obra_endereco_remessa: { aba: "endereco", foco: "obr-cep" } };   // hotfix NF-e de remessa A
-  // fase 107a: Geodigitus. cpu_* e sync parada → ficha da CPU (uma só) ou visão Computadores de bordo filtrada;
-  // geodigitus_estaca_* e diário finalizado → Chegadas do Geodigitus filtrada pela situação (uma só com diário abre o RDO)
-  if(a.setor === "campo"){ if(typeof rdoAbrirPresetCampo === "function") await rdoAbrirPresetCampo(a); return; }   // fase 129c
-  // fase 180b: obrigação de contrato vencida → ficha do contrato na aba Obrigações (um contrato) ou a lista de contratos
+                  sem_contrato:    { aba: "contrato", foco: null },
+                  aditivo_sem_assinatura: { aba: "contrato", foco: null },
+                  sem_medicao:     { aba: "medicoes", foco: null },
+                  obra_sem_ibge:   { aba: "endereco", foco: "obr-cep" },
+                  obra_endereco_remessa: { aba: "endereco", foco: "obr-cep" } };
+
+
+  if(a.setor === "campo"){ if(typeof rdoAbrirPresetCampo === "function") await rdoAbrirPresetCampo(a); return; }
+
   if(a.filtro === "contrato_obrigacao_vencida"){ if(typeof conAbrirObrigacoesVencidas === "function") await conAbrirObrigacoesVencidas(a); return; }
-  // fase 145a: refuro sem decisão de cobrança → Conferência da obra, aba Refuradas (uma obra) ou a lista das obras
+
   if(a.filtro === "refuro_cobranca_pendente"){
     if(ids.length === 1 && typeof confAbrirRefurosDaObra === "function"){ await confAbrirRefurosDaObra(ids[0]); return; }
     irParaSecao("obras");
     if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "estacas", foco: null });
     return;
   }
-  // fase 157a: obra com diário sem mobilização (uma só) → aba Máquinas da obra; o resto → Mobilizações, visão Para regularizar no tipo
+
   if(a.setor === "mobilizacoes"){
-    // o clique no botão da aba é o que carrega a aba Máquinas (ativarTabObra só troca a aba visível)
+
     if(a.filtro === "obra_sem_mobilizacao" && ids.length === 1){ await dashAbrirObra(ids[0]); document.querySelector('#obr-notebook button[data-tab="maquinas"]')?.click(); return; }
     if(typeof mobAbrirRegularizar === "function") await mobAbrirRegularizar(a.filtro);
     return;
   }
-  if(a.setor === "apontamentos"){ if(irParaSecao("apontamentos") && typeof aptAbrirAguardando === "function") await aptAbrirAguardando(a.filtro); return; }   // fase 156a
+  if(a.setor === "apontamentos"){ if(irParaSecao("apontamentos") && typeof aptAbrirAguardando === "function") await aptAbrirAguardando(a.filtro); return; }
   if(a.setor === "geodigitus"){
     if(/^cpu_/.test(a.filtro || "") || a.filtro === "geodigitus_sync_parado"){
       if(!irParaSecao("equipamentos")) return;
@@ -712,23 +712,23 @@ async function dashAbrirRegularizar(a){
     if(ids.length === 1){ await dashAbrirObra(ids[0], f.aba); obrFocarCampo(f.foco); return; }
     irParaSecao("obras");
     if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: f.aba, foco: f.foco });
-  } else if(a.secao === "obras" && a.filtro === "rdo_sem_dados"){ // lote S42: RDO em branco → aba RDOs da obra
+  } else if(a.secao === "obras" && a.filtro === "rdo_sem_dados"){
     if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
     else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
-  } else if(a.secao === "obras" && a.filtro === "rdo_sem_equipamento"){ // fase 94 (#77): diário sem máquina → aba RDOs da obra filtrada em "sem máquina"
+  } else if(a.secao === "obras" && a.filtro === "rdo_sem_equipamento"){
     if(typeof _obrRdoFiltroMaq !== "undefined"){ _obrRdoFiltroMaq = "sem"; _obrRdoFiltroObra = a.obra_id || null; }
     if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
     else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
-  } else if(a.secao === "obras" && (a.filtro === "estaca_por_observacao" || a.filtro === "rdo_sem_equipe")){ // fase 94 (#75) e aviso de RDO sem equipe: um só → abre o RDO; vários → aba RDOs da obra
+  } else if(a.secao === "obras" && (a.filtro === "estaca_por_observacao" || a.filtro === "rdo_sem_equipe")){
     if(a.registro_id && irParaSecao("rdo") && typeof abrirRDO === "function") abrirRDO(a.registro_id);
     else if(a.obra_id) await dashAbrirObra(a.obra_id, "rdos");
     else { irParaSecao("obras"); if(typeof renderObras === "function") renderObras({ ids, rotulo: a.titulo, aba: "rdos", foco: null }); }
-  } else if(a.secao === "obras"){ // estacas sem profundidade / projeto a confirmar: uma linha por obra
+  } else if(a.secao === "obras"){
     if(typeof estDefinirFiltroProf === "function") estDefinirFiltroProf(a.filtro);
     if(a.obra_id) await dashAbrirObra(a.obra_id, "estacas");
-  } else if(a.secao === "clientes" && a.filtro === "cliente_sem_fiscal"){ // fase 105a: um cliente → ficha na aba Fiscal; vários → visão Pendências fiscais
+  } else if(a.secao === "clientes" && a.filtro === "cliente_sem_fiscal"){
     if(typeof cliAbrirPendenciasFiscais === "function") await cliAbrirPendenciasFiscais(a.registro_id || null);
-  } else if(a.filtro === "maquina_sem_ncm" || a.filtro === "acessorio_sem_ncm"){ // fase 105a: um item → ficha na aba Fiscal; vários → Pendências fiscais (Clientes)
+  } else if(a.filtro === "maquina_sem_ncm" || a.filtro === "acessorio_sem_ncm"){
     if(!a.registro_id){ if(typeof cliAbrirPendenciasFiscais === "function") await cliAbrirPendenciasFiscais(null); return; }
     if(a.filtro === "maquina_sem_ncm"){
       if(irParaSecao("equipamentos") && typeof abrirEquipamento === "function"){ await abrirEquipamento(a.registro_id); if(typeof ativarTabEquipamento === "function") ativarTabEquipamento("fiscal"); }
@@ -737,7 +737,7 @@ async function dashAbrirRegularizar(a){
       abrirAcessorio(a.registro_id);
       if(typeof ativarTabAcessorio === "function") ativarTabAcessorio("fiscal");
     }
-  } else if(a.filtro === "acessorio_vida_alerta"){ // fase 141: uma peça abre a aba Vida útil; várias, a visão Vida útil por modelo
+  } else if(a.filtro === "acessorio_vida_alerta"){
     if(typeof aceRenderVidaUtil !== "function") return;
     _aceFamilia = ""; _aceView = "vida"; _aceVidaAba = "modelo";
     if(!irParaSecao("acessorios") || !a.registro_id) return;
@@ -745,60 +745,60 @@ async function dashAbrirRegularizar(a){
     abrirAcessorio(a.registro_id);
     ativarTabAcessorio("vida");
   } else if(a.secao === "acessorios"){
-    // o clique no menu carrega e desenha (carregarAcessorios): o filtro vai antes
+
     if(typeof renderAcessoriosContagem !== "function") return;
     _aceFamilia = a.filtro || ""; _aceView = "contagem"; _aceSoSemPreco = true;
     irParaSecao("acessorios");
-  } else if(a.secao === "equipamentos" && /^(venda_|veiculo_sem_transferencia|bem_vendido_)/.test(a.filtro || "")){ // fase 96: uma venda abre a aba Venda; várias, a visão Vendas filtrada
+  } else if(a.secao === "equipamentos" && /^(venda_|veiculo_sem_transferencia|bem_vendido_)/.test(a.filtro || "")){
     const PEND = { venda_sem_contrato: "sem_contrato", veiculo_sem_transferencia: "sem_transferencia", bem_vendido_sem_valor_aquisicao: "sem_valor_aquisicao" };
     if(a.registro_id && typeof vbAbrirVendaPorId === "function") vbAbrirVendaPorId(a.registro_id);
     else if(typeof vbAbrirPainel === "function") vbAbrirPainel({ pend: PEND[a.filtro] || "", status: a.filtro === "venda_incompleta" ? "abertas" : "" });
-  } else if(a.secao === "equipamentos" && a.filtro === "leitura_parada"){ // fase 92: máquina em obra sem leitura de horímetro
+  } else if(a.secao === "equipamentos" && a.filtro === "leitura_parada"){
     if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
   } else if(a.secao === "equipamentos"){
-    if(typeof renderEquipamentos === "function") _eqpKpi = "sem_cod_ext"; // idem (carregarEquipamentos)
+    if(typeof renderEquipamentos === "function") _eqpKpi = "sem_cod_ext";
     if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
-  } else if(a.secao === "medicoes" && /^permuta_/.test(a.filtro || "")){ // fase 98: visão Permutas filtrada; uma só abre a ficha
+  } else if(a.secao === "medicoes" && /^permuta_/.test(a.filtro || "")){
     if(irParaSecao("medicoes") && typeof medPmAbrirPreset === "function") medPmAbrirPreset(a.registro_id, a.filtro);
-  } else if(a.secao === "medicoes" && a.filtro === "caucao_vencida"){ // fase 91: visão Caução filtrada nas vencidas
+  } else if(a.secao === "medicoes" && a.filtro === "caucao_vencida"){
     if(irParaSecao("medicoes") && typeof medCauAbrirPreset === "function") medCauAbrirPreset("vencidas");
-  } else if(a.secao === "produtos" && a.filtro === "produto_pendente"){ // lote S63-b (#272): um produto abre a ficha; vários, a lista "Aguardando aprovação"
+  } else if(a.secao === "produtos" && a.filtro === "produto_pendente"){
     if(a.registro_id){ if(irParaSecao("produtos") && typeof abrirProduto === "function") abrirProduto(a.registro_id); }
     else if(typeof prodAbrirPendentes === "function") await prodAbrirPendentes();
-  } else if(a.secao === "manutencao"){ // fase 92: OS atrasadas → visão OS filtrada; uma só abre a ficha
+  } else if(a.secao === "manutencao"){
     if(!irParaSecao("manutencao")) return;
     if(a.registro_id && typeof abrirManutencao === "function") abrirManutencao(a.registro_id);
     else if(typeof manAbrirPreset === "function") manAbrirPreset("os_atrasadas");
-  } else if(a.secao === "funcionarios" && /^promocao_/.test(a.filtro || "")){ // fase 93a: visão Funções (plano de cargos) filtrada
+  } else if(a.secao === "funcionarios" && /^promocao_/.test(a.filtro || "")){
     if(irParaSecao("funcionarios") && typeof funcAbrirPromocoes === "function") funcAbrirPromocoes(a.filtro === "promocao_vencida" ? "vencidas" : "60dias");
-  } else if(/^lotacao_/.test(a.filtro || "")){ // fase 187a (#296): Conferir alocação mora em Horas e alocação, já filtrada
+  } else if(/^lotacao_/.test(a.filtro || "")){
     if(typeof rhhAbrirConferir === "function") rhhAbrirConferir(a.filtro);
-  } else if(a.secao === "funcionarios" && /^baixada_/.test(a.filtro || "")){ // fase 151: Logística já filtrada
+  } else if(a.secao === "funcionarios" && /^baixada_/.test(a.filtro || "")){
     if(irParaSecao("funcionarios") && typeof funcAbrirLogisticaPreset === "function") funcAbrirLogisticaPreset(a.filtro);
-  } else if(a.secao === "estoque" && /^estoque_/.test(a.filtro || "")){ // lote S63-d (#276): quadro Pendências de estoque
+  } else if(a.secao === "estoque" && /^estoque_/.test(a.filtro || "")){
     if(typeof estAbrirPendencias === "function") estAbrirPendencias();
-  } else if(a.secao === "estoque" && /^epi_/.test(a.filtro || "")){ // fase 100: relatório de EPI; troca vencida de uma pessoa só abre a ficha de EPI dela
+  } else if(a.secao === "estoque" && /^epi_/.test(a.filtro || "")){
     if(a.filtro === "epi_vencida" && a.registro_id && typeof epiAbrirFichaFuncionario === "function") epiAbrirFichaFuncionario(a.registro_id);
     else if(typeof epiAbrirRelatorio === "function") epiAbrirRelatorio(a.filtro === "epi_vencida" ? "vencidas" : "sem_pessoa");
-  } else if(a.secao === "chamados"){ // lote S47: pergunta de chamado sem resposta no prazo; uma só abre a ficha
+  } else if(a.secao === "chamados"){
     if(!irParaSecao("chamados") || typeof carregarChamados !== "function") return;
     await carregarChamados(true);
     if(a.registro_id && typeof abrirChamado === "function"){ abrirChamado(a.registro_id); return; }
     const f = $("cham-f-status");
     if(f && [...f.options].some(o => o.value === "atrasados")){ f.value = "atrasados"; if(typeof renderChamados === "function") renderChamados(); }
-  } else if(a.secao === "sesmt_ocorrencias"){ // fase 109d: ocorrência de SST (uma só abre a ficha; várias, a lista filtrada pelo motivo)
+  } else if(a.secao === "sesmt_ocorrencias"){
     if(irParaSecao("sesmt-ocorrencias") && typeof ssoAbrirPreset === "function") ssoAbrirPreset(a.filtro, a.registro_id || null);
-  } else if(a.secao === "rhh"){ // fase 93c: "Horas e alocação" › A liberar, só pendentes, nas obras do aviso
-    // fase 103: filtro revisar_informacao ("Equipe do RDO com 'Revisar informação'") abre a mesma visão sem o filtro de
-    // extras e buscando "revisar" (rhhAplicarPreset em rh_horas.js); a_liberar segue como antes
+  } else if(a.secao === "rhh"){
+
+
     if(typeof rhhAbrirPreset === "function") rhhAbrirPreset({ obraIds: ids, pendentes: true, filtro: a.filtro });
     irParaSecao("rhh");
   }
 }
 
-/* Lote S55 (#176): card "Você foi mencionado…" (ordem 45 de vw_sc_minha_fila_mencoes) → a ficha do registro com o chatter.
-   A view devolve a seção, não a entidade: caução e permuta chegam como "medicoes" e o título diz qual. Sem acesso ao menu,
-   irParaSecao() já avisa e para aqui. Ao montar o chatter da ficha, historico.js marca a menção como lida e refaz a fila. */
+
+
+
 const DASH_FICHA_POR_SECAO = {
   compras:      async (id) => { if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false); if(typeof abrirPedido === "function") await abrirPedido(id); },
   manutencao:   (id) => { if(typeof abrirManutencao === "function") abrirManutencao(id); },
@@ -809,8 +809,8 @@ const DASH_FICHA_POR_SECAO = {
   fornecedores: (id) => { if(typeof abrirFornecedor === "function") abrirFornecedor(id); },
   centros:      (id) => { if(typeof abrirCentroCusto === "function") abrirCentroCusto(id); },
   fabricacao:   (id) => { if(typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id); },
-  // D-176e: permuta abre pela ficha por id (medPmAbrirPorId); caução carrega a visão Caução e abre por id (medCauAbrir:
-  // medição com aba Caução quando há medição, senão o modal da caução)
+
+
   medicoes:     async (id, a) => {
     if(/permuta/i.test(a.titulo || "")){ if(typeof medPmAbrirPorId === "function") await medPmAbrirPorId(id); return; }
     if(typeof medCauAbrirPreset === "function") medCauAbrirPreset("");
@@ -820,22 +820,22 @@ const DASH_FICHA_POR_SECAO = {
 };
 async function dashAbrirMencao(a){
   const abrir = DASH_FICHA_POR_SECAO[a.secao];
-  if(a.secao !== "medicoes" || !/permuta/i.test(a.titulo || "")){ if(!irParaSecao(a.secao)) return; }   // medPmAbrirPorId muda de seção sozinho
+  if(a.secao !== "medicoes" || !/permuta/i.test(a.titulo || "")){ if(!irParaSecao(a.secao)) return; }
   if(abrir && a.registro_id) await abrir(a.registro_id, a);
 }
 
-/* Uma linha de ação ou da fila → a tela de origem */
+
 async function dashAbrirAcao(a){
   if(!a) return;
   const id = a.registro_id;
-  if(Number(a.ordem) === 45 && id){ await dashAbrirMencao(a); return; }   // lote S55: menção no chatter
+  if(Number(a.ordem) === 45 && id){ await dashAbrirMencao(a); return; }
   switch(a.secao){
     case "obras":
       if(a.obra_id) dashAbrirObra(a.obra_id, a.setor === "contratos" ? "contrato" : /estaca/i.test(a.titulo) ? "estacas" : /marcado/i.test(a.titulo) ? "timeline" : null);
       else dashIrObrasAtivas();
       break;
     case "equipamentos":
-      // fase 96: parcela de venda de bem vencida / a vencer → a venda (uma só) ou a visão Vendas filtrada
+
       if(a.setor === "financeiro" && /venda/i.test(a.titulo || "") && typeof vbAbrirPainel === "function"){
         if(id && typeof vbAbrirVendaPorId === "function") vbAbrirVendaPorId(id);
         else vbAbrirPainel({ status: a.nivel === "critico" ? "atrasada" : "abertas" });
@@ -844,8 +844,8 @@ async function dashAbrirAcao(a){
       if(irParaSecao("equipamentos") && a.equipamento_id && typeof abrirEquipamento === "function") abrirEquipamento(a.equipamento_id);
       break;
     case "medicoes":
-      // fase 91: linhas do financeiro abrem a visão Caução ou a lista filtrada em "vencidas" (o título diz qual)
-      if(/permuta/i.test(a.titulo || "") && typeof medPmAbrirPreset === "function"){ if(irParaSecao("medicoes")) medPmAbrirPreset(id, a.nivel === "atencao" ? "prazo_90_dias" : ""); }   // fase 98
+
+      if(/permuta/i.test(a.titulo || "") && typeof medPmAbrirPreset === "function"){ if(irParaSecao("medicoes")) medPmAbrirPreset(id, a.nivel === "atencao" ? "prazo_90_dias" : ""); }
       else if(/cau[çc][ãa]o/i.test(a.titulo) && typeof medCauAbrirPreset === "function"){ if(irParaSecao("medicoes")) medCauAbrirPreset(/vencid/i.test(a.titulo) ? "vencidas" : "vence30"); }
       else if(/sem recebimento/i.test(a.titulo) && !id && typeof medRecebAbrirPreset === "function"){ if(irParaSecao("medicoes")) medRecebAbrirPreset("vencida"); }
       else if(id) dashAbrirMedicao(id); else irParaSecao("medicoes");
@@ -860,50 +860,50 @@ async function dashAbrirAcao(a){
       }
       break;
     case "contratos":
-      if(a.filtro === "modelo_aprovar" || a.filtro === "modelo_devolvido"){ // fase 180e: a versão do modelo em Contratos › Modelos
+      if(a.filtro === "modelo_aprovar" || a.filtro === "modelo_devolvido"){
         if(irParaSecao("contratos") && typeof mdlAbrirVersao === "function") mdlAbrirVersao(id);
-      } else if(a.setor === "financeiro"){ // títulos a pagar (fase 56); seção própria desde a fase 180a
+      } else if(a.setor === "financeiro"){
         if(irParaSecao("contaspagar") && typeof capAtivarView === "function"){ _capFiltroVenc = a.nivel === "critico" ? "vencidos" : ""; _capIncluirExp = false; _capFiltroOrigem = ""; capAtivarView("titulos"); }
       } else if(id) dashAbrirContrato(id);
       else irParaSecao("contratos");
       break;
-    case "processos":   // fase 180f: audiência ou prazo de processo na Minha fila → a ficha do processo (Contratos › Processos)
+    case "processos":
       if(typeof prcAbrirDaInicio === "function") prcAbrirDaInicio(id); else irParaSecao("contratos");
       break;
-    case "pedidos_site":   // fase 195c: aba "Pedidos do site" em Orçamentos; um pedido só abre a ficha dele
+    case "pedidos_site":
       if(typeof psiAbrirDaInicio === "function") psiAbrirDaInicio(id); else irParaSecao("orcamentos");
       break;
     case "orcamentos":
-      if(id) dashAbrirOrcamento(id, a._fonte === "fila_ret" ? "negociacao" : null); else irParaSecao("orcamentos");   // fase 187c: retorno abre a aba Negociação
+      if(id) dashAbrirOrcamento(id, a._fonte === "fila_ret" ? "negociacao" : null); else irParaSecao("orcamentos");
       break;
     case "compras":
-      // fase 108b: chave de dono do custo → ficha do pedido para assinar (com ou sem Compras no menu)
+
       if(a._assinar && id && typeof cmpAbrirParaAssinar === "function"){ await cmpAbrirParaAssinar(id); break; }
       if(irParaSecao("compras")){
         if(/requisi/i.test(a.titulo) && typeof renderCompras === "function"){ _cmpView = "requisicoes"; _reqFiltroSt = "pendente"; setTimeout(() => renderCompras(), 400); }
-        // fase 102: "Cotação parada" e "Recebimento sem conferência" com um pedido só abrem a ficha do pedido
+
         else if(id && typeof abrirPedido === "function"){ if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false); await abrirPedido(id); }
       }
       break;
-    case "separacoes": // fase 83: uma separação abre a ficha; o grupo abre o painel já filtrado
+    case "separacoes":
       if(typeof _sepPreset !== "undefined") _sepPreset = id ? "" : /vencid/i.test(a.titulo) ? "vencidas" : /sem respons/i.test(a.titulo) ? "sem_resp" : "";
       if(irParaSecao("separacoes") && id && typeof abrirSeparacao === "function") abrirSeparacao(id);
       break;
-    case "fabricacao": // fase 84: uma ordem abre a ficha; o grupo abre o painel filtrado em "em produção"
+    case "fabricacao":
       if(typeof _fabPreset !== "undefined") _fabPreset = id ? "" : "em_producao";
       if(irParaSecao("fabricacao") && id && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
       break;
-    case "produtos": // hotfix saída sem custo (29/10/2026): "Saídas de estoque sem custo" → Produtos › Saídas sem custo
-      // fase 146: "Produto saiu sem custo: <código>" abre a lista filtrada naquele produto; o agregado continua abrindo a lista inteira
+    case "produtos":
+
       if(irParaSecao("produtos") && /sem custo/i.test(a.titulo || "") && typeof prodAbrirSaidasSemCusto === "function") prodAbrirSaidasSemCusto(/^Produto saiu sem custo/.test(a.titulo || "") ? id : null);
       break;
-    case "clientes": // hotfix NF-e de remessa A: cliente sem cadastro fiscal → ficha do cliente na aba Fiscal
+    case "clientes":
       if(typeof cliAbrirPendenciasFiscais === "function") await cliAbrirPendenciasFiscais(id || null); else irParaSecao("clientes");
       break;
-    case "sesmt_ocorrencias": // lote S63-i (#280): ação de ocorrência SST da Minha fila → a ficha da ocorrência
+    case "sesmt_ocorrencias":
       if(irParaSecao("sesmt-ocorrencias") && typeof ssoAbrirPreset === "function") ssoAbrirPreset(null, id || null);
       break;
-    case "manutencao": // fase 92: preventiva vencida/vencendo → visão Preventivas (uma TAG abre o plano dela)
+    case "manutencao":
       if(!irParaSecao("manutencao")) break;
       if(typeof manAbrirPreset === "function") manAbrirPreset(a.nivel === "critico" ? "preventivas_critico" : "preventivas_atencao", a.equipamento_id || null);
       break;
@@ -912,18 +912,18 @@ async function dashAbrirAcao(a){
   }
 }
 
-/* ---------- Aba Máquinas hoje (fase 139, FO-03 + FO-12) ----------
-   Um card por perfuratriz de vw_sc_maquinas_hoje (uma linha por máquina de vw_sc_frota, já calculada no banco):
-   obra, produção do dia, última estaca CONCLUÍDA (a CPU Saci só grava depois da concretagem: não existe "perfurando
-   agora"), próxima da sequência, operador do RDO, CPU e o alerta "sem chegada" (só com o sync ligado, 134c).
-   Carimbo "retrato às HH:MM" = hora em que a view foi lida. Tela cheia = requestFullscreen do painel com refresh a cada
-   empresa_config.maquinas_hoje_refresh_s; sair da tela cheia desliga o refresh. Prefixo dmh-. */
-let _dmh = [];               // vw_sc_maquinas_hoje
-let _dmhTipo = "";           // filtro por tipo de serviço da máquina
-let _dmhBusca = "";          // busca por código ou nome
-let _dmhTimer = null;        // setInterval do refresh em tela cheia
-let _dmhRefreshS = 120;      // empresa_config.maquinas_hoje_refresh_s
-let _dmhSyncAtivo = false;   // empresa_config.geodigitus_sync_ativo
+
+
+
+
+
+
+let _dmh = [];
+let _dmhTipo = "";
+let _dmhBusca = "";
+let _dmhTimer = null;
+let _dmhRefreshS = 120;
+let _dmhSyncAtivo = false;
 let _dmhCargaN = 0;
 const DMH_TIPO = { helice_continua: "Hélice contínua", trado_mecanizado: "Trado mecanizado", estaca_raiz: "Estaca raiz", helice_secante: "Hélice secante" };
 const DMH_LOCAL = { base: "na base", em_transito: "em trânsito", fornecedor_manutencao: "em manutenção no fornecedor", cliente: "no cliente", vendido: "vendida", obra: "sem obra" };
@@ -931,7 +931,7 @@ const DMH_SYNC = { pronto: "sync ok", aguardando: "sync aguardando", sincronizan
 const DMH_CALIB = { vence_30_dias: "calibração vence em 30 d", vencida: "calibração vencida", sem_certificado: "sem certificado de calibração" };
 const dmhHora = (ts) => ts ? new Date(ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—";
 const dmhDuracao = (min) => min == null ? "—" : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
-// ordem da grade: alerta, produzindo, parada/sem produção, sem obra; depois por código
+
 const dmhOrdem = (m) => m.alerta_sem_chegada ? 0 : m.situacao === "produzindo" ? 1 : m.situacao === "parada" ? 2 : m.situacao === "sem_producao" ? 3 : 4;
 
 async function dmhCarregar(){
@@ -1044,14 +1044,14 @@ function ligarDmh(){
   $("dmh-tela-cheia")?.addEventListener("click", dmhTelaCheia);
   document.addEventListener("fullscreenchange", dmhAoMudarTelaCheia);
   $("dmh-conteudo")?.addEventListener("click", (e) => {
-    if(e.target.closest("a.link-obra")) return;   // o link da obra tem handler global
+    if(e.target.closest("a.link-obra")) return;
     const card = e.target.closest("[data-eqp]");
     if(card && irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(card.dataset.eqp);
   });
 }
 
-/* ---------- Aba Frota ---------- */
-/* Fase 140: ritmo da máquina = metros perfurados por dia nos últimos dias com RDO finalizado (refuro conta; empresa_config.ritmo_dias_base) */
+
+
 async function dashCarregarRitmo(){
   const d = await dashLer("vw_sc_ritmo_maquina", q => q.select("equipamento_id,m_dia,dias_base,primeiro_dia,ultimo_dia").is("tipo_servico", null).is("faixa_diametro", null).not("equipamento_id", "is", null));
   if(!d) return;
@@ -1073,7 +1073,7 @@ function renderDashFrota(){
     _dashFrotaFiltro === "manut" ? f.manut_abertas > 0 : true);
   const porNome = ($("dash-frota-ordem")?.value || "atencao") === "nome";
   lista = lista.sort((a, b) => (porNome ? 0 : a.ordem_atencao - b.ordem_atencao) || String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR", { numeric: true }));
-  // fase 89: logística — viagens em trânsito agora e planejadas sem caminhão ou motorista a menos de 1 dia da saída
+
   const amanha = dataLocalISO(new Date(Date.now() + 86400000));
   const transito = _dashViagens.filter(v => v.status === "em_transito");
   const aProgramar = _dashViagens.filter(v => v.status === "planejada" && v.data <= amanha && (!v.caminhao_id || !v.funcionario_id));
@@ -1104,17 +1104,17 @@ function renderDashFrota(){
     }).join("")}</tbody></table></div>`;
 }
 
-/* ---------- Aba Obras em execução ---------- */
+
 function dashObrasPin(){ try { return JSON.parse(localStorage.getItem("dash-obras-pin") || "[]"); } catch(_e) { return []; } }
 function dashAlternarPin(id){
   const p = new Set(dashObrasPin());
   p.has(id) ? p.delete(id) : p.add(id);
-  try { localStorage.setItem("dash-obras-pin", JSON.stringify([...p])); } catch(_e) { /* sem storage: só nesta sessão não guarda */ }
+  try { localStorage.setItem("dash-obras-pin", JSON.stringify([...p])); } catch(_e) {   }
   renderDashObrasAndamento();
 }
 async function dashCarregarObrasAndamento(){
   if(!_dashObrasAnd.length){
-    const [d, mat] = await Promise.all([dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-obras-and"), dashLer("vw_sc_obra_material", q => q.select("*"))]);   // fase 83
+    const [d, mat] = await Promise.all([dashLer("vw_sc_obra_andamento", q => q.select("*"), "dash-obras-and"), dashLer("vw_sc_obra_material", q => q.select("*"))]);
     if(!d) return;
     _dashObrasAnd = d;
     _dashObraMat = {}; (mat || []).forEach(m => { _dashObraMat[m.obra_id] = m; });
@@ -1150,7 +1150,7 @@ function renderDashObrasAndamento(){
     }).join("")}</tbody></table></div>`;
 }
 
-/* ---------- Aba Operadores (ranking do período, a partir de vw_sc_producao_dia) ---------- */
+
 let _dashOperNomes = {};
 async function renderDashOperadores(){
   const cont = $("dash-operadores");
@@ -1181,7 +1181,7 @@ async function renderDashOperadores(){
   </table></div>`;
 }
 
-/* ---------- Listeners do Início (uma vez, por delegação) ---------- */
+
 function ligarSalaDeComando(){
   const sec = $("sec-inicio");
   if(!sec || sec.dataset.ligado) return;
@@ -1190,18 +1190,18 @@ function ligarSalaDeComando(){
     const b = e.target.closest("[data-periodo]");
     if(!b || b.dataset.periodo === _dashPeriodo) return;
     _dashPeriodo = b.dataset.periodo;
-    try { localStorage.setItem("dash-periodo", _dashPeriodo); } catch(_e) { /* ok */ }
+    try { localStorage.setItem("dash-periodo", _dashPeriodo); } catch(_e) {   }
     carregarDashboard();
   });
   $("btn-dash-recarregar")?.addEventListener("click", () => comBotaoTravado("btn-dash-recarregar", () => { _dashObrasAnd = []; return carregarDashboard(); }));
-  // fase 164: o "?" de cada linha abre a explicação e não a tela de origem; por isso é conferido antes de [data-acao], [data-fila] e [data-reg]
+
   $("dash-acoes")?.addEventListener("click", (e) => { if(dashCliqueExplica(e, e.currentTarget)) return; const el = e.target.closest("[data-acao]"); if(el) dashAbrirAcao(_dashAcoes[Number(el.dataset.acao)]); });
   $("dash-fila")?.addEventListener("click", (e) => {
     if(dashCliqueExplica(e, e.currentTarget)) return;
-    // lote S47: "Aprovar" inline não abre a ficha
+
     const ap = e.target.closest("[data-fila-aprovar]");
     if(ap){ e.stopPropagation(); comBotaoTravado(ap, () => dashAprovarChamadoFila(ap, _dashFila[Number(ap.dataset.filaAprovar)])); return; }
-    // lote S55: "Funcionou" inline também não abre a ficha
+
     const cf = e.target.closest("[data-fila-confirmar]");
     if(cf){ e.stopPropagation(); comBotaoTravado(cf, () => dashConfirmarChamadoFila(_dashFila[Number(cf.dataset.filaConfirmar)])); return; }
     const el = e.target.closest("[data-fila]"); if(el) dashAbrirAcao(_dashFila[Number(el.dataset.fila)]);
@@ -1211,18 +1211,18 @@ function ligarSalaDeComando(){
     const b = e.target.closest("[data-reg-visao]");
     if(!b || b.classList.contains("ativo")) return;
     _dashRegVisao = b.dataset.regVisao;
-    try { sessionStorage.setItem("dash-reg-visao", _dashRegVisao); } catch(_e) { /* ok */ }
+    try { sessionStorage.setItem("dash-reg-visao", _dashRegVisao); } catch(_e) {   }
     dashRenderRegularizar();
-    $("dash-reg-visoes")?.querySelector(".ativo")?.focus();   // o botão foi redesenhado: o foco de quem usa o teclado volta para a visão escolhida
+    $("dash-reg-visoes")?.querySelector(".ativo")?.focus();
   });
-  // os cinco indicadores da faixa: o mesmo botão e o mesmo painel, com o texto que ficava só no title
+
   $("dash-faixa")?.addEventListener("click", (e) => {
     const b = e.target.closest("[data-explica-faixa]");
     if(!b) return;
     dashAlternarExplica(b, b.closest(".dash-card-rot"), e.currentTarget, dashExplicaFaixaHTML(b.dataset.explicaFaixa));
   });
-  $("dash-mencoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-menc]"); if(el) dashAbrirMencao(_dashMencoes[Number(el.dataset.menc)]); });   // lote S57b (#218)
-  $("dash-seguranca")?.addEventListener("click", (e) => { const el = e.target.closest(".clicavel[data-seg]"); if(el) dashAbrirSeguranca(_dashSeg[Number(el.dataset.seg)]); });   // fase 99b
+  $("dash-mencoes")?.addEventListener("click", (e) => { const el = e.target.closest("[data-menc]"); if(el) dashAbrirMencao(_dashMencoes[Number(el.dataset.menc)]); });
+  $("dash-seguranca")?.addEventListener("click", (e) => { const el = e.target.closest(".clicavel[data-seg]"); if(el) dashAbrirSeguranca(_dashSeg[Number(el.dataset.seg)]); });
   $("dash-notebook")?.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-tab]");
     if(!b) return;
@@ -1237,10 +1237,10 @@ function ligarSalaDeComando(){
     renderDashFrota();
   });
   $("dash-frota-ordem")?.addEventListener("change", renderDashFrota);
-  ligarDmh();   // fase 139: aba Máquinas hoje
+  ligarDmh();
   $("dash-frota")?.addEventListener("click", (e) => {
-    if(e.target.closest("a.link-obra")) return; // o link da obra tem handler global
-    const tv = e.target.closest("tr[data-vg]");   // fase 89: viagem abre a ficha em Logística
+    if(e.target.closest("a.link-obra")) return;
+    const tv = e.target.closest("tr[data-vg]");
     if(tv){ if(irParaSecao("frota") && typeof abrirViagem === "function") abrirViagem(tv.dataset.vg, null); return; }
     const tr = e.target.closest("tr[data-eqp]");
     if(tr && irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(tr.dataset.eqp);
@@ -1252,7 +1252,7 @@ function ligarSalaDeComando(){
     if(tr) dashAbrirObra(tr.dataset.obra);
   });
   sec.addEventListener("click", (e) => {
-    // fase 96: as duas linhas do KPI "A receber"
+
     const r = e.target.closest("[data-dash-receber]");
     if(r){
       e.preventDefault();
@@ -1271,9 +1271,9 @@ function ligarSalaDeComando(){
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarSalaDeComando);
 else ligarSalaDeComando();
 
-/* ============================================================
-   NAVEGAÇÃO CLICÁVEL — cada indicador leva ao seu fluxo
-   ============================================================ */
+
+
+
 async function dashAbrirObra(obraId, tab){
   irParaSecao("obras");
   if(obraId && typeof abrirObra === "function"){
@@ -1290,19 +1290,19 @@ async function dashAbrirOrcamento(id, aba){
 }
 function dashAbrirContrato(id){ irParaSecao("contratos"); if(id && typeof abrirContrato === "function") abrirContrato(id); }
 function dashIrObrasAtivas(){
-  if(typeof _obrFiltroIds !== "undefined") _obrFiltroIds = null; // sai do filtro do "Para regularizar"
+  if(typeof _obrFiltroIds !== "undefined") _obrFiltroIds = null;
   irParaSecao("obras");
   const f = $("obr-f-status");
   if(f){ f.value = "em_andamento"; if(typeof renderObras === "function") renderObras(); }
 }
 function dashIrOrcamentos(){ irParaSecao("orcamentos"); }
-// Só o cargo diretor vê valores consolidados (contratado, medido, a medir, valor por obra); fase 79: e o auditor (só leitura)
+
 function dashEhDiretoria(){
   return !!(usuarioAtual && ["diretor", "auditor"].includes(usuarioAtual.cargo));
 }
 
 function dashIrFinanceiro(){
-  // diretoria vê a Carteira; demais vão para Medições
+
   if(dashEhDiretoria()) irParaSecao("carteira");
   else irParaSecao("medicoes");
 }
@@ -1323,18 +1323,18 @@ function ligarCliquesDashboard(){
   liga("dash-a-medir",      dashIrFinanceiro,  "Ver medições / carteira");
 }
 
-/* ============================================================
-   KPIs FINANCEIROS — contratado / medido / a medir / %
-   ============================================================ */
+
+
+
 async function carregarDashFinanceiro(){
-  // Contratado: soma do valor das obras ativas. Fase 90: o valor vive em obras_financeiro (RLS: só quem lê
-  // financeiro; este bloco já é da diretoria), embutido 1:1 na obra.
+
+
   const [{ data: obrasAtivas }, { data: medsAprovadas }] = await Promise.all([
     sb.from("obras").select("id,financeiro:obras_financeiro(valor_contratado)").in("status", ["em_andamento","planejada","paralisada"]),
-    sb.from("medicoes").select("valor_final,valor_medido").in("status",["aprovada","faturada","recebida"]).eq("em_revisao", false)   // fase 91; fase 177a: em revisão fica fora
+    sb.from("medicoes").select("valor_final,valor_medido").in("status",["aprovada","faturada","recebida"]).eq("em_revisao", false)
   ]);
 
-  const contratado = (obrasAtivas||[]).reduce((s,o) => s + (Number(o.financeiro?.valor_contratado)||0), 0);   // obras_financeiro
+  const contratado = (obrasAtivas||[]).reduce((s,o) => s + (Number(o.financeiro?.valor_contratado)||0), 0);
   const medido     = (medsAprovadas||[]).reduce((s,m) => s + (Number(m.valor_final)||Number(m.valor_medido)||0), 0);
   const aMedir     = contratado - medido;
   const pct        = contratado > 0 ? Math.round((medido / contratado) * 100) : 0;
@@ -1348,14 +1348,14 @@ async function carregarDashFinanceiro(){
   if($("dash-pct-bar"))         $("dash-pct-bar").style.width = `${Math.min(100, pct)}%`;
 }
 
-/* ============================================================
-   ORÇAMENTOS ABERTOS (fim da página; só diretoria e comercial, fase 49)
-   ============================================================ */
+
+
+
 async function carregarDashOrcamentos(){
   const card = $("dash-card-orc");
-  if(card) card.style.display = podeVerOrcamentos() ? "" : "none";   // hotfix 113: comercial ou módulo extra
+  if(card) card.style.display = podeVerOrcamentos() ? "" : "none";
   if(!podeVerOrcamentos()) return;
-  // lote S64-b (#289): revisões repetem o número; conta só a maior revisão em aberto de cada número
+
   const { data: orcLinhas } = await sb.from("orcamentos").select("numero,numero_revisao,valor_total")
     .in("status",["rascunho","enviado","em_negociacao"]);
   const porNum = new Map();
@@ -1368,14 +1368,14 @@ async function carregarDashOrcamentos(){
   const n = $("dash-orc-abertos");
   if(n){ n.textContent = cntOrcAbertos || 0; n.classList.toggle("dash-num-vazio", !(cntOrcAbertos > 0)); }
   const valorOrcAbertos = (orcAbertos||[]).reduce((s,o) => s + (Number(o.valor_total)||0), 0);
-  // Chamado 1 (14/09/2026): cargo financeiro não vê valores agregados no painel — só a contagem
+
   const semValores = !!(usuarioAtual && usuarioAtual.cargo === "financeiro");
   if($("dash-orc-sub")) $("dash-orc-sub").textContent = semValores ? `${cntOrcAbertos || 0} em negociação` : `${brl(valorOrcAbertos)} em pipeline`;
 }
 
-/* ============================================================
-   GRÁFICO PRODUÇÃO 30 DIAS (mini-barras)
-   ============================================================ */
+
+
+
 async function carregarDashGraficoProducao(){
   const cont = $("dash-grafico-prod");
   if(!cont) return;
@@ -1389,7 +1389,7 @@ async function carregarDashGraficoProducao(){
     cont.innerHTML = `<p class="vazio" style="font-size:var(--txt-sm);">Sem RDOs nos últimos 30 dias.</p>`;
     return;
   }
-  // Agrupa por dia
+
   const porDia = {};
   data.forEach(r => { porDia[r.data] = (porDia[r.data]||0) + (Number(r.producao_dia_m)||0); });
   const dias = Object.keys(porDia).sort();
@@ -1407,22 +1407,22 @@ async function carregarDashGraficoProducao(){
     <div style="display:flex;align-items:flex-end;height:82px;overflow-x:auto;">${barras}</div>`;
 }
 
-/* ============================================================
-   TOP 5 OBRAS (por valor contratado)
-   ============================================================ */
+
+
+
 async function carregarDashTopObras(){
   const cont = $("dash-top-obras");
   if(!cont) return;
   const mostraValor = dashEhDiretoria();
   const tit = $("dash-top-obras-titulo");
   if(tit) tit.textContent = mostraValor ? "📈 Top 5 obras (valor)" : "📈 Obras ativas";
-  // Fase 90: o valor vive em obras_financeiro (RLS: só quem lê financeiro). Diretoria: as 5 maiores pelo valor (111
-  // linhas, ordenadas aqui); os demais cargos não leem valor e veem as 5 obras ativas mais recentes, sem ranking.
+
+
   const ATIVAS = ["em_andamento","planejada","paralisada"];
   let data;
   if(mostraValor){
     const r = await sb.from("obras_financeiro").select("valor_contratado,obra:obras(id,codigo,nome,status)");
-    data = (r.data||[]).filter(f => f.obra && ATIVAS.includes(f.obra.status)).map(f => ({ ...f.obra, valor: Number(f.valor_contratado)||0 }))   // linha de obras_financeiro + obra embutida
+    data = (r.data||[]).filter(f => f.obra && ATIVAS.includes(f.obra.status)).map(f => ({ ...f.obra, valor: Number(f.valor_contratado)||0 }))
       .sort((a,b) => b.valor - a.valor).slice(0, 5);
   } else {
     const r = await sb.from("obras").select("id,codigo,nome,status").in("status", ATIVAS).order("codigo",{ascending:false}).limit(5);
@@ -1444,9 +1444,9 @@ async function carregarDashTopObras(){
   });
 }
 
-/* ============================================================
-   ATIVIDADE RECENTE 48h (últimos eventos do sistema)
-   ============================================================ */
+
+
+
 async function carregarDashAtividade(){
   const cont = $("dash-atividade");
   if(!cont) return;
@@ -1469,7 +1469,7 @@ async function carregarDashAtividade(){
   const mapaU = {};
   if(userIds.size){
     const { data: profs } = await sb.from("profiles").select("id,nome").in("id",[...userIds]);
-    // esc() aqui: profiles.nome é editável pelo próprio usuário e vai para innerHTML
+
     (profs||[]).forEach(p => { mapaU[p.id] = esc(p.nome); });
   }
   const nomeDe = (uid) => uid ? (esc(mapaU[uid] || "usuário")) : "sistema";
@@ -1501,7 +1501,7 @@ async function carregarDashAtividade(){
     const extra = e.obraId ? `cursor:pointer;` : "";
     const attrs = e.obraId ? ` data-idx="${idx}" title="Abrir a obra"` : "";
     return `<div${cls}${attrs} style="padding:6px 4px;border-bottom:1px solid var(--sup-3);${extra}">
-      <span style="color:var(--txt-sutil);font-size:var(--txt-xs);">${hora}</span> · ${/* html */ e.txt}
+      <span style="color:var(--txt-sutil);font-size:var(--txt-xs);">${hora}</span> · ${  e.txt}
     </div>`;
   }).join("")}</div>`;
   cont.querySelectorAll(".dash-ativ-item[data-idx]").forEach(el => {
@@ -1512,13 +1512,13 @@ async function carregarDashAtividade(){
   });
 }
 
-/* ============================================================
-   POSIÇÃO DE ESTOQUE (mantida pra aba antiga)
-   ============================================================ */
+
+
+
 async function carregarPosicaoEstoque(){
   const tb = $("tab-estoque");
   if(!tb) return;
-  // Só ativos e limitado: esta aba é legada; 9.479 linhas num tbody oculto não faz sentido
+
   const { data } = await sb.from("produtos").select("codigo,nome,estoque_atual,estoque_minimo,custo_ultimo").eq("ativo", true).order("nome").limit(200);
   const lista = data || [];
   if(!lista.length){ tb.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum produto.</td></tr>`; return; }
@@ -1528,11 +1528,11 @@ async function carregarPosicaoEstoque(){
     <td>${brl(Number(p.estoque_atual)*Number(p.custo_ultimo))}</td></tr>`).join("");
 }
 
-/* ============================================================
-   FASE 41 — consumo das leituras por IA no mês (ia_chamadas)
-   Só diretoria (RLS: is_admin). Custo estimado em US$ pela tabela
-   de preços do modelo, gravado pelas Edge Functions.
-   ============================================================ */
+
+
+
+
+
 async function carregarDashIA(){
   const elNum = $("dash-ia-custo"), elSub = $("dash-ia-sub");
   if(!elNum || !elSub) return;
@@ -1544,7 +1544,7 @@ async function carregarDashIA(){
   if(error){ elNum.textContent = "US$ —"; elSub.textContent = "sem acesso ao registro"; return; }
   const linhas = data || [];
   const custo  = linhas.reduce((s, l) => s + Number(l.custo_usd || 0), 0);
-  // fase 174a: o assistente (uma linha por rodada da conversa) aparece separado das leituras
+
   const leit   = linhas.filter(l => l.funcao !== "assistente");
   const ast    = linhas.filter(l => l.funcao === "assistente");
   const custoAst = ast.reduce((s, l) => s + Number(l.custo_usd || 0), 0);

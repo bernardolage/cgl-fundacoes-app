@@ -1,39 +1,39 @@
-/* ====================================================================
-   Módulo: Usuários — gestão de logins (apenas admin)
-   Layout: padrão Serviços + Odoo. Ver memória feedback-padrao-ui.
-   ==================================================================== */
+
+
+
+
 
 const CARGOS = {
-  diretor:      "Diretor",        /* acesso total — has_role() no banco sempre passa */
+  diretor:      "Diretor",
   admin:        "Administrador",
   engenheiro:   "Engenheiro",
-  assistente_engenharia: "Assistente de engenharia",  /* RDO + pendências (fase 39) */
+  assistente_engenharia: "Assistente de engenharia",
   comercial:    "Comercial",
   financeiro:   "Financeiro",
   comprador:    "Comprador",
   almoxarife:   "Almoxarife",
-  gestor_acessorios: "Gestor de acessórios",  /* trados, pontas, hastes, camisas… (fase 46) */
+  gestor_acessorios: "Gestor de acessórios",
   mecanico:     "Mecânico",
   encarregado:  "Encarregado",
   operador:     "Operador",
-  rh:           "RH (folha e dados sensíveis)",   /* só diretor atribui — trigger proteger_cargo_rh */
+  rh:           "RH (folha e dados sensíveis)",
   sesmt:        "SESMT",
   logistica:    "Logística",
-  gestor_frota: "Gestor de frota",  /* frota, equipamentos, manutenção/OS, requisições e compras (fase 77) */
+  gestor_frota: "Gestor de frota",
   visualizador: "Visualizador",
-  auditor:      "Auditor (só leitura)",  /* usuário de revisão: vê o que a diretoria vê, menos dados sensíveis; não grava (fase 79) */
-  auxiliar_almoxarifado: "Auxiliar de almoxarifado",  /* equipe do Julio: estoque, separações, produtos (edita, custo, arquiva), recebe material e peças dos reparos; sem obras nem criar pedido (fase 90; S67-d) */
-  gestor_manutencao: "Gestor de manutenção",  /* Bruno: OS, planos preventivos, checklists e compras do setor; sem obras, medições nem contas a pagar (fase 92) */
-  juridico:     "Jurídico (contratos)"   /* fase 180d: lê e edita contratos dos dois lados, vê o valor de cada um e nunca soma; só diretor atribui — trigger proteger_cargo_rh */
+  auditor:      "Auditor (só leitura)",
+  auxiliar_almoxarifado: "Auxiliar de almoxarifado",
+  gestor_manutencao: "Gestor de manutenção",
+  juridico:     "Jurídico (contratos)"
 };
-/* cargos que só a diretoria atribui e que a ficha só oferece ao diretor (trigger proteger_cargo_rh no banco, que também
-   protege o Diretor; CARGOS.convite na function convidar-usuario) */
+
+
 const CARGOS_SO_DIRETORIA = ["rh", "juridico"];
 
-/* Fase 165: o que cada cargo é, em uma frase, para quem escolhe o cargo de um usuário. Aparece sob o campo Cargo da
-   ficha e no topo da matriz de acessos. Cada frase foi conferida contra a matriz gerada do banco (js/matriz_acessos_dados.js):
-   `modulos` são os módulos que a frase cita (o cargo tem de ver todos) e `sem` os que ela diz que o cargo não tem
-   (o cargo não pode ver nenhum). scripts/testar-fase165.mjs refaz essa conferência a cada retrato novo. */
+
+
+
+
 const CARGO_DESCRICAO = {
   diretor:      { frase: "Acesso total. Só diretor dá ou tira os cargos Diretor e RH", modulos: ["usuarios", "carteira", "patrimonio"], sem: [] },
   admin:        { frase: "Administra o sistema e os logins. Não vê Serviços, Orçamentos, Carteira nem Patrimônio e não emite nota fiscal", modulos: ["usuarios"], sem: ["servicos", "orcamentos", "carteira", "patrimonio"] },
@@ -63,11 +63,11 @@ let _usrView    = "lista";
 let usrEditId   = null;
 let usrEditEmail = null;
 
-/* ---------- Carga ---------- */
+
 async function carregarUsuarios(){
-  // fase 93b: login_cpf e senha_provisoria; se a migration da 93b ainda não estiver no banco (42703), lê sem elas
-  // hotfix 147: + função cadastrada pelo RH (embed pela FK profiles.funcionario_id; nulo sem funcionário ligado).
-  // Sem a relação (PGRST200) ou sem coluna (42703), lê como antes
+
+
+
   const cols = "id,nome,email,cargo,telefone,ativo,created_at,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate";
   let { data, error } = await sb.from("profiles")
     .select(cols + ",funcionario:funcionarios!profiles_funcionario_id_fkey(funcao)")
@@ -80,18 +80,18 @@ async function carregarUsuarios(){
   }
   _usuarios = error ? [] : (data || []);
   renderUsuarios();
-  // fase 205: os cards das outras abas (fiscal, Geodigitus, responsáveis, RDO, sessão) carregam na primeira abertura da
-  // aba (cfgCarregarAba); aqui só o resumo da barra de abas. Uma carga nova da lista zera as abas já lidas
+
+
   _cfgCarregadas = { usuarios: true };
   if(_cfgAba !== "usuarios") cfgCarregarAba(_cfgAba);
   cfgCarregarResumo();
 }
 
-/* ---------- Configurações (fase 205) ----------
-   O antigo módulo Usuários virou Configurações: seção, menu e ids continuam "usuarios"/usr-* (decisão D1 da spec); o
-   que é novo leva cfg-. Cinco abas, uma visível por vez (cfg-aba-<id>); cada uma lê seus cards na primeira abertura.
-   Quem vê e quem grava não mudou: diretor e admin pelo menu, card por card como antes. */
-/* cfg-puro-inicio — só montam HTML (testados com vm em scripts/testar-fase205.mjs) */
+
+
+
+
+
 const CFG_ABAS = [
   { id: "usuarios",    rotulo: "Usuários e acessos" },
   { id: "empresa",     rotulo: "Empresa e fiscal" },
@@ -99,7 +99,7 @@ const CFG_ABAS = [
   { id: "operacao",    rotulo: "Operação" },
   { id: "seguranca",   rotulo: "Segurança" }
 ];
-/* "2026-11-25" (ou timestamp) → "25/11/2026"; texto puro, quem monta o HTML escapa */
+
 function cfgData(v){
   const p = String(v || "").slice(0, 10).split("-");
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(v || "");
@@ -109,8 +109,8 @@ function cfgDataHora(v){
   return isNaN(d) ? String(v || "") : d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 function cfgPlural(n, um, varios){ return `${n} ${Number(n) === 1 ? um : varios}`; }
-/* Barra de abas. r = resumo lido (null = leitura falhou ou não feita: abas sem resumo, nunca trava a barra).
-   Campo ausente em r (undefined) também deixa aquela aba sem resumo. */
+
+
 function cfgAbasHTML(r, ativa){
   const x = r || {};
   const tem = k => !!r && x[k] !== undefined;
@@ -123,7 +123,7 @@ function cfgAbasHTML(r, ativa){
   };
   return uiAbas(CFG_ABAS.map(a => ({ id: a.id, rotulo: a.rotulo, resumo: resumo[a.id] })), { ativa, rotulo: "Partes das configurações" });
 }
-/* Integrações › Focus NFe e PlusFrota: só leitura; a Focus grava em Empresa e fiscal, o PlusFrota não tem tela */
+
 function cfgIntegracoesHTML(d, erro){
   const tit = "Focus NFe e PlusFrota (só consulta)";
   if(erro) return uiSecao("documento", tit, uiErro(erro));
@@ -141,7 +141,7 @@ function cfgIntegracoesHTML(d, erro){
     uiRotuloValor("PlusFrota · sincronização", `${d.plusfrota_sync_ativo ? "ligada" : "desligada"} <span class="meta">(sem tela para ligar ou desligar)</span>`);
   return uiSecao("documento", tit, corpo);
 }
-/* Operação › Parâmetros de outros módulos: o valor de hoje e o link para o módulo onde se altera (decisão D5) */
+
 function cfgParametrosHTML(d, erro){
   const tit = "Parâmetros de outros módulos (só consulta)";
   if(erro) return uiSecao("maquina", tit, uiErro(erro));
@@ -154,7 +154,7 @@ function cfgParametrosHTML(d, erro){
     uiRotuloValor("Almoxarife de plantão", (d.plantao ? esc(d.plantao) : "não definido") + link("separacoes", "Separações"));
   return uiSecao("maquina", tit, corpo);
 }
-/* cfg-puro-fim */
+
 
 let _cfgAba = "usuarios";
 let _cfgCarregadas = { usuarios: true };
@@ -167,14 +167,14 @@ function cfgRenderCabecalho(){
   const abas = $("cfg-abas");
   if(abas) abas.innerHTML = cfgAbasHTML(_cfgResumo, _cfgAba);
 }
-/* só troca o que se vê (sem ler nada) */
+
 function cfgMostrarAba(id){
   if(!CFG_ABAS.some(a => a.id === id)) id = "usuarios";
   _cfgAba = id;
   CFG_ABAS.forEach(a => { const el = $("cfg-aba-" + a.id); if(el) el.hidden = a.id !== id; });
   cfgRenderCabecalho();
 }
-/* troca de aba e lê os cards dela na primeira vez; serve aos links de dentro do módulo e a quem abre uma aba de fora */
+
 function cfgAbrirAba(id){
   cfgMostrarAba(id);
   cfgCarregarAba(_cfgAba);
@@ -182,17 +182,17 @@ function cfgAbrirAba(id){
 function cfgCarregarAba(id){
   if(_cfgCarregadas[id]) return;
   _cfgCarregadas[id] = true;
-  if(id === "empresa") carregarFiscalEmpresaCard();   // fase 105a
+  if(id === "empresa") carregarFiscalEmpresaCard();
   else if(id === "integracoes"){
-    if(typeof geoEmpresaCarregarCard === "function") geoEmpresaCarregarCard();   // fase 107a
+    if(typeof geoEmpresaCarregarCard === "function") geoEmpresaCarregarCard();
     cfgCarregarIntegracoes();
   } else if(id === "operacao"){
-    carregarRespServico();          // fase 75
-    carregarPalavrasEtapaCard();    // fase 94
+    carregarRespServico();
+    carregarPalavrasEtapaCard();
     cfgCarregarParametros();
-  } else if(id === "seguranca") carregarPoliticaSessaoCard();   // fase 87
+  } else if(id === "seguranca") carregarPoliticaSessaoCard();
 }
-/* resumo da barra: uma leitura leve de empresa_config e a contagem dos responsáveis; erro deixa a aba sem resumo */
+
 async function cfgCarregarResumo(){
   if(!["diretor", "admin"].includes(usuarioAtual?.cargo)) return;
   const r = { ativos: _usuarios.filter(u => u.ativo !== false).length };
@@ -227,9 +227,9 @@ async function cfgCarregarParametros(){
   alvo.innerHTML = cfgParametrosHTML(d, error ? "Não foi possível ler os parâmetros: " + error.message : null);
 }
 
-/* ---------- Dados fiscais da empresa (fase 105a) ----------
-   Mesmo bloco da visão "Pendências fiscais" de Clientes (js/fiscal.js). Aqui aparece para quem vê Usuários (diretor e
-   admin); grava só o diretor (podeEmitirFiscal / fiscal_pode_emitir: admin fora, decisão 6 do Bernardo). */
+
+
+
 function carregarFiscalEmpresaCard(){
   const card = $("usr-fiscal-card");
   if(!card || typeof fiscalEmpresaRender !== "function") return;
@@ -238,9 +238,9 @@ function carregarFiscalEmpresaCard(){
   if(pode) fiscalEmpresaRender("usr-fe");
 }
 
-/* ---------- Responsáveis por serviço (fase 75) ----------
-   Tabela responsaveis_servico: destino dos avisos de "Para regularizar" no Início.
-   Leitura para todo usuário ativo; escrita só diretor e admin (is_admin() no banco). */
+
+
+
 const RESP_AREA  = { obras: "Obras e equipamentos", acessorios: "Acessórios" };
 const RESP_TIPO  = { estaca_raiz: "Estaca raiz", helice_continua: "Hélice contínua", helice_secante: "Hélice secante", trado_mecanizado: "Trado mecanizado" };
 const RESP_PAPEL = { gestor: "Gestor (indica o engenheiro de cada obra)", responsavel: "Responsável", acompanha: "Acompanha" };
@@ -319,11 +319,11 @@ async function excluirRespServico(id){
   await carregarRespServico();
 }
 
-/* ---------- Política de sessão (fase 87) ----------
-   Card no painel, só diretor e admin (empresa_config_admin_write no banco). Os prazos valem para quem
-   entrar ou recarregar depois de salvos (e para esta aba, na hora). "Encerrar todas" é só da diretoria:
-   duas confirmações e motivo; a RPC apaga auth.sessions (menos a sessão de quem clicou) e registra em
-   registros_log. "Encerrar sessões" de um usuário fica na ficha, ao lado de Resetar senha. */
+
+
+
+
+
 async function carregarPoliticaSessaoCard(){
   const card = $("usr-sessao-card");
   if(!card) return;
@@ -365,9 +365,9 @@ async function salvarPoliticaSessao(){
   if(typeof carregarPoliticaSessao === "function") await carregarPoliticaSessao();
 }
 
-/* ---------- fase 94 (#75): palavras que marcam a estaca como executada pela observação do RDO ----------
-   empresa_config.rdo_palavras_etapa_final, só diretor e admin (empresa_config_admin_write). O gatilho do banco
-   (fn_rdo_exec_etapa_final) usa a lista na ordem; o front espelha em rdoEtapaFinal (js/rdo.js). */
+
+
+
 async function carregarPalavrasEtapaCard(){
   const card = $("usr-rdo-card");
   if(!card) return;
@@ -377,7 +377,7 @@ async function carregarPalavrasEtapaCard(){
   const { data, error } = await sb.from("empresa_config").select("rdo_palavras_etapa_final").eq("id", 1).maybeSingle();
   if(error){ aviso("app-aviso", "Não foi possível ler as palavras de etapa final: " + error.message, "erro"); return; }
   $("usr-rdo-palavras").value = (data?.rdo_palavras_etapa_final || []).join(", ");
-  // fase 101 (#99): classificações do solo (coluna nova; sem a migration o campo fica vazio e o salvar avisa)
+
   const sol = await sb.from("empresa_config").select("rdo_solo_classificacoes").eq("id", 1).maybeSingle();
   if($("usr-rdo-solo")) $("usr-rdo-solo").value = sol.error ? "" : (sol.data?.rdo_solo_classificacoes || []).join(", ");
 }
@@ -386,7 +386,7 @@ async function salvarSoloClassificacoes(){
   if(!lista.length){ aviso("app-aviso", "Informe ao menos uma classificação (ex.: Argila, Rocha alterada).", "erro"); return; }
   const { error } = await sb.from("empresa_config").update({ rdo_solo_classificacoes: lista, updated_at: new Date().toISOString() }).eq("id", 1);
   if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
-  if(typeof _rdoSoloClassif !== "undefined") _rdoSoloClassif = null;   // o RDO relê na próxima abertura
+  if(typeof _rdoSoloClassif !== "undefined") _rdoSoloClassif = null;
   $("usr-rdo-solo").value = lista.join(", ");
   aviso("app-aviso", "Classificações salvas. Aparecem como sugestão nas camadas do RDO de raiz.", "ok");
 }
@@ -395,7 +395,7 @@ async function salvarPalavrasEtapa(){
   if(!lista.length){ aviso("app-aviso", "Informe ao menos uma palavra (ex.: injeção, concretagem, argamassado).", "erro"); return; }
   const { error } = await sb.from("empresa_config").update({ rdo_palavras_etapa_final: lista, updated_at: new Date().toISOString() }).eq("id", 1);
   if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
-  if(typeof _rdoPalavrasEtapa !== "undefined") _rdoPalavrasEtapa = null;   // a grade do RDO relê na próxima abertura
+  if(typeof _rdoPalavrasEtapa !== "undefined") _rdoPalavrasEtapa = null;
   $("usr-rdo-palavras").value = lista.join(", ");
   aviso("app-aviso", "Palavras salvas. Valem para as execuções gravadas a partir de agora.", "ok");
 }
@@ -424,24 +424,24 @@ async function encerrarTodasSessoes(){
   await carregarPoliticaSessaoCard();
 }
 
-/* ---------- Login por CPF (fase 93b) ----------
-   Perfil criado pelo RH na aba Acesso da ficha do funcionário: o usuário entra com o CPF e profiles.email guarda
-   só uma máscara (<uuid>@funcionarios.cglfundacoes.com.br). A tela nunca mostra e-mail para esses perfis — diz
-   "login: CPF" —, não oferece "Resetar senha" (sem caixa postal; a nova senha sai da ficha do funcionário) e o
-   campo E-mail da ficha fica só informativo. */
+
+
+
+
+
 function usrLoginRotulo(u){
   if(u?.login_cpf) return `<span class="tag azul" title="Criado pelo RH na ficha do funcionário; entra com o CPF">login: CPF</span>${u.senha_provisoria ? ' <span class="tag ambar" title="Ainda não trocou a senha definida pelo RH">senha provisória</span>' : ""}`;
   return esc(u?.email || "—");
 }
-/* hotfix 147 (chamado #147): no login por CPF o que aparece é a função cadastrada pelo RH (funcionarios.funcao); o
-   cargo de permissão é o "perfil de acesso" e fica em segundo plano. Convidado por e-mail: null (tudo como antes). */
+
+
 function usrFuncaoRH(u){
   if(!u?.login_cpf) return null;
   return String(u.funcionario?.funcao || "").trim() || null;
 }
 function usrCargoRotulo(u){ return CARGOS[u?.cargo] || u?.cargo || "—"; }
 
-/* ---------- Filtros ---------- */
+
 function usrFiltrados(){
   const termo = ($("usr-busca")?.value || "").trim().toLowerCase();
   const fCargo = $("usr-f-cargo")?.value || "";
@@ -451,7 +451,7 @@ function usrFiltrados(){
     if(fAtivo === "ativos" && u.ativo === false) return false;
     if(fAtivo === "inativos" && u.ativo !== false) return false;
     if(termo){
-      const alvo = `${u.nome||""} ${u.login_cpf ? "login cpf" : (u.email||"")} ${CARGOS[u.cargo]||u.cargo||""} ${usrFuncaoRH(u)||""}`.toLowerCase();   // hotfix 147: + função do RH
+      const alvo = `${u.nome||""} ${u.login_cpf ? "login cpf" : (u.email||"")} ${CARGOS[u.cargo]||u.cargo||""} ${usrFuncaoRH(u)||""}`.toLowerCase();
       if(!alvo.includes(termo)) return false;
     }
     return true;
@@ -466,13 +466,13 @@ function preencherFiltrosUsr(){
   }
 }
 
-/* ---------- Render ---------- */
+
 function renderUsuarios(){
   preencherFiltrosUsr();
   const dados = usrFiltrados();
   const cont = $("usr-contador");
   if(cont) cont.textContent = `${dados.length} de ${_usuarios.length}`;
-  // fase 165: a visão "Matriz de acessos" não lista usuários, então os filtros da lista saem de cena
+
   const naMatriz = _usrView === "matriz" && typeof renderMatrizAcessos === "function";
   const filtros = document.querySelector("#usr-painel .card .serv-filtros");
   if(filtros) filtros.hidden = naMatriz;
@@ -490,7 +490,7 @@ function renderUsrLista(dados){
     cont.innerHTML = `<p class="vazio">Nenhum usuário encontrado.</p>`;
     return;
   }
-  // hotfix 147: login por CPF mostra a função do RH e, embaixo, o perfil de acesso; convidado por e-mail, o cargo
+
   const linhas = dados.map(u => {
     const funcao = usrFuncaoRH(u);
     return `<tr class="linha-clicavel" data-id="${esc(u.id)}">
@@ -511,8 +511,8 @@ function renderUsrLista(dados){
 function renderUsrKanban(dados){
   const cont = $("usr-conteudo");
   if(!cont) return;
-  // Agrupa por cargo. Hotfix 147: login por CPF fica no grupo do perfil de acesso ("Mecânico · perfil de acesso"),
-  // separado do cargo de quem foi convidado por e-mail, e o cartão mostra a função do RH
+
+
   const grupos = {};
   dados.forEach(u => {
     const rot = CARGOS[u.cargo] || u.cargo || "Sem cargo";
@@ -543,9 +543,9 @@ function renderUsrKanban(dados){
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
 }
 
-/* ---------- Painel <-> Ficha ---------- */
+
 function mostrarPainelUsr(){
-  cfgMostrarAba("usuarios");   // fase 205: menu e "← Voltar" sempre abrem a aba Usuários e acessos
+  cfgMostrarAba("usuarios");
   $("usr-painel").style.display = "";
   $("usr-ficha").style.display = "none";
   usrEditId = null;
@@ -553,31 +553,31 @@ function mostrarPainelUsr(){
 }
 
 function preencherCargosFicha(){
-  // perfis RH (vê salários e dados pessoais) e Jurídico (dado pessoal de parte de contrato, fase 180d): só a diretoria atribui
+
   $("usr-cargo").innerHTML = Object.entries(CARGOS)
     .filter(([v]) => !CARGOS_SO_DIRETORIA.includes(v) || usuarioAtual?.cargo === "diretor")
     .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   usrGarantirChecksExtras();
 }
 
-/* Módulos extras (hotfix 113; lote S51 #150): acesso a um módulo além do cargo, por usuário, com UMA validade para todos
-   (profiles.modulos_extras_ate). Só diretoria/admin gravam (gatilho no banco); o check profiles_modulos_extras_chk lista os
-   valores aceitos. O checkbox de Orçamentos nasce no index.html; os demais são criados aqui, no mesmo campo. */
+
+
+
 const USR_MODULOS_EXTRAS = [
   { id: "orcamentos", el: "usr-extra-orc", rotulo: "Orçamentos (além do cargo)" },
-  // lote S57b (#211, D-211a): Pedro e Sergio (engenheiros) leem as propostas sem gravar; o checkbox nasce no index.html
+
   { id: "orcamentos_leitura", el: "usr-extra-orcleit", rotulo: "Orçamentos (somente leitura)" },
-  // fase 174b (D1): "Montar orçamento" no assistente; o cargo diretor não libera sozinho, só a diretoria marca
+
   { id: "assistente_orcamento", el: "usr-extra-astorc", rotulo: "Montar orçamento pelo assistente (IA)" },
   { id: "produtos_sesmt", el: "usr-extra-prodsesmt", rotulo: "Produtos do SESMT (cadastro de EPI e uniformes)" },
-  // lote S55 (#173, #182, #180): Thayse e Maria Eduarda (produtos); Maria Eduarda (compras). Valores aceitos pelo check do banco.
+
   { id: "produtos", el: "usr-extra-prod", rotulo: "Produtos (cadastro: edita e cadastra, sem saldo nem custo)" },
   { id: "compras", el: "usr-extra-cmp", rotulo: "Compras (requisição e recebimento de NF, sem alçada)" },
-  // fase 109a (D1): a Iasmym (engenheiro) opera o SESMT. Lote S63-e (#278, #279): compras_sesmt vale (compras_sesmt_pode() no banco)
+
   { id: "sesmt", el: "usr-extra-sesmt", rotulo: "SESMT (catálogo, matriz, documentos de segurança, programas legais)" },
   { id: "compras_sesmt", el: "usr-extra-compsesmt", rotulo: "Compras do SESMT (cria e edita pedido só de EPI e uniforme; vê só os próprios pedidos, sem Contas a Pagar)" },
-  // fase 93d (28/10/2026): o Isaque cria o login por CPF de operador, encarregado e mecânico para testar o diário do operador
-  // lote S66-g (#316): nome, categoria, natureza e unidade do serviço no catálogo; só a diretoria concede (Thales, por 1 mês)
+
+
   { id: "catalogo_estrutura", el: "usr-extra-catest", rotulo: "Estrutura do catálogo de serviços (nome, categoria, natureza e unidade; só a diretoria libera)" },
   { id: "login_funcionario", el: "usr-extra-loginfunc", rotulo: "Login de funcionário (cria e redefine a senha de operador, encarregado e mecânico; não desativa; sem ver o CPF)" }
 ];
@@ -591,21 +591,21 @@ function usrGarantirChecksExtras(){
     campo.appendChild(lbl);
   });
 }
-/* lista a gravar: os marcados + os que o banco já tinha e esta tela não conhece (não apaga módulo de outra versão) */
+
 function usrExtrasMarcados(antes){
   const conhecidos = USR_MODULOS_EXTRAS.map(m => m.id);
   return (Array.isArray(antes) ? antes : []).filter(m => !conhecidos.includes(m))
     .concat(USR_MODULOS_EXTRAS.filter(m => $(m.el)?.checked).map(m => m.id));
 }
 
-/* Hotfix admin portas (11/11/2026): o acesso extra a Orçamentos só a diretoria libera, retira ou muda o prazo, e ninguém
-   mexe no próprio cargo, na própria situação nem nos próprios acessos extras. O banco barra nos gatilhos de profiles; aqui
-   a caixa só fica desabilitada, com o motivo no title (no rótulo também: campo desabilitado não mostra a dica). */
-const USR_EXTRAS_SO_DIRETORIA = ["orcamentos", "orcamentos_leitura", "assistente_orcamento", "catalogo_estrutura"];   // fase 174b: + assistente_orcamento; lote S66-g: + catalogo_estrutura
+
+
+
+const USR_EXTRAS_SO_DIRETORIA = ["orcamentos", "orcamentos_leitura", "assistente_orcamento", "catalogo_estrutura"];
 const USR_TRAVA_SO_DIRETORIA = "Só a diretoria libera ou retira este acesso.";
 const USR_TRAVA_PRAZO_ORC = "Só a diretoria muda o prazo de quem tem acesso extra a Orçamentos.";
 const USR_TRAVA_PROPRIO = "Você não altera o próprio cadastro neste campo: outra pessoa da diretoria ou da administração faz.";
-/* o que fica travado na ficha do usuário `u` (nulo = convite novo) para quem está logado: motivo por campo, "" = livre */
+
 function usrTravasFicha(u, eu){
   const proprio = !!(u && u.id && eu && u.id === eu.id);
   const diretor = !!eu && eu.cargo === "diretor";
@@ -647,7 +647,7 @@ function novoUsuario(){
   $("usr-cargo").value = "visualizador";
   $("usr-telefone").value = "";
   $("usr-ativo").checked = true;
-  USR_MODULOS_EXTRAS.forEach(m => { if($(m.el)) $(m.el).checked = false; });   // hotfix 113 + lote S51
+  USR_MODULOS_EXTRAS.forEach(m => { if($(m.el)) $(m.el).checked = false; });
   if($("usr-extra-ate")) $("usr-extra-ate").value = "";
   usrAplicarTravas(null);
   $("btn-reset-senha-usr").style.display = "none";
@@ -657,12 +657,12 @@ function novoUsuario(){
 }
 
 function abrirUsuario(id){
-  cfgMostrarAba("usuarios");   // fase 205: atalhos de fora (tela inicial, chamado) chegam na aba certa
+  cfgMostrarAba("usuarios");
   preencherCargosFicha();
   const u = _usuarios.find(x => x.id === id);
   if(!u){ aviso("app-aviso","Usuário não encontrado.","erro"); return; }
   usrEditId = id;
-  // fase 93b: login por CPF não tem e-mail de verdade; a senha nova sai da aba Acesso da ficha do funcionário
+
   usrEditEmail = u.login_cpf ? null : u.email;
   $("usr-email").value     = u.login_cpf ? "login: CPF (criado pelo RH na ficha do funcionário)" : (u.email || "");
   $("usr-email").disabled  = true;
@@ -670,12 +670,12 @@ function abrirUsuario(id){
   $("usr-cargo").value     = u.cargo || "visualizador";
   $("usr-telefone").value  = u.telefone || "";
   $("usr-ativo").checked   = u.ativo !== false;
-  // hotfix 113 + lote S51: módulos extras com validade (uma data para todos)
+
   USR_MODULOS_EXTRAS.forEach(m => { if($(m.el)) $(m.el).checked = Array.isArray(u.modulos_extras) && u.modulos_extras.includes(m.id); });
   if($("usr-extra-ate")) $("usr-extra-ate").value = u.modulos_extras_ate ? String(u.modulos_extras_ate).slice(0, 10) : "";
   usrAplicarTravas(u);
   $("btn-reset-senha-usr").style.display = u.login_cpf ? "none" : "";
-  if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "";   // fase 87
+  if($("btn-encerrar-sessoes-usr")) $("btn-encerrar-sessoes-usr").style.display = "";
   $("btn-salvar-usr").textContent = "Salvar alterações";
   abrirFichaUsrVisual(u);
 }
@@ -685,8 +685,8 @@ function abrirFichaUsrVisual(u){
   $("usr-ficha").style.display = "";
 
   $("usr-ficha-nome").textContent = u.nome || "(novo)";
-  // hotfix 147: login por CPF mostra a função do RH no chip (o perfil de acesso em segundo plano) e o select de cargo
-  // vira "Perfil de acesso"; convidado por e-mail continua "Cargo". Os rótulos são do index.html, trocados aqui
+
+
   const funcao = usrFuncaoRH(u);
   const chipCargo = $("usr-ficha-cargo-chip");
   const rotChipCargo = chipCargo.previousElementSibling;
@@ -695,19 +695,19 @@ function abrirFichaUsrVisual(u){
   else chipCargo.textContent = usrCargoRotulo(u);
   const rotSelCargo = $("usr-cargo").closest(".campo")?.querySelector("label");
   if(rotSelCargo) rotSelCargo.textContent = u.login_cpf ? "Perfil de acesso *" : "Cargo *";
-  $("usr-ficha-email-chip").innerHTML   = usrLoginRotulo(u);   // fase 93b: "login: CPF" no lugar do e-mail técnico
+  $("usr-ficha-email-chip").innerHTML   = usrLoginRotulo(u);
   $("usr-ficha-tel-chip").textContent = u.telefone || "—";
   $("usr-ficha-ativo-chip").innerHTML = (u.ativo === false)
     ? '<span class="tag vermelho">Inativo</span>'
     : '<span class="tag verde">Ativo</span>';
   $("usr-ficha-titulo").textContent = usrEditId ? u.nome : "Convidar usuário";
 
-  usrMostrarDescricaoCargo();   // fase 165
+  usrMostrarDescricaoCargo();
   ativarTabUsr("perfil");
 }
 
-/* Fase 165: sob o campo Cargo, a frase do cargo escolhido e quantos módulos ele vê (pela matriz de acessos). Só texto:
-   nada aqui grava nem muda permissão. O atalho para a matriz só aparece com a visão da matriz liberada. */
+
+
 function usrMostrarDescricaoCargo(){
   const alvo = $("usr-cargo-desc");
   if(!alvo) return;
@@ -717,9 +717,9 @@ function usrMostrarDescricaoCargo(){
   const resumo = typeof mtzFraseResumo === "function" ? mtzFraseResumo(cargo) : "";
   const atalho = typeof mtzTelaLiberada === "function" && mtzTelaLiberada()
     ? ` <button type="button" class="link-mini" data-usr-matriz="${esc(cargo)}" title="Abre a matriz de acessos neste cargo">Ver a matriz deste cargo</button>` : "";
-  alvo.innerHTML = `<span class="usr-cargo-frase">${esc(d.frase)}.</span>${resumo ? ` <span class="meta">${esc(resumo)}</span>` : ""}${/* html */ atalho}`;
+  alvo.innerHTML = `<span class="usr-cargo-frase">${esc(d.frase)}.</span>${resumo ? ` <span class="meta">${esc(resumo)}</span>` : ""}${  atalho}`;
 }
-/* atalho da ficha: volta ao painel já na visão da matriz, no cargo escolhido */
+
 function usrAbrirMatrizDoCargo(cargo){
   if(typeof mtzAbrirNoCargo !== "function" || !mtzAbrirNoCargo(cargo)) return;
   mostrarPainelUsr();
@@ -737,7 +737,7 @@ function ativarTabUsr(nome){
   });
 }
 
-/* ---------- Salvar (convite ou update) ---------- */
+
 async function salvarUsuario(){
   const btn = $("btn-salvar-usr");
   btn.disabled = true;
@@ -751,14 +751,14 @@ async function salvarUsuario(){
 
   try {
     if(usrEditId){
-      // hotfix 113 + lote S51: módulos extras (só diretoria/admin; o banco confere no gatilho e no check)
+
       const extras = usrExtrasMarcados(_usuarios.find(x => x.id === usrEditId)?.modulos_extras);
       const extrasAte = extras.length ? ($("usr-extra-ate")?.value || null) : null;
       const { error } = await sb.from("profiles")
         .update({ nome, cargo, telefone, modulos_extras: extras, modulos_extras_ate: extrasAte })
         .eq("id", usrEditId);
       if(error) throw error;
-      // Fase 62: ativar/desativar passa pela function (ban no login + profiles.ativo)
+
       const antes = _usuarios.find(x => x.id === usrEditId);
       if(antes && (antes.ativo !== false) !== ativo){
         const { data:{ session } } = await sb.auth.getSession();
@@ -793,9 +793,9 @@ async function salvarUsuario(){
         },
         body: JSON.stringify({
           email, nome, cargo, telefone,
-          /* URL completa do app (com subcaminho — ex.: /cgl-fundacoes-app/)
-             para o link do convite voltar exatamente para cá; em file://
-             não há URL válida e a function usa o Site URL do Supabase */
+
+
+
           redirect_to: location.protocol.startsWith("http")
             ? location.origin + location.pathname
             : undefined
@@ -843,7 +843,7 @@ async function resetarSenhaUsr(){
   }
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarUsuarios(){
   document.querySelectorAll("#usr-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {
@@ -871,8 +871,8 @@ function ligarUsuarios(){
     b.addEventListener("click", () => ativarTabUsr(b.dataset.tab));
   });
 
-  // Fase 165: descrição do cargo sob o campo, e a visão "Matriz de acessos" (o botão nasce escondido no index.html
-  // e só aparece com a tela liberada: mtzTelaLiberada em js/matriz_acessos.js)
+
+
   $("usr-cargo")?.addEventListener("change", usrMostrarDescricaoCargo);
   $("usr-cargo-desc")?.addEventListener("click", (e) => {
     const b = e.target.closest("[data-usr-matriz]");
@@ -881,7 +881,7 @@ function ligarUsuarios(){
   const btnMatriz = $("usr-view-matriz");
   if(btnMatriz) btnMatriz.hidden = !(typeof mtzTelaLiberada === "function" && mtzTelaLiberada());
 
-  // Responsáveis por serviço (fase 75)
+
   $("usr-resp-area")?.addEventListener("change", respPreencherPapel);
   $("btn-usr-resp-add")?.addEventListener("click", () => comBotaoTravado("btn-usr-resp-add", salvarRespServico));
   $("usr-resp-conteudo")?.addEventListener("click", (e) => {
@@ -893,14 +893,14 @@ function ligarUsuarios(){
     if(s) trocarPapelRespServico(s.dataset.respPapel, s.value);
   });
 
-  // Política de sessão (fase 87)
+
   $("btn-encerrar-sessoes-usr")?.addEventListener("click", () => comBotaoTravado("btn-encerrar-sessoes-usr", encerrarSessoesUsr));
   $("btn-usr-sessao-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessao-salvar", salvarPoliticaSessao));
-  $("btn-usr-rdo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-salvar", salvarPalavrasEtapa));   // fase 94
-  $("btn-usr-rdo-solo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-solo-salvar", salvarSoloClassificacoes));   // fase 101
+  $("btn-usr-rdo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-salvar", salvarPalavrasEtapa));
+  $("btn-usr-rdo-solo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-rdo-solo-salvar", salvarSoloClassificacoes));
   $("btn-usr-sessoes-todas")?.addEventListener("click", () => comBotaoTravado("btn-usr-sessoes-todas", encerrarTodasSessoes));
 
-  // fase 205: barra de abas e links das seções só leitura (troca de aba e ida a outro módulo)
+
   $("usr-painel")?.addEventListener("click", (e) => {
     const aba = e.target.closest("#cfg-abas [data-aba], [data-cfg-aba]");
     if(aba){ cfgAbrirAba(aba.dataset.aba || aba.dataset.cfgAba); return; }

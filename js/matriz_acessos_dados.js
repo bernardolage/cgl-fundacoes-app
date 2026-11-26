@@ -1,10 +1,10 @@
-/* ====================================================================
-   Matriz de acessos de consulta (fase 165): dados da tela. GERADO, não editar à mão.
-   Refazer: tirar o retrato do banco e rodar o gerador (roteiro no repositório privado).
-   É um retrato: a permissão que vale é a do banco. Célula de cada cargo, na ordem de `acoes`:
-   s sim · n não · p em parte · x não conferido (x=s, x=n, x=p: o que a leitura das regras indica) · z não se aplica.
-   Depois de ":" vêm os números das frases (lista `frases`) que explicam a célula.
-   ==================================================================== */
+
+
+
+
+
+
+
 const MATRIZ_ACESSOS = {
   retrato: "2026-11-24",
   carimbo: "ec571afbab4d836cd2b26b8b54d8bafc",

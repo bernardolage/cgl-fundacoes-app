@@ -1,24 +1,24 @@
-/* ====================================================================
-   Módulo: Contas a pagar (fase 55 — plano "Compras e Custos", §12, etapa A)
-   Seção própria sec-contaspagar desde a fase 180a (D6); antes vivia em "Contratos & Contas a pagar". As visões
-   A pagar, Lançamentos avulsos e Exportações, os indicadores e a exportação para o Compor 90; mesmos cargos de
-   antes (podeVerContasPagar).
-   Os títulos nascem em Compras (recebimento_confirmar) e, na etapa B, nos contratos
-   recorrentes; aqui o financeiro os vê e exporta. O pagamento em si fica no Compor 90.
-   Fase 130 (27/10/2026, #186): origem "Viagem" = frete terceirizado lançado em Logística (viagens com
-   finalidade frete_terceirizado; o gatilho do banco cria e mantém o título enquanto não exportado). A linha
-   mostra VG-… · origem → destino · transportador e abre a viagem (linkViagem).
-   Depende dos cadastros de apoio de compras.js (cmpCarregarBase, cmpForn, cmpObra, cmpEq,
-   abrirCustoAvulso, CMP_CAT_LBL) e de contratos.js (_contratos, contratoEmAlerta).
-   Prefixo: cap-.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 let _capTitulos = [];
-let _capFiltroVenc = "";        // "" | "vencidos" | "30"
-let _capFiltroOrigem = "";      // "" | nf_compra | contrato | avulso (fase 56)
-const CAP_ORIGEM_LBL = { nf_compra: "NF de compra", contrato: "Contrato", avulso: "Avulso", viagem: "Viagem" };   // fase 130: frete terceirizado
+let _capFiltroVenc = "";
+let _capFiltroOrigem = "";
+const CAP_ORIGEM_LBL = { nf_compra: "NF de compra", contrato: "Contrato", avulso: "Avulso", viagem: "Viagem" };
 const CAP_ORIGEM_COR = { contrato: "verde", avulso: "ambar", viagem: "cinza" };
-/* fase 130: origem → destino da viagem com os cadastros de compras (cmpObra) e os rótulos de Logística quando carregados */
+
 function capLadoViagem(v, lado){
   if(!v) return "";
   const tipo = v[lado + "_tipo"], obraId = v[lado + "_obra_id"], desc = v[lado + "_descricao"];
@@ -28,14 +28,14 @@ function capLadoViagem(v, lado){
 }
 function capViagemTxt(t){ const v = t.viagem; return v ? `${v.numero} · ${capLadoViagem(v, "origem")} → ${capLadoViagem(v, "destino")}` : "viagem"; }
 let _capIncluirExp = false;
-let _capView = "titulos";       // fase 180a: titulos | avulsos | exportacoes
-let _capLote = null;            // fase 58: lote de exportação em foco (id) — mostra só os títulos daquele arquivo
+let _capView = "titulos";
+let _capLote = null;
 
 function capPodeExportar(){ return !!usuarioAtual && ["admin","diretor","financeiro","comprador"].includes(usuarioAtual.cargo); }
 function capSoma(lista){ return lista.reduce((s, t) => s + Number(t.valor || 0), 0); }
 function capDaqui(dias){ const d = new Date(); d.setDate(d.getDate() + dias); return dataLocalISO(d); }
 
-/* indicadores do painel (títulos pendentes de exportação + contratos em alerta) */
+
 async function capKpis(){
   const bloco = $("cap-indicadores"); if(!bloco) return;
   if(!podeVerContasPagar()){ bloco.style.display = "none"; return; }
@@ -51,31 +51,31 @@ async function capKpis(){
   set("cap-kpi-contratos", (typeof _contratos === "object" && _contratos ? _contratos : []).filter(c => c.natureza === "fornecedor" && typeof contratoEmAlerta === "function" && contratoEmAlerta(c)).length);
 }
 
-/* troca a visão de Contas a pagar (botões de #cap-views) e renderiza */
+
 function capAtivarView(view){
   document.querySelectorAll("#cap-views [data-view]").forEach(x => x.classList.toggle("ativo", x.dataset.view === view));
   _capView = view;
   renderContasPagar();
 }
-/* fase 180a: render da seção (antes era um desvio de visão dentro de renderContratos) */
+
 function renderContasPagar(){
   capKpis();
   if(_capView !== "titulos") _capLote = null;
   return _capView === "titulos" ? renderTitulosPagar() : _capView === "exportacoes" ? renderExportacoes() : renderCustosAvulsosCap();
 }
-/* abre a ficha do contrato de despesa no módulo Contratos */
+
 function capAbrirContrato(id){
   if(irParaSecao("contratos") && typeof abrirContrato === "function") abrirContrato(id);
 }
 
-/* ---------- A pagar ---------- */
+
 async function renderTitulosPagar(){
   const cont = $("cap-conteudo"); if(!cont) return;
   if($("cap-lista-titulo")) $("cap-lista-titulo").textContent = "A pagar";
   if(!podeVerContasPagar()){ cont.innerHTML = `<p class="vazio">Seu perfil não tem acesso às contas a pagar.</p>`; return; }
-  await cmpCarregarBase(false); // nomes de fornecedor, obra e TAG
+  await cmpCarregarBase(false);
   const hoje = hojeISO();
-  let q = sb.from("titulos_pagar").select("*, recebimento:recebimentos(pedido_id, pedido:pedidos_compra(numero)), contrato:contratos(numero), viagem:viagens(id,numero,finalidade,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,transportador_placa)").order("vencimento").limit(1000);   // fase 130: viagem do frete
+  let q = sb.from("titulos_pagar").select("*, recebimento:recebimentos(pedido_id, pedido:pedidos_compra(numero)), contrato:contratos(numero), viagem:viagens(id,numero,finalidade,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,transportador_placa)").order("vencimento").limit(1000);
   if(_capFiltroOrigem) q = q.eq("origem", _capFiltroOrigem);
   if(_capLote) q = q.eq("exportacao_id", _capLote.id);
   else if(!_capIncluirExp) q = q.is("exportado_em", null);
@@ -103,7 +103,7 @@ async function renderTitulosPagar(){
     <thead><tr><th>Vencimento</th><th>Origem</th><th>Fornecedor</th><th>Documento</th><th>Pedido</th><th>Parcela</th><th class="num">Valor</th><th>Obra</th><th>TAG</th><th>Exportado</th></tr></thead>
     <tbody>${_capTitulos.map(t => { const venc = !t.exportado_em && t.vencimento < hoje; const ped = t.recebimento?.pedido;
       const doc = t.origem === "contrato" ? `<a href="#" class="cap-contrato" data-contrato-id="${esc(t.contrato_id)}">${esc(t.contrato?.numero || "contrato")}</a>${t.competencia ? ` <span class="meta">${esc(String(t.competencia).slice(5, 7))}/${esc(String(t.competencia).slice(0, 4))}</span>` : ""}`
-        : t.origem === "viagem" ? `${linkViagem(t.viagem_id, t.viagem?.numero || "viagem")} <span class="meta" title="${esc(t.observacoes || "")}">${esc(capLadoViagem(t.viagem, "origem"))} → ${esc(capLadoViagem(t.viagem, "destino"))}${t.nf_numero ? " · " + esc(t.nf_numero) : ""}${t.viagem?.transportador_placa ? " · " + esc(t.viagem.transportador_placa) : ""}</span>`   // fase 130: VG-… · origem → destino · documento do transportador
+        : t.origem === "viagem" ? `${linkViagem(t.viagem_id, t.viagem?.numero || "viagem")} <span class="meta" title="${esc(t.observacoes || "")}">${esc(capLadoViagem(t.viagem, "origem"))} → ${esc(capLadoViagem(t.viagem, "destino"))}${t.nf_numero ? " · " + esc(t.nf_numero) : ""}${t.viagem?.transportador_placa ? " · " + esc(t.viagem.transportador_placa) : ""}</span>`
         : t.origem === "avulso" ? esc(t.nf_numero || t.observacoes || "—") : esc(t.nf_numero || "—");
       return `<tr><td class="${venc ? "txt-perigo" : ""}"><strong>${dataBR(t.vencimento)}</strong>${venc ? " ⚠" : ""}</td><td><span class="tag ${esc(CAP_ORIGEM_COR[t.origem] || "azul")}">${esc(CAP_ORIGEM_LBL[t.origem] || t.origem)}</span></td><td>${esc(cmpForn(t.fornecedor_id) || "—")}</td><td>${doc}</td>
       <td>${ped ? `<a href="#" class="cap-pedido" data-pedido-id="${esc(t.recebimento.pedido_id)}">${esc(ped.numero)}</a>` : '<span class="meta">sem pedido</span>'}</td><td>${esc(t.parcela)}/${esc(t.total_parcelas)}</td>
@@ -125,23 +125,23 @@ async function renderTitulosPagar(){
 
 function capDataHora(ts){ return ts ? new Date(ts).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; }
 
-/* CSV genérico (o leiaute de importação do Compor 90 entra quando chegar o arquivo de exemplo — plano §7) */
+
 function capBaixarCsv(lista, nomeArquivo){
   const cel = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const num2 = v => Number(v || 0).toFixed(2).replace(".", ",");
   const cab = ["Fornecedor","CNPJ/CPF","Documento","Parcela","Total parcelas","Emissao","Vencimento","Valor","Obra","TAG","Observacoes","Origem"];
   const linhas = lista.map(t => { const f = _cmpFornMap[t.fornecedor_id] || {}; const o = _cmpObraMap[t.obra_id];
     const doc = t.origem === "contrato" ? `Contrato ${t.contrato?.numero || ""}${t.competencia ? " " + String(t.competencia).slice(5, 7) + "/" + String(t.competencia).slice(0, 4) : ""}`
-      : t.origem === "viagem" ? `Viagem ${capViagemTxt(t)}${t.nf_numero ? " · " + t.nf_numero : ""}`   // fase 130
+      : t.origem === "viagem" ? `Viagem ${capViagemTxt(t)}${t.nf_numero ? " · " + t.nf_numero : ""}`
       : (t.nf_numero || "");
     return [f.razao_social || "", f.cpf_cnpj || "", doc, t.parcela, t.total_parcelas, dataBR(t.emissao), dataBR(t.vencimento), num2(t.valor), o ? `${o.codigo} — ${o.nome}` : "", cmpEq(t.equipamento_id), t.observacoes || "", CAP_ORIGEM_LBL[t.origem] || t.origem || ""].map(cel).join(";"); });
   const csv = "\uFEFF" + cab.join(";") + "\n" + linhas.join("\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = nomeArquivo; a.click();
 }
 
-/* Fase 58: a exportação vira um lote (quem, quando, quantos, arquivo); cada título aponta para o lote.
-   Fase 142 (DAD-03): grava primeiro, em uma transação, e baixa depois. Se o download falhar, o lote baixa o mesmo arquivo de novo;
-   antes, cancelar ou falhar deixava pendente um título que já estava num arquivo, e ele saía de novo no próximo. */
+
+
+
 async function exportarTitulos(){
   const pend = _capTitulos.filter(t => !t.exportado_em);
   if(!pend.length) return;
@@ -150,12 +150,12 @@ async function exportarTitulos(){
   const { data: lote, error } = await sb.rpc("titulos_exportar_lote", { p_ids: pend.map(t => t.id), p_arquivo: arquivo });
   if(error){ aviso("app-aviso", "Não foi possível exportar; nenhum arquivo foi gerado: " + error.message, "erro"); return; }
   const marcados = new Set(lote?.ids || []);
-  capBaixarCsv(pend.filter(t => marcados.has(t.id)), arquivo);   // só o que este lote marcou: outra pessoa pode ter exportado parte
+  capBaixarCsv(pend.filter(t => marcados.has(t.id)), arquivo);
   aviso("app-aviso", `${marcados.size} título(s) exportado(s) no lote ${arquivo}. Se o arquivo não baixar, ele está na visão Exportações.`, "ok");
   renderContasPagar();
 }
 
-/* ---------- Exportações (lotes) ---------- */
+
 async function renderExportacoes(){
   const cont = $("cap-conteudo"); if(!cont) return;
   if($("cap-lista-titulo")) $("cap-lista-titulo").textContent = "Exportações";
@@ -173,7 +173,7 @@ async function renderExportacoes(){
     capAtivarView("titulos");
   }));
 }
-/* ---------- Lançamentos avulsos (multa, IPVA, seguro, locação sem NF de produto) ---------- */
+
 async function renderCustosAvulsosCap(){
   const cont = $("cap-conteudo"); if(!cont) return;
   if($("cap-lista-titulo")) $("cap-lista-titulo").textContent = "Lançamentos avulsos";
@@ -196,14 +196,14 @@ async function renderCustosAvulsosCap(){
   }));
 }
 
-/* ---------- ligação ---------- */
+
 function ligarContasPagar(){
   if(!$("cap-painel")) return;
   document.querySelectorAll("#cap-views [data-view]").forEach(b => b.addEventListener("click", () => capAtivarView(b.dataset.view)));
   document.querySelector('nav button[data-secao="contaspagar"]')?.addEventListener("click", () => capAtivarView(_capView));
   document.querySelectorAll("#cap-indicadores .ind[data-kpi]").forEach(el => el.addEventListener("click", () => {
     const k = el.dataset.kpi;
-    if(k === "contratos"){   // fase 180a: contratos de despesa que vencem em 30 dias, no módulo Contratos
+    if(k === "contratos"){
       if(!irParaSecao("contratos")) return;
       if(typeof _conLado !== "undefined" && podeVerContratosDespesa() && podeVerContratosReceita()) _conLado = "despesa";
       if($("con-f-vencimento")) $("con-f-vencimento").value = "30";

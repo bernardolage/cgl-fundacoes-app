@@ -1,16 +1,16 @@
-/* ====================================================================
-   js/dash_explica.js — "o que é este número" da Sala de Comando (fase 164).
-   Carregado antes de js/dashboard.js. Só dados e funções puras: nada aqui lê o banco, guarda estado ou liga evento.
 
-   DASH_EXPLICA: chave → { regra, fazer, origem }, em linguagem de quem usa a tela.
-     - "Para regularizar": a chave é o filtro que a linha traz.
-     - "Exige ação hoje" e "Minha fila": fonte:ordem, com :nível quando a mesma ordem dá dois títulos.
-   Quem mudar o prazo ou a regra de uma pendência da Sala muda o texto aqui na mesma entrega, e a linha do anexo
-   docs/specs/fase-164-textos.md, que guarda a origem técnica de cada texto (este arquivo não cita objeto do banco).
-   Pendência sem texto conferido fica fora do dicionário: a linha sai sem o "?" e a tela mostra o contador como antes.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
 const DASH_EXPLICA = {
-  /* ---------- Exige ação hoje ---------- */
+
   "acoes:10:critico": { regra: "Obras em andamento com 7 dias corridos ou mais desde o último RDO. Sem nenhum RDO, a conta parte da data de início da obra (ou do dia do cadastro, se não houver data de início).",
     fazer: "Lançar os diários; se a obra parou, mudar o status dela.", origem: "Dos RDOs e do cadastro das obras em andamento." },
   "acoes:10:atencao": { regra: "A mesma conta do alerta de 7 dias, para obras em andamento com 3 a 6 dias corridos sem RDO.",
@@ -96,7 +96,7 @@ const DASH_EXPLICA = {
   "man:52": { regra: "Mobilizações com máquina, previstas ou em preparação com saída prevista até daqui a 7 dias (ou já passada), ou em trânsito, sem checklist aprovado ligado a elas.",
     fazer: "Fazer e aprovar o checklist da mobilização.", origem: "Das mobilizações e dos checklists." },
 
-  /* ---------- Minha fila ---------- */
+
   "fila:10": { regra: "Comentário de obra em que você foi indicado como responsável e que ainda não foi resolvido.",
     fazer: "Abrir a aba Timeline da obra e resolver o comentário.", origem: "Dos comentários das obras." },
   "fila:20": { regra: "Pendência de mobilização sob a sua responsabilidade, ainda não concluída. Fica crítico quando o prazo passou.",
@@ -132,7 +132,7 @@ const DASH_EXPLICA = {
   "fila_custo:27": { regra: "Produto sem custo cadastrado que teve saída de estoque a custo zero a partir da data configurada (EPI e uniforme não entram). Uma linha por produto; fica crítico quando a primeira dessas saídas tem mais de 3 dias.",
     fazer: "Definir o custo do produto.", origem: "Das movimentações de estoque e do cadastro de produtos." },
 
-  /* ---------- Para regularizar ---------- */
+
   "sem_responsavel": { regra: "Obras em andamento, ou planejadas que já têm item de pedido de compra, sem engenheiro responsável.",
     fazer: "O gestor do serviço indica o responsável na ficha da obra.", origem: "Do cadastro das obras." },
   "responsavel_inativo": { regra: "Obras não canceladas cujo engenheiro responsável foi desativado e que estão em andamento ou têm estaca a regularizar (projeto a confirmar, ou executada sem profundidade).",
@@ -281,7 +281,7 @@ const DASH_EXPLICA = {
     fazer: "Aprovar ou recusar em Apontamentos.", origem: "Dos apontamentos de horas." },
   "aprovacao_rp_of": { regra: "Apontamentos de horas de reparo e de fabricação aguardando aprovação, lançados por outra pessoa.",
     fazer: "Aprovar ou recusar em Apontamentos.", origem: "Dos apontamentos de horas." },
-  /* mobilizações: obra sem mobilização, viagem de ida e volta, desmobilização prevista */
+
   "mob_nova": { regra: "Mobilizações previstas criadas nos últimos 7 dias, pelo orçamento aprovado, pela obra nova ou pela volta de uma máquina da sede.",
     fazer: "Definir a TAG e a data prevista e programar a viagem de ida no quadro de Mobilizações.", origem: "Do quadro de Mobilizações." },
   "obra_sem_mobilizacao": { regra: "Obras não canceladas nem concluídas que têm diário de obra e nenhuma mobilização (cancelada não conta).",
@@ -298,7 +298,7 @@ const DASH_EXPLICA = {
     fazer: "Abrir a viagem e escolher a mobilização que ela atende.", origem: "Das viagens da Logística." }
 };
 
-/* Os cinco indicadores da faixa do período: o texto que antes ficava só no title (não abria em tela de toque) */
+
 const DASH_EXPLICA_FAIXA = {
   producao: "Soma de profundidade executada e número de estacas (sem refuros) dos RDOs com data no período. Variação contra o período anterior de mesmo tamanho.",
   obras:    "Obras em andamento com pelo menos um RDO no período ÷ obras em andamento.",
@@ -307,14 +307,14 @@ const DASH_EXPLICA_FAIXA = {
   custo:    "Soma dos custos registrados no período: compras, ordens de serviço, diesel do RDO, contratos e avulsos."
 };
 
-/* Famílias de acessório: em "Para regularizar", a linha de modelo sem preço traz a família no lugar do filtro */
+
 const DASH_EXPLICA_FAMILIAS = ["helice", "raiz", "secante", "trado", "comum"];
 const DASH_EXPLICA_FONTES = ["acoes", "sep", "fab", "fin", "man", "assinar", "fila", "fila_sep", "fila_custo", "fila_sst", "fila_ret", "fila_mdl", "fila_prc"];
 const dashExplicaTem = (k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(DASH_EXPLICA, k);
 
-/* Chave do texto de uma linha, ou null quando não há texto conferido para ela.
-   bloco: "regularizar" usa o filtro; "acoes" e "fila" usam a fonte marcada na leitura (a._fonte), a ordem e o nível.
-   Nunca usa o título, que em várias linhas leva valor, número ou nome. */
+
+
+
 function dashExplicaChave(a, bloco){
   if(!a) return null;
   if(bloco === "regularizar"){
@@ -325,30 +325,30 @@ function dashExplicaChave(a, bloco){
   }
   const fonte = a._fonte;
   if(!DASH_EXPLICA_FONTES.includes(fonte)) return null;
-  if(fonte === "assinar") return dashExplicaTem("assinar") ? "assinar" : null;   // uma linha por pedido: a ordem é só a posição
+  if(fonte === "assinar") return dashExplicaTem("assinar") ? "assinar" : null;
   const ordem = Number(a.ordem);
   if(!Number.isFinite(ordem)) return null;
   const comNivel = `${fonte}:${ordem}:${a.nivel}`, semNivel = `${fonte}:${ordem}`;
   return dashExplicaTem(comNivel) ? comNivel : dashExplicaTem(semNivel) ? semNivel : null;
 }
 
-/* Painel "o que é este número": três linhas rotuladas. Chave sem texto devolve "" (a linha fica sem o "?"). */
+
 function dashExplicaHTML(chave){
   if(!dashExplicaTem(chave)) return "";
   const t = DASH_EXPLICA[chave];
   const linha = (rotulo, texto) => `<div class="dash-explica-linha"><span class="rotulo-caps">${esc(rotulo)}</span><span>${esc(texto)}</span></div>`;
   return linha("O que é", t.regra) + linha("O que fazer", t.fazer) + linha("De onde vem", t.origem);
 }
-/* Painel dos indicadores da faixa: só "O que é" */
+
 function dashExplicaFaixaHTML(chave){
   if(typeof chave !== "string" || !Object.prototype.hasOwnProperty.call(DASH_EXPLICA_FAIXA, chave)) return "";
   return `<div class="dash-explica-linha"><span class="rotulo-caps">O que é</span><span>${esc(DASH_EXPLICA_FAIXA[chave])}</span></div>`;
 }
 
-/* ---------- "Para regularizar": as três visões sobre o papel que cada linha já traz ---------- */
+
 const DASH_REG_VISOES = [["meus", "Meus"], ["empresa", "Da empresa"], ["acompanho", "Acompanho"]];
-/* responsavel = é meu; acompanha = outro responde e eu acompanho; o resto (diretoria) é o total da empresa.
-   Papel desconhecido cai em "empresa" para nenhuma linha sumir da tela. */
+
+
 function dashRegVisaoDoPapel(papel){ return papel === "responsavel" ? "meus" : papel === "acompanha" ? "acompanho" : "empresa"; }
 function dashRegFiltrar(lista, visao){ return (lista || []).filter(a => dashRegVisaoDoPapel(a && a.papel) === visao); }
 function dashRegContar(lista){
@@ -356,8 +356,8 @@ function dashRegContar(lista){
   (lista || []).forEach(a => { n[dashRegVisaoDoPapel(a && a.papel)]++; });
   return n;
 }
-/* A escolha guardada vale enquanto tiver linha; senão "Meus" quando houver, depois "Da empresa", depois "Acompanho".
-   Sem linha nenhuma devolve null. */
+
+
 function dashRegVisaoInicial(contagem, guardada){
   const n = contagem || {};
   if(guardada && n[guardada] > 0) return guardada;
@@ -365,7 +365,7 @@ function dashRegVisaoInicial(contagem, guardada){
   return v ? v[0] : null;
 }
 
-// teste em Node (scripts/testar-fase164.mjs): dados e funções puras também saem por module.exports
+
 if(typeof module === "object" && module && module.exports){
   module.exports = { DASH_EXPLICA, DASH_EXPLICA_FAIXA, DASH_EXPLICA_FAMILIAS, DASH_REG_VISOES, dashExplicaChave, dashExplicaHTML, dashExplicaFaixaHTML,
     dashRegVisaoDoPapel, dashRegFiltrar, dashRegContar, dashRegVisaoInicial };

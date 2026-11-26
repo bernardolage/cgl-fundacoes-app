@@ -1,33 +1,33 @@
-/* ====================================================================
-   SESMT — fase 109a (27/10/2026): catálogo de requisitos, matriz de exigência, GHE, programas legais e a aba
-   Segurança da ficha do funcionário. Spec: docs/specs/fase-109-sesmt.md (decisões D1–D21 de 27/10/2026).
-   Prefixo sst-. Quem vê o módulo: podeVerSesmt() (SESMT por cargo ou módulo extra, rh, admin/diretor, auditor);
-   quem grava: sstPodeOperar() (cargo sesmt, admin/diretor, módulo extra sesmt; nunca auditor) — espelhos de
-   sst_pode_ler()/sst_pode_operar() do banco (core.js). Documento sensível (ASO, exame) só em sessão com MFA
-   (sst_pode_ler_saude no banco): o front só evita a tentativa; a RLS é quem recusa.
-   Padrão Serviços/Odoo (.claude/skills/padrao-modulo-obra-completo): painel com .lista-topo + .serv-views +
-   .serv-filtros + #sst-conteudo; fichas (requisito, programa) com header de ações, chips e notebook.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
 
 let _sstView = "vencimentos";
 let _sstCarregado = false;
-let _sstReqs = [];          // sst_requisitos
-let _sstGhes = [];          // sst_ghe
-let _sstGheFuncoes = [];    // sst_ghe_funcoes
-let _sstMatriz = [];        // sst_matriz
-let _sstProgramas = [];     // sst_programas (+ obra, requisito)
-let _sstFuncs = [];         // funcionários ativos (id, nome, funcao, departamento_id)
+let _sstReqs = [];
+let _sstGhes = [];
+let _sstGheFuncoes = [];
+let _sstMatriz = [];
+let _sstProgramas = [];
+let _sstFuncs = [];
 let _sstDeptos = [];
-let _sstObras = [];         // obras planejadas/em andamento (id, codigo, nome, cliente_id, status)
+let _sstObras = [];
 let _sstClientes = [];
 let _sstEquipamentos = [];
-let _sstSituacao = null;    // último retorno de sst_situacao
-let _sstSituacaoChave = ""; // ids + obra do último cálculo (evita recalcular a cada filtro)
+let _sstSituacao = null;
+let _sstSituacaoChave = "";
 let _sstMatrizAlvo = "funcao";
-let _sstMatrizImport = null;  // resumo da planilha conferida à espera do "Aplicar"
+let _sstMatrizImport = null;
 let sstReqEditId = null;
 let sstProgEditId = null;
-let _sstProgObraPre = null;   // obra pré-selecionada ao abrir "+ Programa legal" pela ficha da obra
+let _sstProgObraPre = null;
 let _sstFichaFuncDocs = [];
 
 const SST_NATUREZA = { treinamento: "Treinamento", exame: "Exame", documento: "Documento", programa: "Programa" };
@@ -48,7 +48,7 @@ const SST_METODO = { helice_continua: "Hélice contínua", secante: "Hélice sec
 const SST_ORIGEM_DOC = { manual: "manual", carga: "carga", turma: "turma", aso: "ASO", gerado: "gerado pelo app" };
 const SST_PENDENTES = ["vence_30", "vence_7", "vencido", "falta"];
 
-/* ---------- utilidades ---------- */
+
 function sstTagStatus(st){
   const o = SST_STATUS[st] || { label: st || "—", cor: "cinza" };
   return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`;
@@ -62,7 +62,7 @@ function sstValidadeTxt(iv){
   m = s.match(/^(\d+):00:00$/);    if(m) return `${m[1]} h`;
   return s;
 }
-/* "24 meses" / "912 dias" / "24" → interval em texto para o banco; vazio → null */
+
 function sstValidadeParaBanco(txt){
   const t = String(txt || "").trim().toLowerCase();
   if(!t) return null;
@@ -74,12 +74,12 @@ function sstValidadeParaBanco(txt){
   return `${n} months`;
 }
 function sstFuncaoChave(f){
-  // espelho aproximado de fn_funcao_chave(): a chave que vale é a do banco; aqui só para casar funções da tela
+
   return String(f || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/treinee/g, "trainee").replace(/equipamentos/g, "equipamento").replace(/maquinas/g, "maquina")
     .replace(/ de /g, " ").replace(/  /g, " ").replace(/[^a-z0-9 ]+/g, "").trim() || null;
 }
-/* a chave que vale é a do banco (fn_funcao_chave, exposta pela 109a); o espelho JS só entra se a RPC falhar */
+
 async function sstChaveBanco(funcao){
   try { const { data, error } = await sb.rpc("fn_funcao_chave", { p: funcao }); if(!error && data) return data; } catch(_){}
   return sstFuncaoChave(funcao);
@@ -97,7 +97,7 @@ async function sstSessaoAal2(){
   try { const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); return !!data && data.currentLevel === "aal2"; }
   catch(_){ return false; }
 }
-function sstPodeGravarDoc(){   // func_docs_write: sst_pode_operar() ou rh
+function sstPodeGravarDoc(){
   if(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) return false;
   return sstPodeOperar() || (!!usuarioAtual && usuarioAtual.cargo === "rh");
 }
@@ -105,12 +105,12 @@ function sstErroMsg(err, padrao){
   return (typeof ehErroDePermissao === "function" && ehErroDePermissao(err)) ? padrao : "Erro: " + (err?.message || err);
 }
 
-/* ---------- carga ---------- */
+
 async function carregarSesmt(forcar){
   if(!$("sst-painel")) return;
   if(!podeVerSesmt()){ $("sst-conteudo").innerHTML = `<p class="vazio">Seu perfil não tem acesso ao SESMT.</p>`; return; }
   if(_sstCarregado && !forcar){ renderSesmt(); return; }
-  if(typeof _trnCarregado !== "undefined") _trnCarregado = false;   // fase 185a: "Atualizar" relê também os treinamentos
+  if(typeof _trnCarregado !== "undefined") _trnCarregado = false;
   $("sst-conteudo").innerHTML = `<p class="vazio">Carregando…</p>`;
   const [reqs, ghes, gfs, mat, progs, funcs, deps, obras, clis, eqps] = await Promise.all([
     sb.from("sst_requisitos").select("*").order("ordem").order("codigo"),
@@ -149,13 +149,13 @@ function preencherFiltrosSesmt(){
 function sstAplicarPermissoes(){
   const opera = sstPodeOperar();
   ["btn-sst-novo-req", "btn-sst-novo-prog", "btn-sst-importar"].forEach(id => { const b = $(id); if(b) b.style.display = opera ? "" : "none"; });
-  const bEx = document.querySelector('#sst-views .serv-view-btn[data-view="exames"]');   // fase 185b: ASO só para quem lê saúde
+  const bEx = document.querySelector('#sst-views .serv-view-btn[data-view="exames"]');
   if(bEx) bEx.style.display = typeof asoPodeVer === "function" && asoPodeVer() ? "" : "none";
-  const bEpi = document.querySelector('#sst-views .serv-view-btn[data-view="epi"]');   // #363: aba EPI
+  const bEpi = document.querySelector('#sst-views .serv-view-btn[data-view="epi"]');
   if(bEpi) bEpi.hidden = !sstPodeVerEpi();
   if(_sstView === "epi" && !sstPodeVerEpi()) _sstView = "vencimentos";
 }
-/* #363: a aba EPI aparece para quem opera o SESMT ou vê o relatório de EPI (podeVerEpi, js/epi.js) */
+
 function sstPodeVerEpi(){ return sstPodeOperar() || (typeof podeVerEpi === "function" && podeVerEpi()); }
 
 function sstFiltros(){
@@ -166,7 +166,7 @@ function sstFiltros(){
   };
 }
 
-/* funcionários que passam nos filtros de pessoa (departamento, função, GHE, busca por nome) */
+
 function sstFuncsFiltrados(f){
   const chavesGhe = f.ghe ? new Set(_sstGheFuncoes.filter(g => g.ghe_id === f.ghe).map(g => g.funcao_chave)) : null;
   return _sstFuncs.filter(p => {
@@ -180,13 +180,13 @@ function sstFuncsFiltrados(f){
 function renderSesmt(){
   const cont = $("sst-conteudo"); if(!cont) return;
   document.querySelectorAll("#sst-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _sstView));
-  // #363: a aba EPI usa os cards do Estoque, fora do #sst-conteudo e sem os filtros de pessoa
+
   const epi = _sstView === "epi";
   cont.hidden = epi;
   const filtros = document.querySelector("#sst-painel .serv-filtros"); if(filtros) filtros.hidden = epi;
   if($("sst-epi-aba")) $("sst-epi-aba").hidden = !epi;
   if(epi){ renderSstEpi(); return; }
-  // filtros que só valem em algumas visões
+
   const soPessoas = ["vencimentos", "pessoas"].includes(_sstView);
   ["sst-f-depto", "sst-f-funcao", "sst-f-ghe"].forEach(id => { $(id).style.display = soPessoas || _sstView === "matriz" ? "" : "none"; });
   $("sst-f-obra").style.display = soPessoas || _sstView === "programas" ? "" : "none";
@@ -197,13 +197,13 @@ function renderSesmt(){
   else if(_sstView === "programas") renderSstProgramas();
   else if(_sstView === "matriz") renderSstMatriz();
   else if(_sstView === "ghe") renderSstGhe();
-  else if(_sstView === "treinamentos" && typeof renderSstTreinamentos === "function") renderSstTreinamentos();   // fase 185a
-  else if(_sstView === "custo" && typeof renderSstCustoSst === "function") renderSstCustoSst();                  // fase 185a (D10)
-  else if(_sstView === "exames" && typeof renderSstExames === "function") renderSstExames();                     // fase 185b (ASO)
+  else if(_sstView === "treinamentos" && typeof renderSstTreinamentos === "function") renderSstTreinamentos();
+  else if(_sstView === "custo" && typeof renderSstCustoSst === "function") renderSstCustoSst();
+  else if(_sstView === "exames" && typeof renderSstExames === "function") renderSstExames();
   else renderSstCatalogo();
 }
 
-/* ---------- situação (sst_situacao) ---------- */
+
 async function sstCarregarSituacao(ids, obraId){
   const chave = ids.join(",") + "|" + (obraId || "");
   if(_sstSituacao && _sstSituacaoChave === chave) return _sstSituacao;
@@ -244,7 +244,7 @@ async function renderSstVencimentos(){
         <td><strong>${esc(p.nome || "—")}</strong></td><td>${esc(p.funcao || "—")}</td>
         <td>${esc(s.codigo)} · ${esc(s.nome)}${s.sensivel ? ' <span class="tag cinza" title="Dado de saúde: só SESMT e RH com MFA veem o arquivo">saúde</span>' : ""}</td>
         <td>${esc(SST_NATUREZA[s.natureza] || s.natureza)}</td><td class="meta">${esc(s.origem || "")}</td>
-        <td>${/* html */ sstTagStatus(s.status)}${s.exigencia === "eventual" ? ' <span class="meta">eventual</span>' : ""}</td>
+        <td>${  sstTagStatus(s.status)}${s.exigencia === "eventual" ? ' <span class="meta">eventual</span>' : ""}</td>
         <td>${dataBR(s.valido_ate)}${dias != null && s.status !== "ok" && s.status !== "falta" ? ` <span class="meta">(${dias < 0 ? `há ${-dias} d` : `em ${Number(dias)} d`})</span>` : ""}</td>
       </tr>`; }).join("")}</tbody></table></div>`;
   cont.querySelectorAll("tr[data-func]").forEach(tr => tr.addEventListener("click", () => sstAbrirFuncionarioSeguranca(tr.dataset.func)));
@@ -281,7 +281,7 @@ async function sstAbrirFuncionarioSeguranca(funcionarioId){
   sstFichaFuncCarregar();
 }
 
-/* ---------- programas legais ---------- */
+
 function sstProgFarol(p){
   if(!p.vigencia_fim) return `<span class="tag cinza">sem vigência</span>`;
   const d = sstDiasAte(p.vigencia_fim);
@@ -302,11 +302,11 @@ function renderSstProgramas(){
     <thead><tr><th>Escopo</th><th>Programa</th><th>Revisão</th><th>Vigência</th><th>Situação</th><th>Resp. técnico</th><th>ART (CREA)</th><th>Entregue à contratante</th></tr></thead>
     <tbody>${linhas.map(p => `
       <tr class="linha-clicavel" data-id="${esc(p.id)}">
-        <td>${p.escopo === "sede" ? "Sede" : (p.obra ? (typeof linkObra === "function" ? /* html */ linkObra(p.obra.id, esc(p.obra.codigo)) : esc(p.obra.codigo)) : "—")}</td>
+        <td>${p.escopo === "sede" ? "Sede" : (p.obra ? (typeof linkObra === "function" ?   linkObra(p.obra.id, esc(p.obra.codigo)) : esc(p.obra.codigo)) : "—")}</td>
         <td><strong>${esc(p.requisito?.codigo || "—")}</strong> · ${esc(p.requisito?.nome || "")}</td>
         <td>${esc(p.revisao || "—")}</td>
         <td>${dataBR(p.vigencia_inicio)} → ${dataBR(p.vigencia_fim)}</td>
-        <td>${/* html */ sstProgFarol(p)}</td>
+        <td>${  sstProgFarol(p)}</td>
         <td>${esc(p.responsavel_tecnico || "—")}</td>
         <td>${esc(p.art_numero || "—")}${p.art_numero ? (p.art_baixada ? ' <span class="tag cinza">baixada</span>' : "") : ""}</td>
         <td>${dataBR(p.entregue_contratante_em)}</td>
@@ -314,7 +314,7 @@ function renderSstProgramas(){
   cont.querySelectorAll("tr[data-id]").forEach(tr => tr.addEventListener("click", () => abrirSstPrograma(tr.dataset.id)));
 }
 
-/* ---------- catálogo ---------- */
+
 function renderSstCatalogo(){
   const cont = $("sst-conteudo"); const f = sstFiltros();
   const linhas = _sstReqs.filter(r => (!f.natureza || r.natureza === f.natureza)
@@ -330,12 +330,12 @@ function renderSstCatalogo(){
         <td>${esc(sstValidadeTxt(r.validade))}</td><td>${r.carga_horaria != null ? esc(String(r.carga_horaria).replace(".", ",")) : "—"}</td>
         <td>${esc(SST_EMISSOR[r.emissor] || r.emissor)}</td>
         <td>${_sstMatriz.filter(m => m.requisito_id === r.id).length || "—"}</td>
-        <td>${/* html */ tagSituacao(r.ativo)}</td>
+        <td>${  tagSituacao(r.ativo)}</td>
       </tr>`).join("")}</tbody></table></div>`;
   cont.querySelectorAll("tr[data-id]").forEach(tr => tr.addEventListener("click", () => abrirSstRequisito(tr.dataset.id)));
 }
 
-/* ---------- GHE ---------- */
+
 function renderSstGhe(){
   const cont = $("sst-conteudo"); const f = sstFiltros(); const opera = sstPodeOperar();
   const funcoesAtivas = [...new Set(_sstFuncs.map(p => p.funcao).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -353,7 +353,7 @@ function renderSstGhe(){
           <td><strong>${esc(g.codigo)}</strong></td>
           <td>${esc(g.nome)}${g.descricao ? `<div class="meta">${esc(g.descricao)}</div>` : ""}</td>
           <td>${fs.length ? fs.map(x => `<span class="tag cinza">${esc(x.funcao_nome)}${opera ? ` <button type="button" class="btn-sec btn-sm sst-ghe-del" data-id="${esc(x.id)}" title="Tirar a função deste GHE">×</button>` : ""}</span>`).join(" ") : '<span class="meta">nenhuma</span>'}</td>
-          ${opera ? `<td class="col-acao"><select class="sst-ghe-add" data-ghe="${esc(g.id)}" title="Acrescentar função a este GHE"><option value="">+ função…</option>${/* html */ optFuncoes}</select></td>` : ""}
+          ${opera ? `<td class="col-acao"><select class="sst-ghe-add" data-ghe="${esc(g.id)}" title="Acrescentar função a este GHE"><option value="">+ função…</option>${  optFuncoes}</select></td>` : ""}
         </tr>`; }).join("")}</tbody></table></div>` : `<p class="vazio">Nenhum GHE cadastrado. A carga do RG 4.38.5 vem por <code>scripts/importar-sst.js ghe</code> depois da conferência da Iasmym; ou cadastre aqui.</p>`}
     <h4 style="margin:var(--esp-4) 0 var(--esp-2);">Funções sem GHE (${semGhe.length})</h4>
     ${semGhe.length ? `<p class="meta">${semGhe.map(esc).join(" · ")}</p>` : `<p class="vazio">Toda função de funcionário ativo tem GHE.</p>`}`;
@@ -383,9 +383,9 @@ async function sstGheDelFuncao(id){
   await carregarSesmt(true);
 }
 
-/* ---------- matriz ---------- */
+
 function sstMatrizLinhas(alvo, f){
-  // cada linha: { key, label, campo: { coluna: valor } } — o que a célula grava em sst_matriz
+
   if(alvo === "funcao"){
     const nomes = new Map();
     _sstFuncs.forEach(p => { if(p.funcao){ const k = sstFuncaoChave(p.funcao); if(k && !nomes.has(k)) nomes.set(k, p.funcao); } });
@@ -449,7 +449,7 @@ async function sstMatrizAlternar(key, reqId, linhas){
   renderSstMatriz();
 }
 
-/* exportação para conferência (D5): uma aba por alvo função e GHE, X/E nas células, aba Requisitos */
+
 function sstExportarMatriz(){
   if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
   const cols = _sstReqs.filter(r => r.ativo && ["treinamento", "documento"].includes(r.natureza) && !r.sensivel);
@@ -464,10 +464,10 @@ function sstExportarMatriz(){
     ...cols.map(r => [r.codigo, r.nome, SST_NATUREZA[r.natureza], SST_GRUPO[r.grupo], sstValidadeTxt(r.validade), r.carga_horaria ?? ""])]), "Requisitos");
   XLSX.writeFile(wb, `matriz-sst-conferencia-${hojeISO()}.xlsx`);
 }
-/* lote S62 (#275): quais abas da planilha o importador lê. Primeiro o leiaute do Exportar (abas "Funcao" e "GHE", rótulo na
-   primeira coluna). Sem nenhuma das duas, a primeira aba que tenha, até a 5ª linha, um cabeçalho com a coluna "Cargo / Função"
-   (ou "Função", "Cargo") e pelo menos um código de requisito conhecido: entra como matriz por função, com o rótulo tirado
-   dessa coluna. Colunas à esquerda do rótulo (GHE, Setor) não são lidas. Devolve { abas: [{ nome, alvo, colRotulo, cab, linhas }], nomes }. */
+
+
+
+
 function sstMatrizAbasDaPlanilha(wb, codigos){
   const norm = (v) => String(v == null ? "" : v).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const conhecidos = new Set((codigos || []).map(c => String(c).trim().toUpperCase()));
@@ -492,13 +492,13 @@ function sstMatrizAbasDaPlanilha(wb, codigos){
   }
   return { abas, nomes };
 }
-/* importação da planilha conferida: lê as abas (sstMatrizAbasDaPlanilha), compara com a matriz e mostra o resumo; grava só no "Aplicar" */
+
 async function sstImportarMatriz(file){
   if(!file || typeof XLSX === "undefined") return;
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
   const lido = sstMatrizAbasDaPlanilha(wb, _sstReqs.map(r => r.codigo));
-  if(!lido.abas.length){   // lote S62 (#275): antes a tela dizia "Nada a mudar", como se a planilha batesse com a matriz
+  if(!lido.abas.length){
     _sstMatrizImport = null;
     aviso("app-aviso", `Não reconheci a matriz nesta planilha (abas encontradas: ${lido.nomes.join(", ") || "nenhuma"}). O importador lê a planilha do botão Exportar (abas "Funcao" e "GHE") ou uma aba com a coluna "Cargo / Função" e os códigos dos requisitos no cabeçalho.`, "erro");
     renderSstMatriz();
@@ -557,14 +557,14 @@ async function sstImportarMatriz(file){
   });
 }
 
-/* ---------- ficha do requisito ---------- */
+
 function sstMostrarPainel(){
   $("sst-painel").style.display = ""; $("sst-ficha-req").style.display = "none"; $("sst-ficha-prog").style.display = "none";
-  if($("trn-ficha")) $("trn-ficha").style.display = "none";   // fase 185a: ficha da turma
-  if($("aso-ficha")) $("aso-ficha").style.display = "none";   // fase 185b: ficha do ASO
+  if($("trn-ficha")) $("trn-ficha").style.display = "none";
+  if($("aso-ficha")) $("aso-ficha").style.display = "none";
   sstReqEditId = null; sstProgEditId = null;
 }
-/* fase 185a (D5): empresa padrão do treinamento = fornecedor ativo (lista do js/sesmt_treinamentos.js) */
+
 async function sstPreencherFornecedorReq(valor){
   const sel = $("sst-req-fornecedor"); if(!sel || typeof trnCarregarFornecedores !== "function") return;
   await trnCarregarFornecedores();
@@ -584,7 +584,7 @@ function novoSstRequisito(){
   $("sst-req-natureza").value = "treinamento"; $("sst-req-grupo").value = "nr"; $("sst-req-emissor").value = "interno"; $("sst-req-legado").value = "";
   $("sst-req-sensivel").checked = false; $("sst-req-prova").checked = false; $("sst-req-ativo").checked = true; $("sst-req-nota").value = "70"; $("sst-req-ordem").value = "100";
   $("sst-req-codigo").disabled = false;
-  if($("sst-req-modalidade")) $("sst-req-modalidade").value = ""; sstPreencherFornecedorReq("");   // fase 185a
+  if($("sst-req-modalidade")) $("sst-req-modalidade").value = ""; sstPreencherFornecedorReq("");
   sstAbrirFichaReqVisual({ codigo: "(novo)", natureza: "treinamento", grupo: "nr", ativo: true });
 }
 function abrirSstRequisito(id){
@@ -599,7 +599,7 @@ function abrirSstRequisito(id){
   $("sst-req-rg").value = r.rg_formulario || ""; $("sst-req-legado").value = r.doc_tipo_legado || ""; $("sst-req-ordem").value = r.ordem ?? 100;
   $("sst-req-conteudo").value = r.conteudo || ""; $("sst-req-normas").value = r.normas || ""; $("sst-req-sinonimos").value = (r.sinonimos || []).join("\n");
   $("sst-req-obs").value = r.observacoes || ""; $("sst-req-ativo").checked = r.ativo !== false;
-  if($("sst-req-modalidade")) $("sst-req-modalidade").value = r.modalidade_padrao || ""; sstPreencherFornecedorReq(r.fornecedor_padrao_id);   // fase 185a
+  if($("sst-req-modalidade")) $("sst-req-modalidade").value = r.modalidade_padrao || ""; sstPreencherFornecedorReq(r.fornecedor_padrao_id);
   sstAbrirFichaReqVisual(r);
 }
 function sstAbrirFichaReqVisual(r){
@@ -664,7 +664,7 @@ async function salvarSstRequisito(){
     ordem: num("sst-req-ordem") ?? 100, conteudo: $("sst-req-conteudo").value.trim() || null, normas: $("sst-req-normas").value.trim() || null,
     sinonimos: $("sst-req-sinonimos").value.split(/\n|;/).map(s => s.trim()).filter(Boolean), observacoes: $("sst-req-obs").value.trim() || null,
     ativo: $("sst-req-ativo").checked,
-    modalidade_padrao: $("sst-req-modalidade")?.value || null, fornecedor_padrao_id: $("sst-req-fornecedor")?.value || null   // fase 185a (D5)
+    modalidade_padrao: $("sst-req-modalidade")?.value || null, fornecedor_padrao_id: $("sst-req-fornecedor")?.value || null
   };
   const q = sstReqEditId ? sb.from("sst_requisitos").update(reg).eq("id", sstReqEditId) : sb.from("sst_requisitos").insert(reg);
   const { error } = await q;
@@ -684,7 +684,7 @@ async function excluirSstRequisito(){
   sstMostrarPainel();
 }
 
-/* ---------- ficha do programa legal ---------- */
+
 function sstPreencherSelectsProg(){
   const req = $("sst-prog-requisito");
   req.innerHTML = `<option value="">—</option>` + _sstReqs.filter(r => r.natureza === "programa" && r.ativo).map(r => `<option value="${esc(r.id)}">${esc(r.codigo)} · ${esc(r.nome)}</option>`).join("");
@@ -753,7 +753,7 @@ async function salvarSstPrograma(){
   const { data, error } = await q;
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não grava programas legais."), "erro"); return; }
   const id = data?.[0]?.id || sstProgEditId;
-  // arquivo (PDF): bucket sst-documentos, pasta = obra (ou o próprio programa, na sede)
+
   const inp = $("sst-prog-arquivo");
   if(inp && inp.files && inp.files[0] && id){
     const file = inp.files[0];
@@ -787,7 +787,7 @@ function sstAtivarTab(fichaId, notebookId, nome){
   document.querySelectorAll(`#${fichaId} .odoo-tab`).forEach(t => t.classList.toggle("ativa", t.dataset.tab === nome));
 }
 
-/* ---------- ficha da obra: smart-button e bloco "Programas legais" ---------- */
+
 async function sstObraSmartButton(obraId){
   const btn = $("sb-sst"); if(!btn) return;
   const { count, error } = await sb.from("sst_programas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("ativo", true);
@@ -806,15 +806,15 @@ async function sstObraProgramasRender(obraId){
       ${opera ? `<button type="button" class="btn-sec btn-sm" id="btn-obr-sst-novo" style="margin-left:auto;">+ Programa legal</button>` : ""}</div>
     ${(data || []).length ? `<div class="tabela-rola"><table><thead><tr><th>Programa</th><th>Revisão</th><th>Vigência</th><th>Situação</th><th>ART (CREA)</th><th>Entregue à contratante</th></tr></thead>
       <tbody>${data.map(p => `<tr class="linha-clicavel" data-id="${esc(p.id)}"><td><strong>${esc(p.requisito?.codigo || "")}</strong> · ${esc(p.requisito?.nome || "")}</td><td>${esc(p.revisao || "—")}</td>
-        <td>${dataBR(p.vigencia_inicio)} → ${dataBR(p.vigencia_fim)}</td><td>${/* html */ sstProgFarol(p)}</td><td>${esc(p.art_numero || "—")}${p.art_baixada ? ' <span class="tag cinza">baixada</span>' : ""}</td><td>${dataBR(p.entregue_contratante_em)}</td></tr>`).join("")}</tbody></table></div>`
+        <td>${dataBR(p.vigencia_inicio)} → ${dataBR(p.vigencia_fim)}</td><td>${  sstProgFarol(p)}</td><td>${esc(p.art_numero || "—")}${p.art_baixada ? ' <span class="tag cinza">baixada</span>' : ""}</td><td>${dataBR(p.entregue_contratante_em)}</td></tr>`).join("")}</tbody></table></div>`
       : `<p class="vazio">Nenhum programa legal (PGR, PCMSO, LTCAT…) cadastrado para esta obra.</p>`}
   </div>`;
   $("btn-obr-sst-novo")?.addEventListener("click", async () => { if(!irParaSecao("sesmt")) return; await carregarSesmt(false); novoSstPrograma(obraId); });
   cont.querySelectorAll("tr[data-id]").forEach(tr => tr.addEventListener("click", async () => { if(!irParaSecao("sesmt")) return; await carregarSesmt(false); abrirSstPrograma(tr.dataset.id); }));
 }
-/* ---------- aba EPI (#363) ----------
-   A saída de EPI e uniforme com as saídas de hoje, a contagem de EPI (#365) e o "EPI por colaborador e por obra" são os cards do
-   Estoque, movidos para cá (estMoverCardsEpi em js/estoque.js): mesmos IDs, mesmo código, mesma regra no banco. */
+
+
+
 function renderSstEpi(){
   const alvo = $("sst-epi-aba"); if(!alvo) return;
   if(typeof estMoverCardsEpi !== "function" || typeof carregarEstoque !== "function"){
@@ -822,7 +822,7 @@ function renderSstEpi(){
   }
   estMoverCardsEpi("sesmt");
   carregarEstoque(false);
-  if(typeof epiObrRender === "function") epiObrRender();   // fase 202b: EPI nas obras, depois dos cards do Estoque
+  if(typeof epiObrRender === "function") epiObrRender();
 }
 async function sstAbrirEpi(){
   if(!irParaSecao("sesmt")) return;
@@ -838,7 +838,7 @@ async function sstAbrirPainelObra(obraId){
   renderSesmt();
 }
 
-/* ---------- ficha do funcionário: aba Segurança ---------- */
+
 function sstFichaFuncAplicarVisibilidade(){
   const b = document.querySelector('#func-notebook button[data-tab="seguranca"]');
   if(b) b.style.display = typeof funcEditId !== "undefined" && funcEditId ? "" : "none";
@@ -858,11 +858,11 @@ async function sstFichaFuncCarregar(){
     le ? sb.from("funcionario_documentos").select("*").eq("funcionario_id", fid).order("emissao", { ascending: false, nullsFirst: false }) : Promise.resolve({ data: [] })
   ]);
   if(fid !== funcEditId) return;
-  // tipo é enum: o PostgREST recusa like nele (42883) e a lista vinha sempre vazia; os PDFs de admissão saem aqui
+
   if(docs.error) aviso("app-aviso", "Documentos de segurança: " + docs.error.message, "erro");
   _sstFichaFuncDocs = (docs.data || []).filter(d => !String(d.tipo || "").startsWith("admissao_"));
   const linhas = sit.data || [];
-  const chips = linhas.length ? linhas.map(s => `<div class="chip" title="${esc(s.nome)} · ${esc(s.origem || "")}${s.valido_ate ? " · válido até " + dataBR(s.valido_ate) : ""}"><span>${esc(s.codigo)}</span><strong>${/* html */ sstTagStatus(s.status)}</strong></div>`).join("")
+  const chips = linhas.length ? linhas.map(s => `<div class="chip" title="${esc(s.nome)} · ${esc(s.origem || "")}${s.valido_ate ? " · válido até " + dataBR(s.valido_ate) : ""}"><span>${esc(s.codigo)}</span><strong>${  sstTagStatus(s.status)}</strong></div>`).join("")
     : `<p class="vazio">Nenhum requisito exigido para a função${obraAtual ? " nesta obra" : ""}: a matriz ainda não cobre esta função (SESMT › Matriz).</p>`;
   const opera = sstPodeGravarDoc();
   const docsHtml = !le ? `<p class="meta">Seu perfil vê só a situação; os arquivos ficam com o SESMT e o RH.</p>` : (_sstFichaFuncDocs.length ? `<div class="tabela-rola"><table>
@@ -882,10 +882,10 @@ async function sstFichaFuncCarregar(){
       <select id="func-sst-obra" title="Situação na obra: entram método, equipamento, cliente e requisitos da obra"><option value="">Situação geral (função e GHE)</option>${_sstObras.map(o => `<option value="${esc(o.id)}" ${o.id === obraAtual ? "selected" : ""}>${esc(sstObraRotulo(o))}</option>`).join("")}</select>
       ${opera ? `<button type="button" class="btn-sec" id="btn-func-sst-novo" style="margin-left:auto;">+ Documento</button>` : ""}
     </div>
-    <div class="odoo-contexto" style="flex-wrap:wrap;">${/* html */ chips}</div>
+    <div class="odoo-contexto" style="flex-wrap:wrap;">${  chips}</div>
     <div id="func-sst-form" style="display:none;" class="func-doc-inline-form">
       <div class="grade">
-        <div class="campo largo"><label>Requisito *</label><select id="func-sst-req">${/* html */ reqOpts}</select></div>
+        <div class="campo largo"><label>Requisito *</label><select id="func-sst-req">${  reqOpts}</select></div>
         <div class="campo"><label>Emissão</label><input id="func-sst-emissao" type="date" /></div>
         <div class="campo"><label>Validade <span class="meta">(vazio = pela validade do requisito/matriz)</span></label><input id="func-sst-validade" type="date" /></div>
         <div class="campo"><label>Número / certificado</label><input id="func-sst-numero" /></div>
@@ -898,9 +898,9 @@ async function sstFichaFuncCarregar(){
     <div id="func-aso-bloco" style="margin-top:var(--esp-4);"></div>
     <div id="func-trn-bloco" style="margin-top:var(--esp-4);"></div>
     <h4 style="margin:var(--esp-4) 0 var(--esp-2);">Documentos de segurança</h4>
-    ${/* html */ docsHtml}`;
-  if(typeof trnFichaFuncCarregar === "function") trnFichaFuncCarregar(fid);   // fase 185a: Lançar treinamento e status por treinamento
-  if(typeof asoFichaFuncCarregar === "function") asoFichaFuncCarregar(fid);   // fase 185b: ASO válido até (detalhe só com MFA)
+    ${  docsHtml}`;
+  if(typeof trnFichaFuncCarregar === "function") trnFichaFuncCarregar(fid);
+  if(typeof asoFichaFuncCarregar === "function") asoFichaFuncCarregar(fid);
   $("func-sst-obra").addEventListener("change", sstFichaFuncCarregar);
   $("btn-func-sst-novo")?.addEventListener("click", () => { $("func-sst-form").style.display = ""; });
   $("btn-func-sst-cancelar")?.addEventListener("click", () => { $("func-sst-form").style.display = "none"; });
@@ -947,7 +947,7 @@ async function sstFichaFuncExcluirDoc(d){
   if(typeof carregarDocsFuncionario === "function") carregarDocsFuncionario();
 }
 
-/* ---------- ligação ---------- */
+
 function ligarSesmt(){
   if(!$("sec-sesmt")) return;
   document.querySelector('nav button[data-secao="sesmt"]')?.addEventListener("click", () => carregarSesmt(false));
@@ -960,22 +960,22 @@ function ligarSesmt(){
   $("btn-sst-exportar")?.addEventListener("click", sstExportarMatriz);
   $("btn-sst-importar")?.addEventListener("click", () => $("sst-importar-arquivo")?.click());
   $("sst-importar-arquivo")?.addEventListener("change", async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if(f){ _sstView = "matriz"; renderSesmt(); await sstImportarMatriz(f); } });
-  // ficha do requisito
+
   $("btn-sst-req-voltar")?.addEventListener("click", () => { sstMostrarPainel(); renderSesmt(); });
   $("btn-sst-req-salvar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, salvarSstRequisito));
   $("btn-sst-req-excluir")?.addEventListener("click", excluirSstRequisito);
   document.querySelectorAll("#sst-req-notebook button").forEach(b => b.addEventListener("click", () => sstAtivarTab("sst-ficha-req", "sst-req-notebook", b.dataset.tab)));
   $("sst-req-natureza")?.addEventListener("change", () => { if($("sst-req-natureza").value === "exame"){ $("sst-req-sensivel").checked = true; $("sst-req-grupo").value = "saude"; } });
-  // ficha do programa
+
   $("btn-sst-prog-voltar")?.addEventListener("click", () => { sstMostrarPainel(); renderSesmt(); });
   $("btn-sst-prog-salvar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, salvarSstPrograma));
   $("btn-sst-prog-excluir")?.addEventListener("click", excluirSstPrograma);
   document.querySelectorAll("#sst-prog-notebook button").forEach(b => b.addEventListener("click", () => sstAtivarTab("sst-ficha-prog", "sst-prog-notebook", b.dataset.tab)));
   $("sst-prog-escopo")?.addEventListener("change", () => { if($("sst-prog-escopo").value === "sede") $("sst-prog-obra").value = ""; });
   $("sst-prog-obra")?.addEventListener("change", () => { $("sst-prog-escopo").value = $("sst-prog-obra").value ? "obra" : "sede"; });
-  // ficha do funcionário: aba Segurança
+
   document.querySelector('#func-notebook button[data-tab="seguranca"]')?.addEventListener("click", sstFichaFuncCarregar);
-  // ficha da obra: smart-button → painel SESMT filtrado pela obra
+
   $("sb-sst")?.addEventListener("click", () => { if(typeof obraEditId !== "undefined" && obraEditId) sstAbrirPainelObra(obraEditId); });
 }
 if(document.readyState === "loading"){

@@ -1,58 +1,58 @@
-/* ====================================================================
-   Módulo: Patrimônio (fase 97) — avaliação de mercado dos bens. Prefixo pat-.
-   Spec: docs/specs/fase-97-patrimonio-avaliacao.md.
 
-   Só diretor e auditor (podeVerPatrimonio() em core.js; admin NÃO vê). No banco a leitura é
-   pode_ler_patrimonio() e a escrita patrimonio_pode_editar() (diretor), as duas com sessão aal2:
-   sem MFA concluído a API devolve vazio, por isso a tela pede o código antes de carregar.
 
-   O Patrimônio não cadastra, ativa nem retira equipamento ou acessório: lê os cadastros de
-   Equipamentos/Logística (máquinas, caminhões, veículos) e de Acessórios (kits de trado de hélice e
-   secante) pela vw_pat_bens e acrescenta a avaliação (patrimonio_avaliacoes). Só os bens que
-   não existem em outro módulo (imóveis da empresa/permuta, usina, grupos globais) nascem aqui, em
-   patrimonio_bens. Veículo sem avaliação vale a FIPE que o app já guarda.
 
-   Lote S59 (03/11/2026): nada de comparar ano a ano. Cada bem vale a última avaliação até receber
-   outra (valor_vigente da vw_pat_bens); editar na célula grava a avaliação do ano corrente e a antiga
-   fica no histórico da ficha.
 
-   Visões: Avaliação (a planilha viva, por grupo, valor editável na célula pelo diretor),
-   Vendas (atalho para a visão Vendas de Equipamentos, fase 96) e Resumo (totais por grupo, "sem valor"
-   e bens fora do patrimônio). Exporta .xlsx no leiaute da planilha. Nada deste módulo aparece em
-   outra tela.
 
-   Lote S54 (#172, 27/10/2026): dentro de "Acessórios das raízes" cada MODELO de acessório de raiz
-   (acessorio_modelos; bem_tipo acessorio_modelo, bem_id = modelo) é um bem, agrupado na tela pela
-   linha da Contagem Geral (grupo_contagem). Quantidade = peças ativas contáveis (vw_pat_bens);
-   a avaliação do ano guarda quantidade, unitário por peça e rótulo; o diretor digita o unitário
-   (sugestão = preco_referencia do modelo). A verba única sai pelo botão do Resumo (lote S59, D12).
 
-   Fase 136 (06/11/2026): a visão Vendas deixa de ser atalho e lê vw_pat_vendas (vendas de vw_vendas_bens + o que o
-   diretor marcou "à venda" ou "negociando" em patrimonio_situacao_comercial; a venda vence a marcação). O registro da venda
-   continua em Equipamentos. Bem baixado (vw_pat_bens_baixados) abre a ficha só em leitura. Aba "Vida do bem": aquisição,
-   avaliações, operação (mobilizações, RDOs, viagens, OS, reparos), gastos acumulados (vw_custos, custo de operação, fora da
-   aquisição) e venda. Indicador "Custo de aquisição" (vw_pat_aquisicao, só equipamentos). Nunca chamar de "imobilizado".
-   ==================================================================== */
 
-/* ---------- Estado do módulo ---------- */
-let _patBens      = [];          /* vw_pat_bens: um bem próprio ativo por linha */
-let _patAval      = [];          /* patrimonio_avaliacoes (todas, ano desc) */
-let _patResumo    = [];          /* vw_pat_resumo: total por grupo (grupo "total" = geral) */
-let _patSemValor  = [];          /* vw_pat_sem_valor: bens sem valor vigente */
-let _patSugestoes = new Map();   /* lote S59 (D13): modelo → preço sugerido por similaridade */
-let _patFora      = [];          /* equipamentos ativos locados ou de terceiro (fora do patrimônio) */
-let _patAvalPorBem = new Map();  /* chave do bem → avaliações dele, ano desc */
-let _patView      = "avaliacao"; /* avaliacao | vendas | resumo | aquisicao (lista dos sem custo de aquisição, pelo indicador) */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _patBens      = [];
+let _patAval      = [];
+let _patResumo    = [];
+let _patSemValor  = [];
+let _patSugestoes = new Map();
+let _patFora      = [];
+let _patAvalPorBem = new Map();
+let _patView      = "avaliacao";
 let _patCarregado = false;
-let patEditKey    = null;        /* chave do bem aberto na ficha; "novo" = bem novo de patrimonio_bens */
-/* fase 136 */
-let _patVendas    = [];          /* vw_pat_vendas: venda ou marcação por bem */
-let _patBaixados  = [];          /* vw_pat_bens_baixados: equipamento próprio inativo (ficha só leitura) */
-let _patAquis     = null;        /* vw_pat_aquisicao: uma linha (bens, com_valor, total, sem_valor) */
-let _patSitPorBem = new Map();   /* chave do bem → linha de vw_pat_vendas */
-let _patVidaKey   = null;        /* bem cuja aba Vida do bem já foi carregada */
+let patEditKey    = null;
 
-/* situação comercial: "à venda" e "negociando" o diretor marca; "vendido" e "quitado" vêm da venda e vencem a marcação */
+let _patVendas    = [];
+let _patBaixados  = [];
+let _patAquis     = null;
+let _patSitPorBem = new Map();
+let _patVidaKey   = null;
+
+
 STATUS.pat_situacao = {
   a_venda:    { label: "À venda",    cor: "ambar" },
   negociando: { label: "Negociando", cor: "azul"  },
@@ -60,8 +60,8 @@ STATUS.pat_situacao = {
   quitado:    { label: "Quitado",    cor: "cinza" }
 };
 
-/* ---------- Rótulos ---------- */
-/* ordem e nome dos grupos = blocos da planilha AVALIAÇÃO DOS EQUIPAMENTOS (mais os grupos que o app tem e a planilha não) */
+
+
 const PAT_GRUPOS = [
   ["helice",            "Hélice contínua monitorada"],
   ["secante",           "Estacas secantes"],
@@ -86,41 +86,41 @@ const PAT_GRUPOS = [
 ];
 const PAT_GRUPO_ROTULO = Object.fromEntries(PAT_GRUPOS);
 const PAT_GRUPO_ORDEM  = Object.fromEntries(PAT_GRUPOS.map(([g], i) => [g, i]));
-/* grupos que nascem em patrimonio_bens (o resto vem dos cadastros de Equipamentos e Acessórios) */
+
 const PAT_GRUPOS_BEM = ["imovel", "usina", "acessorios_raiz", "ferramentas", "motores_pecas", "ferramentaria", "outro"];
 const PAT_BASES = { mercado: "Mercado", fipe: "FIPE", laudo: "Laudo", aquisicao: "Aquisição" };
 const PAT_TIT_EQUIP = { propria: "Própria", locada: "Locada", terceiro: "De terceiro" };
 const PAT_TIT_BEM = { empresa: "Em nome da empresa", permuta: "Em processo de permuta" };
 const PAT_UNIDADES = { m2: "m²", vb: "VB", pc: "peças" };
 
-/* ---------- Helpers ---------- */
+
 function patPodeEditar(){ return !!usuarioAtual && usuarioAtual.cargo === "diretor"; }
 const patChave = (b) => `${b.bem_tipo}:${b.bem_id}`;
 const patRotuloGrupo = (g) => PAT_GRUPO_ROTULO[g] || g || "—";
 const patOrdemGrupo = (g) => (PAT_GRUPO_ORDEM[g] ?? 99);
 function patBemPorChave(k){ return _patBens.find(b => patChave(b) === k) || null; }
-/* fase 136: bem baixado (equipamento próprio inativo) e o bem que está aberto na ficha, ativo ou baixado */
+
 function patBaixadoPorChave(k){ return _patBaixados.find(b => patChave(b) === k) || null; }
 function patBemDaFicha(){ return patEditKey && patEditKey !== "novo" ? (patBemPorChave(patEditKey) || patBaixadoPorChave(patEditKey)) : null; }
 const patFichaBaixada = () => !!(patEditKey && patEditKey !== "novo" && !patBemPorChave(patEditKey) && patBaixadoPorChave(patEditKey));
-/* a ficha grava só para o diretor e só em bem ativo */
+
 const patFichaEditavel = () => patPodeEditar() && !patFichaBaixada();
-/* lote S54 (#172): bem de grupo = modelo de acessório de raiz (bem_tipo acessorio_modelo, bem_id = acessorio_modelos.id),
-   dentro do grupo "Acessórios das raízes" e agrupado na tela pela linha da Contagem Geral (grupo_contagem; sem ele, o tipo). */
+
+
 const patEhModelo = (b) => b && b.bem_tipo === "acessorio_modelo";
 function patSubgrupo(b){
   if(b.grupo_contagem) return String(b.grupo_contagem).trim().toUpperCase();
   const t = b.tipo_acessorio;
   return (typeof ACE_TIPO_LBL === "object" && ACE_TIPO_LBL[t]) ? String(ACE_TIPO_LBL[t]).toUpperCase() : (t ? String(t).toUpperCase() : "OUTROS");
 }
-/* quantidade avaliada no ano × quantidade atual: "39 → 41 peças" quando mudou depois da avaliação */
+
 function patQtdMudou(b, av){
   if(!patEhModelo(b) || !av || av.quantidade == null) return null;
   const antes = Number(av.quantidade), agora = Number(b.quantidade || 0);
   return antes === agora ? null : { antes, agora };
 }
-/* ordena TAG "07-HG" antes de "10-RZ" e "CGL-02" antes de "CGL-10" (número dentro do texto);
-   modelos de raiz (sem TAG) vêm depois dos bens avulsos do grupo, por grupo da Contagem Geral e descrição */
+
+
 function patCompararTag(a, b){
   const ma = patEhModelo(a), mb = patEhModelo(b);
   if(ma || mb){
@@ -132,17 +132,17 @@ function patCompararTag(a, b){
   if(ta || tb) return ta ? -1 : 1;
   return String(a.descricao || "").localeCompare(String(b.descricao || ""), "pt-BR");
 }
-/* avaliações de um bem (kit de trado: de qualquer peça do jogo) */
+
 function patAvaliacoesDo(b){ return _patAvalPorBem.get(patChave(b)) || []; }
-/* lote S59: o bem vale a última avaliação até receber outra; veículo sem avaliação vale a FIPE do app */
+
 function patValorVigente(b){
   if(b.valor_vigente == null) return null;
   return { valor: Number(b.valor_vigente), base: b.base_vigente, ano: b.ano_avaliacao ?? null, aval: patAvaliacoesDo(b)[0] || null };
 }
-/* coluna "Avaliado em": ano da avaliação; "FIPE" no veículo sem avaliação */
+
 function patAvaliadoEm(v){ return !v ? "—" : v.ano != null ? String(v.ano) : v.base === "fipe" ? "FIPE" : "—"; }
 const patAnoCorrente = () => Number(hojeISO().slice(0, 4));
-/* lote S59 (D13): preço que a troca da verba usaria: o da planilha (preco_referencia) ou o similar; nunca é gravado sozinho */
+
 function patPrecoSugerido(b){
   if(Number(b.valor_sugerido) > 0) return { preco: Number(b.valor_sugerido), origem: "planilha", referencia: "" };
   const s = _patSugestoes.get(b.bem_id);
@@ -151,16 +151,16 @@ function patPrecoSugerido(b){
 function patSugestaoHtml(b){
   const s = patPrecoSugerido(b);
   if(!s) return "";
-  // aceitar a sugestão na linha: só o diretor, e só com peça contável (o total é peças × preço)
+
   const k = patChave(b);
   const usar = patPodeEditar() && Number(patBemPorChave(k)?.quantidade || 0) > 0
     ? ` <button type="button" class="btn-sec btn-sm pat-usar-sugestao" data-k="${esc(k)}" title="Grava a avaliação deste ano com este preço por peça; depois é só clicar na célula para mudar">✓ Usar</button>`
     : "";
   return s.origem === "planilha"
-    ? `<div class="meta" title="Preço de referência do modelo (módulo Acessórios): só sugestão, nunca gravada sozinha">sugestão ${brl(s.preco)}/peça${/* html */ usar}</div>`
-    : `<div class="meta" title="Preço estimado por peça parecida: só sugestão, nunca gravada sozinha">similar a… ${brl(s.preco)}/peça${/* html */ usar}<br>${esc(s.referencia)}</div>`;
+    ? `<div class="meta" title="Preço de referência do modelo (módulo Acessórios): só sugestão, nunca gravada sozinha">sugestão ${brl(s.preco)}/peça${  usar}</div>`
+    : `<div class="meta" title="Preço estimado por peça parecida: só sugestão, nunca gravada sozinha">similar a… ${brl(s.preco)}/peça${  usar}<br>${esc(s.referencia)}</div>`;
 }
-/* aceita a sugestão da linha: grava como a troca da verba, com a origem nas observações. A verba só sai pela troca ou pela ficha */
+
 async function patUsarSugestao(btn){
   const b = patBemPorChave(btn.dataset.k), s = b && patPrecoSugerido(b);
   if(!s || !patPodeEditar()) return;
@@ -172,7 +172,7 @@ async function patUsarSugestao(btn){
     if(ok) await carregarPatrimonio();
   });
 }
-/* ordenação da Avaliação: dentro do grupo, para os subtotais continuarem valendo */
+
 const _patOrdem = ordenarTabela({
   tag: { valor: (b) => b.tag },
   avaliado: { valor: (b) => b.ano_avaliacao, tipo: "num" }
@@ -190,7 +190,7 @@ function patBrlCurto(v){
 function patEstadoHtml(b){
   if(b.bem_tipo === "equipamento") return tagStatus("equipamento", b.status);
   if(b.bem_tipo === "acessorio") return String(b.status || "").split(",").map(s => s.trim()).filter(Boolean).map(s => tagStatus("acessorio", s)).join(" ") || "—";
-  if(patEhModelo(b)){   // lote S54 (#172): "condicao:n, condicao:n" da view → uma tag por condição com a contagem (perdida pelo local)
+  if(patEhModelo(b)){
     const partes = String(b.status || "").split(",").map(s => s.trim()).filter(s => s.includes(":"));
     if(!partes.length) return `<span class="tag cinza">${esc(b.status || "—")}</span>`;
     return partes.map(p => {
@@ -200,7 +200,7 @@ function patEstadoHtml(b){
     }).join(" ");
   }
   const tag = b.titularidade_bem ? `<span class="tag ${b.titularidade_bem === "permuta" ? "ambar" : "verde"}">${esc(b.titularidade_bem === "permuta" ? "Permuta" : "Empresa")}</span>` : "—";
-  // fase 98: imóvel em permuta mostra a permuta e o saldo a executar (vw_permutas, carregada por medicoes.js)
+
   return tag + (b.titularidade_bem === "permuta" && typeof pmPatChip === "function" ? pmPatChip(b.bem_id) : "");
 }
 function patSerieTexto(b){
@@ -208,7 +208,7 @@ function patSerieTexto(b){
   return [b.numero_serie, b.placa].filter(Boolean).join(" · ");
 }
 function patDetalheBem(b){
-  if(patEhModelo(b)){   // lote S54 (#172): "227 peças em uso · 3 em manutenção · 2 sucata · unitário R$ … (2026)"
+  if(patEhModelo(b)){
     const q = Number(b.quantidade || 0);
     const p = [`${num(q)} ${q === 1 ? "peça" : "peças"} em uso`];
     if(Number(b.qtd_manutencao)) p.push(`${num(b.qtd_manutencao)} em manutenção`);
@@ -225,7 +225,7 @@ function patDetalheBem(b){
   return [b.marca, b.modelo].filter(Boolean).join(" · ");
 }
 
-/* ---------- Sessão com MFA (aal2): sem ela o banco devolve vazio ---------- */
+
 async function patNivelSessao(){
   try { const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); return data || null; } catch(_){ return null; }
 }
@@ -266,7 +266,7 @@ async function patConfirmarMFA(){
   await carregarPatrimonio();
 }
 
-/* ---------- Carga ---------- */
+
 async function carregarPatrimonio(){
   if(!podeVerPatrimonio()) return;
   const cont = $("pat-conteudo");
@@ -276,14 +276,14 @@ async function carregarPatrimonio(){
   if(!_patCarregado) cont.innerHTML = `<p class="vazio">Carregando o patrimônio…</p>`;
   const [rb, ra, rr, rs, rf, rg] = await Promise.all([
     sb.from("vw_pat_bens").select("*"),
-    sb.from("patrimonio_avaliacoes").select("id,bem_tipo,bem_id,ano_referencia,valor,base,observacoes,avaliado_por,avaliado_em,updated_at,quantidade,valor_unitario,bem_rotulo")   // lote S54 (#172)
+    sb.from("patrimonio_avaliacoes").select("id,bem_tipo,bem_id,ano_referencia,valor,base,observacoes,avaliado_por,avaliado_em,updated_at,quantidade,valor_unitario,bem_rotulo")
       .order("ano_referencia", { ascending: false }).range(0, 9999),
     sb.from("vw_pat_resumo").select("*"),
     sb.from("vw_pat_sem_valor").select("*"),
     sb.from("equipamentos").select("id,codigo,nome,tipo,titularidade,status").eq("ativo", true).neq("titularidade", "propria").order("codigo"),
-    sb.from("patrimonio_sugestoes_modelo").select("modelo_id,valor_unitario,referencia")   // lote S59 (D13)
+    sb.from("patrimonio_sugestoes_modelo").select("modelo_id,valor_unitario,referencia")
   ]);
-  // fase 136: vendas e marcações, bens baixados e custo de aquisição; erro aqui não derruba a Avaliação
+
   const [rv, rx, rq] = await Promise.all([
     sb.from("vw_pat_vendas").select("*").order("data_venda", { ascending: false, nullsFirst: false }),
     sb.from("vw_pat_bens_baixados").select("*"),
@@ -303,10 +303,10 @@ async function carregarPatrimonio(){
   _patSugestoes = new Map((rg.data || []).map(x => [x.modelo_id, x]));
   _patVendas = rv.error ? [] : (rv.data || []);
   _patSitPorBem = new Map(_patVendas.map(v => [patChave(v), v]));
-  /* baixado: a última avaliação vira o "valor vigente" da ficha (só leitura) */
+
   _patBaixados = (rx.error ? [] : (rx.data || [])).map(b => ({ ...b, baixado: true, valor_vigente: b.valor_avaliacao, base_vigente: b.base_avaliacao }));
   _patAquis = rq.error ? null : ((rq.data || [])[0] || null);
-  /* índice: avaliação → bem (kit liga por qualquer peça do jogo, bem_ids) */
+
   const porId = new Map();
   _patAval.forEach(a => { const k = `${a.bem_tipo}:${a.bem_id}`; if(!porId.has(k)) porId.set(k, []); porId.get(k).push(a); });
   _patAvalPorBem = new Map();
@@ -319,11 +319,11 @@ async function carregarPatrimonio(){
   _patCarregado = true;
   preencherFiltrosPatrimonio();
   renderPatrimonio();
-  // fase 98: saldo a executar dos imóveis em permuta (só se o módulo de permutas estiver carregado)
+
   if(typeof pmPatCarregar === "function") pmPatCarregar().then(() => { if(_patView === "avaliacao") renderPatrimonio(); }).catch(() => {});
 }
 
-/* ---------- Filtros ---------- */
+
 function preencherFiltrosPatrimonio(){
   const selGrp = $("pat-f-grupo");
   const grpAtual = selGrp.value;
@@ -347,7 +347,7 @@ function patFiltrados(){
   }).sort((a, b) => patOrdemGrupo(a.grupo) - patOrdemGrupo(b.grupo) || patCompararTag(a, b));
 }
 
-/* ---------- Render: despachante + indicadores ---------- */
+
 function renderPatrimonio(){
   if(!_patCarregado) return;
   document.querySelectorAll("#pat-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _patView));
@@ -356,14 +356,14 @@ function renderPatrimonio(){
   $("pat-kpi-total").title = tot ? brl(tot.total) : "";
   $("pat-kpi-sem").textContent = tot ? String(tot.sem_valor) : "—";
   $("pat-kpi-bens").textContent = tot ? String(tot.bens) : String(_patBens.length);
-  /* fase 136 (D4a): custo de aquisição dos equipamentos próprios ativos, separado do valor de mercado e dos gastos */
+
   if($("pat-kpi-aq")){
     $("pat-kpi-aq").textContent = _patAquis ? patBrlCurto(_patAquis.total) : "—";
     $("pat-kpi-aq").title = _patAquis ? brl(_patAquis.total) : "";
     $("pat-kpi-aq-meta").textContent = _patAquis ? `${_patAquis.com_valor} de ${_patAquis.bens} equipamentos` : "";
   }
   $("btn-pat-novo").style.display = patPodeEditar() ? "" : "none";
-  /* busca, grupo e "só sem valor" são da Avaliação; situação é da Vendas */
+
   ["pat-busca", "pat-f-grupo", "pat-f-sem-rot"].forEach(id => { if($(id)) $(id).style.display = _patView === "avaliacao" ? "" : "none"; });
   if($("pat-f-situacao")) $("pat-f-situacao").style.display = _patView === "vendas" ? "" : "none";
   if(_patView === "resumo") renderPatResumo();
@@ -372,7 +372,7 @@ function renderPatrimonio(){
   else renderPatAvaliacao(patFiltrados());
 }
 
-/* ---------- Render: Vendas (fase 136) ---------- */
+
 function patVendasFiltradas(){
   const f = $("pat-f-situacao") ? $("pat-f-situacao").value : "";
   return _patVendas.filter(v => !f || (f === "marcados" ? ["a_venda", "negociando"].includes(v.situacao) : f === "vendidos" ? ["vendido", "quitado"].includes(v.situacao) : v.situacao === f));
@@ -396,7 +396,7 @@ function renderPatVendas(){
       ? `<div class="meta" title="Marcação do diretor antes da venda">marcado: ${esc((STATUS.pat_situacao[v.situacao_marcada] || {}).label || v.situacao_marcada)}</div>` : "";
     const tag = v.bem_tipo === "equipamento" ? linkEquipamento(v.bem_id, v.tag || "—") : esc(v.tag || "—");
     return `<tr class="${abre ? "linha-clicavel" : ""}"${abre ? ` data-k="${esc(k)}"` : ""}${abre ? ' title="Abrir a ficha do bem no Patrimônio"' : ""}>
-      <td><strong>${/* html */ tag}</strong></td>
+      <td><strong>${  tag}</strong></td>
       <td>${esc(v.descricao || "—")}${v.bem_ativo === false ? ' <span class="meta">(baixado)</span>' : ""}${v.observacoes ? `<div class="meta">${esc(v.observacoes)}</div>` : ""}</td>
       <td>${tagStatus("pat_situacao", v.situacao)}${marcada}</td>
       <td>${esc(v.comprador || "—")}</td>
@@ -411,13 +411,13 @@ function renderPatVendas(){
   cont.innerHTML = `${registrar}<div class="tabela-rola"><table class="pat-tabela">
     <thead><tr><th>TAG</th><th>Bem</th><th>Situação</th><th>Comprador</th><th>Data da venda</th><th class="num">Valor</th><th class="num">Recebido</th>
       <th class="num">Saldo</th><th class="num" title="Parcelas vencidas e não recebidas">Vencidas</th><th>Venda</th></tr></thead>
-    <tbody>${/* html */ linhas}</tbody>
+    <tbody>${  linhas}</tbody>
     <tfoot><tr><td colspan="5"><strong>Total${$("pat-f-situacao").value ? " (filtro)" : ""}</strong>${tVenc ? ` <span class="meta txt-perigo">· ${esc(brl(tVenc))} vencidos</span>` : ""}</td>
       <td class="num"><strong>${brl(tVenda)}</strong></td><td class="num">${brl(tRec)}</td><td class="num"><strong>${brl(tSaldo)}</strong></td><td colspan="2"></td></tr></tfoot>
   </table></div>`;
 }
 
-/* ---------- Render: equipamentos sem custo de aquisição (clique no indicador; fase 136, decisão 7) ---------- */
+
 function renderPatSemAquisicao(){
   const cont = $("pat-conteudo");
   const sem = (_patAquis && Array.isArray(_patAquis.sem_valor) ? _patAquis.sem_valor : []).slice()
@@ -433,7 +433,7 @@ function renderPatSemAquisicao(){
     : `<p class="vazio">Todos os equipamentos próprios ativos têm custo de aquisição.</p>`);
 }
 
-/* ---------- Render: Avaliação (a planilha, por grupo) ---------- */
+
 function renderPatAvaliacao(dados){
   const cont = $("pat-conteudo");
   const anoAtual = patAnoCorrente();
@@ -455,7 +455,7 @@ function renderPatAvaliacao(dados){
     const v = patValorVigente(b);
     const detalhe = patDetalheBem(b);
     const modelo = patEhModelo(b);
-    // lote S54 (#172): modelo de raiz mostra qtd × unitário, "N → M peças" quando a contagem mudou e a sugestão quando sem valor
+
     const mudou = v ? patQtdMudou(b, v.aval) : null;
     const valorHtml = v
       ? `${brl(v.valor)}${v.base === "fipe" && !v.aval ? '<div class="meta">FIPE do cadastro</div>' : ""}${modelo && v.aval && v.aval.valor_unitario != null ? `<div class="meta">${num(v.aval.quantidade)} × ${brl(v.aval.valor_unitario)}</div>` : ""}${mudou ? `<div class="meta txt-aviso" title="Peças contadas na avaliação → peças hoje. O valor é o gravado na avaliação; clique para regravar com a quantidade atual">${num(mudou.antes)} → ${num(mudou.agora)} peças</div>` : ""}`
@@ -474,7 +474,7 @@ function renderPatAvaliacao(dados){
       </tr>`;
     return { v, html };
   };
-  /* sublinha de cabeçalho por grupo da Contagem Geral (CAMISAS, HASTES…) dentro de "Acessórios das raízes", com subtotal */
+
   const cabecalhoSub = (nome, n, pecas, sem, tot) => `<tr class="pat-grupo" title="Linha da Contagem Geral do módulo Acessórios (grupo de contagem do modelo)"><td colspan="5" style="padding-left:28px;"><em>${esc(nome)}</em>
         <span class="meta">· ${esc(n)} ${n === 1 ? "modelo" : "modelos"} · ${num(pecas)} ${pecas === 1 ? "peça" : "peças"}${sem ? ` · <span class="txt-perigo">${esc(sem)} sem valor</span>` : ""}</span></td>
       <td class="num"><strong>${brl(tot)}</strong></td><td colspan="3"></td></tr>`;
@@ -497,12 +497,12 @@ function renderPatAvaliacao(dados){
     total += sub; semTotal += sem;
     return `<tr class="pat-grupo"><td colspan="5"><strong>${esc(patRotuloGrupo(g.grupo))}</strong>
         <span class="meta">· ${g.bens.length} ${g.bens.length === 1 ? "bem" : "bens"}${sem ? ` · <span class="txt-perigo">${sem} sem valor</span>` : ""}</span></td>
-      <td class="num"><strong>${brl(sub)}</strong></td><td colspan="3"></td></tr>${/* html */ partes.join("")}`;
+      <td class="num"><strong>${brl(sub)}</strong></td><td colspan="3"></td></tr>${  partes.join("")}`;
   }).join("");
   cont.innerHTML = `<div class="tabela-rola"><table class="pat-tabela">
     <thead><tr>
-      ${/* html */ _patOrdem.th("tag", "TAG")}<th>Bem</th><th>Ano</th><th>Série / placa</th><th>Estado</th>
-      <th class="num">Valor</th><th>Base</th>${/* html */ _patOrdem.th("avaliado", "Avaliado em", { title: "Ano da avaliação que vale hoje; FIPE no veículo sem avaliação. Ordena dentro de cada grupo" })}<th class="num" title="Custo histórico do cadastro (valor de aquisição): não entra no total">Aquisição</th>
+      ${  _patOrdem.th("tag", "TAG")}<th>Bem</th><th>Ano</th><th>Série / placa</th><th>Estado</th>
+      <th class="num">Valor</th><th>Base</th>${  _patOrdem.th("avaliado", "Avaliado em", { title: "Ano da avaliação que vale hoje; FIPE no veículo sem avaliação. Ordena dentro de cada grupo" })}<th class="num" title="Custo histórico do cadastro (valor de aquisição): não entra no total">Aquisição</th>
     </tr></thead>
     <tbody>${corpo}</tbody>
     <tfoot><tr><td colspan="5"><strong>Total${$("pat-busca").value || $("pat-f-grupo").value || $("pat-f-sem").checked ? " (filtro)" : ""}</strong>
@@ -511,9 +511,9 @@ function renderPatAvaliacao(dados){
   </table></div>`;
 }
 
-/* clique no painel: célula de valor (diretor) edita na linha; o resto da linha abre a ficha do bem */
+
 function patCliqueConteudo(e){
-  // fase 136: venda em Equipamentos, atalho para registrar e volta da lista dos sem custo de aquisição
+
   const lv = e.target.closest(".pat-link-venda");
   if(lv){ e.preventDefault(); e.stopPropagation(); if(typeof vbAbrirVendaPorId === "function") vbAbrirVendaPorId(lv.dataset.venda); else patIrParaVendas(); return; }
   if(e.target.closest(".pat-ir-vendas")){ e.stopPropagation(); patIrParaVendas(); return; }
@@ -527,7 +527,7 @@ function patCliqueConteudo(e){
   if(tr) abrirPatrimonio(tr.dataset.k);
 }
 
-/* ---------- Edição do valor na célula (só diretor) ---------- */
+
 function patEditarInline(td){
   if(td.querySelector("input")) return;
   const b = patBemPorChave(td.dataset.k);
@@ -535,7 +535,7 @@ function patEditarInline(td){
   const atual = patValorVigente(b);
   const anoAtual = patAnoCorrente();
   const modelo = patEhModelo(b);
-  // lote S54 (#172): modelo de raiz edita o UNITÁRIO por peça (placeholder = sugestão); total = quantidade atual × unitário
+
   const ini = atual && atual.aval ? Number(modelo ? atual.aval.valor_unitario : atual.aval.valor) : null;
   const qtd = Number(b.quantidade || 0);
   const mudou = atual ? patQtdMudou(b, atual.aval) : null;
@@ -550,7 +550,7 @@ function patEditarInline(td){
     if(feito) return;
     feito = true;
     const txt = inp.value.trim();
-    // modelo com a contagem mudada regrava mesmo com o mesmo unitário (retrato novo: quantidade atual)
+
     if(!gravar || txt === "" || (ini != null && Number(txt) === ini && !mudou)){ appLimparSujo(); renderPatrimonio(); return; }
     const v = Number(txt);
     if(!Number.isFinite(v) || v < 0){ aviso("app-aviso", "Valor inválido: use um número maior ou igual a zero.", "erro"); renderPatrimonio(); return; }
@@ -567,11 +567,11 @@ function patEditarInline(td){
   inp.addEventListener("blur", () => fim(true));
 }
 
-/* grava (insere ou atualiza) a avaliação do bem no ano. Kit de trado: a do ano pode estar em qualquer peça do jogo. */
+
 async function patGravarAvaliacao(b, ano, campos){
   if(!patPodeEditar()){ aviso("app-aviso", "Só o diretor lança valor no Patrimônio.", "erro"); return false; }
   const existente = patAvaliacoesDo(b).find(a => a.ano_referencia === ano);
-  // lote S54 (#172): modelo de raiz grava unitário, quantidade (atual) e rótulo; o gatilho recalcula valor = qtd × unitário
+
   const modelo = patEhModelo(b);
   const base = {};
   if(modelo){
@@ -597,7 +597,7 @@ async function patGravarAvaliacao(b, ano, campos){
   return true;
 }
 
-/* ---------- Render: Resumo ---------- */
+
 function renderPatResumo(){
   const cont = $("pat-conteudo");
   const linhas = _patResumo.filter(r => r.grupo !== "total")
@@ -627,7 +627,7 @@ function renderPatResumo(){
           <td>${esc(patRotuloGrupo(s.grupo))}</td><td><strong>${esc(s.tag || "—")}</strong></td>
           <td>${esc(s.descricao || "—")}</td>
           <td>${s.bem_tipo === "equipamento" ? tagStatus("equipamento", s.status) : s.bem_tipo === "acessorio_modelo" ? patEstadoHtml(s) : esc(s.status || "—")}</td>
-          <td>${/* html */ (s.bem_tipo === "acessorio_modelo" && patSugestaoHtml(s)) || '<span class="tag vermelho">nunca avaliado</span>'}</td></tr>`).join("")}
+          <td>${  (s.bem_tipo === "acessorio_modelo" && patSugestaoHtml(s)) || '<span class="tag vermelho">nunca avaliado</span>'}</td></tr>`).join("")}
       </tbody></table></div>`
     : `<p class="vazio">Todos os bens próprios ativos têm valor.</p>`;
   const edita = patPodeEditar();
@@ -638,8 +638,8 @@ function renderPatResumo(){
           ${edita ? `<td><button type="button" class="btn-sec pat-voltar-propria" data-id="${esc(e.id)}" data-codigo="${esc(e.codigo)}">Voltar a próprio</button></td>` : ""}</tr>`).join("")}
       </tbody></table></div>`
     : `<p class="vazio">Nenhum equipamento ativo marcado como locado ou de terceiro.</p>`;
-  // lote S54 (#172): a verba única "Acessórios das raízes" (patrimonio_bens) conta em dobro com modelos avaliados.
-  // lote S59 (D11, D12): ela não diz o preço de cada acessório; sai de uma vez pelo botão, que só o diretor usa
+
+
   const verbas = _patBens.filter(b => b.bem_tipo === "bem" && b.grupo === "acessorios_raiz");
   const modelos = _patBens.filter(patEhModelo);
   const modelosAvaliados = modelos.filter(b => b.valor_vigente != null).length;
@@ -673,9 +673,9 @@ function patCliqueResumo(e){
   return false;
 }
 
-/* ---------- Troca da verba pelos preços dos modelos (lote S59, D12 e D13; só diretor) ----------
-   A lista é a confirmação: cada modelo sem valor com preço na planilha ou similar vem marcado; o diretor desmarca o que não
-   quer. O preço não se edita aqui: muda depois, na célula. A RPC grava tudo e retira a verba na mesma transação. */
+
+
+
 function patModelosDaTroca(){ return _patBens.filter(b => patEhModelo(b) && b.valor_vigente == null && patPrecoSugerido(b)); }
 function patAbrirTrocaVerba(){
   if(!patPodeEditar()) return;
@@ -687,7 +687,7 @@ function patAbrirTrocaVerba(){
       <td>${s.origem === "planilha" ? "planilha" : `<span class="tag ambar">similar a…</span> <span class="meta">${esc(s.referencia)}</span>`}</td></tr>`;
   }).join("");
   $("pat-troca-lista").innerHTML = `<div class="tabela-rola"><table class="pat-tabela"><thead><tr><th></th><th>Modelo</th><th class="num">Peças</th><th class="num">Preço por peça</th><th class="num">Total</th><th>Origem</th></tr></thead>
-    <tbody>${/* html */ linhas}</tbody></table></div>`;
+    <tbody>${  linhas}</tbody></table></div>`;
   aviso("pat-troca-aviso", "", "");
   patTrocaResumo();
   $("pat-troca-modal").style.display = "flex";
@@ -715,8 +715,8 @@ async function patGravarTrocaVerba(){
   await carregarPatrimonio();
 }
 
-/* lote S54 (#172): o cadastro do modelo (descrição, medida, grupo de contagem, preço de referência) se edita no módulo
-   Acessórios: abre a família raiz com a busca pela descrição do modelo (as peças dele aparecem no quadro) */
+
+
 function patAbrirAcessoriosModelo(b){
   if(!b || !irParaSecao("acessorios")) return;
   const fam = document.querySelector('#ace-familias .serv-view-btn[data-familia="raiz"]');
@@ -728,7 +728,7 @@ function patAbrirAcessoriosModelo(b){
   }
 }
 
-/* ---------- Registro da venda: continua em Equipamentos (fase 96; fase 136, decisão 5) ---------- */
+
 function patIrParaVendas(){
   if(!irParaSecao("equipamentos")) return;
   const b = document.querySelector('#eqp-views .serv-view-btn[data-view="vendas"]');
@@ -736,7 +736,7 @@ function patIrParaVendas(){
   else aviso("app-aviso", "A visão Vendas de Equipamentos ainda não está publicada (fase 96).", "aviso");
 }
 
-/* ---------- Ficha do bem (avaliação, histórico, cadastro do bem avulso, titularidade) ---------- */
+
 function mostrarPainelPat(){
   $("pat-painel").style.display = "";
   $("pat-ficha").style.display = "none";
@@ -753,7 +753,7 @@ function patPreencherAvaliacaoDoAno(b){
   $("pat-aval-valor").value = av ? Number(av.valor) : "";
   $("pat-aval-base").value = av ? av.base : "mercado";
   $("pat-aval-obs").value = av ? (av.observacoes || "") : "";
-  // lote S54 (#172): modelo de raiz — quantidade (atual × avaliada) só leitura, unitário editável, total calculado, sugestão
+
   ["pat-aval-qtd-box", "pat-aval-unit-box", "pat-aval-sugestao"].forEach(id => { if($(id)) $(id).style.display = modelo ? "" : "none"; });
   if($("pat-aval-valor-rot")) $("pat-aval-valor-rot").textContent = modelo ? "Valor do ano (quantidade × unitário)" : "Valor de mercado (R$)";
   $("pat-aval-valor").disabled = modelo || !patFichaEditavel();
@@ -781,19 +781,19 @@ function patPreencherAvaliacaoDoAno(b){
   $("btn-pat-excluir-aval").style.display = av && patFichaEditavel() ? "" : "none";
 }
 function patTravarFicha(){
-  /* fase 136: bem baixado abre só em leitura, também para o diretor */
+
   const edita = patFichaEditavel();
-  /* o ano fica livre para todos (o auditor navega pelos anos); o resto só o diretor muda */
+
   const modelo = patEhModelo(patEditKey && patEditKey !== "novo" ? patBemPorChave(patEditKey) : null);
-  // lote S54 (#172): no modelo de raiz o valor do ano é calculado (quantidade × unitário): a célula fica travada para todos
-  // a situação comercial é do diretor (patPreencherSituacao decide se aparece)
+
+
   $("pat-ficha").querySelectorAll("input, select, textarea").forEach(el => {
     if(el.id === "pat-sit-sel") return;
     el.disabled = (!edita && el.id !== "pat-aval-ano") || (modelo && el.id === "pat-aval-valor");
   });
   ["btn-salvar-pat", "btn-pat-tit-gravar"].forEach(id => { if($(id)) $(id).style.display = edita ? "" : "none"; });
 }
-/* fase 136: chip da situação e, para o diretor, a marcação "à venda" / "negociando" (escondida em bem baixado ou com venda) */
+
 function patPreencherSituacao(b){
   const s = b ? _patSitPorBem.get(patChave(b)) : null;
   $("pat-ficha-sit").innerHTML = s ? tagStatus("pat_situacao", s.situacao) : (b && b.baixado ? tagStatus("equipamento", b.status) : "—");
@@ -833,12 +833,12 @@ function abrirPatrimonio(k){
   $("pat-painel").style.display = "none";
   $("pat-ficha").style.display = "";
   $("pat-ficha-titulo").textContent = `${b.tag ? b.tag + " — " : ""}${b.descricao || ""}`;
-  // lote S54 (#172): modelo de raiz mostra o grupo da Contagem Geral no chip do grupo
+
   $("pat-ficha-grupo").textContent = patRotuloGrupo(b.grupo) + (patEhModelo(b) ? ` · ${patSubgrupo(b)}` : "");
   $("pat-ficha-tag").textContent = b.tag || "—";
   $("pat-ficha-estado").innerHTML = patEstadoHtml(b);
   $("pat-ficha-vigente").textContent = b.valor_vigente != null ? brl(b.valor_vigente) : "sem valor";
-  $("pat-ficha-vigente-rot").textContent = b.baixado ? (b.ano_avaliacao ? `Última avaliação (${b.ano_avaliacao})` : "Última avaliação")   // fase 136
+  $("pat-ficha-vigente-rot").textContent = b.baixado ? (b.ano_avaliacao ? `Última avaliação (${b.ano_avaliacao})` : "Última avaliação")
     : b.ano_avaliacao ? `Valor vigente (${b.ano_avaliacao})` : "Valor vigente";
   $("pat-ficha-base").textContent = b.base_vigente ? (PAT_BASES[b.base_vigente] || b.base_vigente) : "—";
   $("pat-ficha-aquisicao").textContent = b.valor_aquisicao != null ? brl(b.valor_aquisicao) : "—";
@@ -846,13 +846,13 @@ function abrirPatrimonio(k){
   $("pat-ficha-fipe").textContent = b.valor_fipe != null ? brl(b.valor_fipe) : "—";
   $("pat-ficha-link").innerHTML = b.bem_tipo === "equipamento" ? linkEquipamento(b.bem_id, "Abrir o cadastro do equipamento")
     : b.bem_tipo === "acessorio" ? linkAcessorio(b.bem_id, "Abrir uma peça do kit")
-    : patEhModelo(b) ? `<a href="#" class="pat-link-modelo" title="Módulo Acessórios, família raiz, busca pela descrição do modelo (o cadastro do modelo se edita lá)">Abrir Acessórios (raiz · modelo)</a>` : "";   // lote S54 (#172)
-  /* abas: Cadastro do bem só para patrimonio_bens; Titularidade só para equipamento ativo; Vida do bem para todo bem gravado */
+    : patEhModelo(b) ? `<a href="#" class="pat-link-modelo" title="Módulo Acessórios, família raiz, busca pela descrição do modelo (o cadastro do modelo se edita lá)">Abrir Acessórios (raiz · modelo)</a>` : "";
+
   $("pat-tab-bem-btn").style.display = b.bem_tipo === "bem" ? "" : "none";
   $("pat-tab-tit-btn").style.display = b.bem_tipo === "equipamento" && !b.baixado ? "" : "none";
   $("pat-tab-vida-btn").style.display = "";
   $("btn-pat-retirar").style.display = b.bem_tipo === "bem" && patPodeEditar() ? "" : "none";
-  /* fase 136: bem baixado abre só em leitura */
+
   const avisoBaixa = $("pat-ficha-baixado");
   if(avisoBaixa){
     const tipoBaixa = b.baixa_tipo === "venda" ? "vendido" : b.baixa_tipo ? `baixado (${b.baixa_tipo})` : "inativo no cadastro";
@@ -925,11 +925,11 @@ function patLerFormBem(){
 
 async function salvarPatrimonio(){
   if(!patPodeEditar()){ aviso("app-aviso", "Só o diretor grava no Patrimônio.", "erro"); return; }
-  if(patFichaBaixada()){ aviso("app-aviso", "Bem baixado: a ficha é só leitura.", "aviso"); return; }   // fase 136
+  if(patFichaBaixada()){ aviso("app-aviso", "Bem baixado: a ficha é só leitura.", "aviso"); return; }
   const novo = patEditKey === "novo";
   let b = novo ? null : patBemPorChave(patEditKey);
   if(!novo && !b){ aviso("app-aviso", "Bem não encontrado; volte ao painel e abra de novo.", "erro"); return; }
-  /* 1. cadastro do bem avulso (patrimonio_bens) */
+
   if(novo || b.bem_tipo === "bem"){
     const reg = patLerFormBem();
     if(!reg.nome){ aviso("app-aviso", "Informe o nome do bem.", "erro"); ativarTabPat("bem"); return; }
@@ -945,7 +945,7 @@ async function salvarPatrimonio(){
       patEditKey = patChave(b);
     }
   }
-  /* 2. avaliação do ano (valor vazio = não mexe na avaliação); modelo de raiz: unitário por peça (lote S54, #172) */
+
   const ano = Number($("pat-aval-ano").value);
   const modelo = patEhModelo(b);
   const txt = (modelo ? $("pat-aval-unit").value : $("pat-aval-valor").value).trim();
@@ -1001,7 +1001,7 @@ async function retirarBemPat(){
   await carregarPatrimonio();
 }
 
-/* titularidade do equipamento (propria | locada | terceiro) pela RPC, com motivo no log do equipamento */
+
 async function patDefinirTitularidade(equipId, tit, motivo, rotulo){
   if(!patPodeEditar()) return;
   if(tit !== "propria" && !confirm(`Marcar ${rotulo || "o equipamento"} como ${PAT_TIT_EQUIP[tit].toLowerCase()}? Ele sai da avaliação, do total e da lista "sem valor" (a operação continua normal).`)) return;
@@ -1022,7 +1022,7 @@ async function gravarTitularidadePat(){
   await patDefinirTitularidade(b.bem_id, tit, motivo, b.tag);
 }
 
-/* histórico: avaliações por ano + alterações do valor (registros_log; só quem lê patrimônio enxerga) */
+
 async function carregarHistoricoPat(b){
   const el = $("pat-historico");
   const avs = patAvaliacoesDo(b);
@@ -1039,7 +1039,7 @@ async function carregarHistoricoPat(b){
         ? sb.from("registros_log").select("tipo,campo,valor_anterior,valor_novo,autor_nome,criado_em").eq("entidade", "patrimonio_bens").eq("registro_id", b.bem_id).order("criado_em", { ascending: false }).limit(100)
         : { data: [] }
   ]);
-  if(patEditKey !== patChave(b)) return;   // trocou de bem enquanto carregava
+  if(patEditKey !== patChave(b)) return;
   const nomes = Object.fromEntries((rp.data || []).map(p => [p.id, p.nome]));
   const anoDe = Object.fromEntries(avs.map(a => [a.id, a.ano_referencia]));
   const tabAv = avs.length
@@ -1048,13 +1048,13 @@ async function carregarHistoricoPat(b){
           <td>${esc(dataBR(a.avaliado_em))}</td><td>${esc(nomes[a.avaliado_por] || "—")}</td><td>${esc(a.observacoes || "")}</td></tr>`).join("")}
       </tbody></table></div>`
     : `<p class="vazio">Nenhuma avaliação lançada${b.grupo === "veiculo" && b.valor_fipe != null ? " (vale a FIPE do cadastro)" : ""}.</p>`;
-  const fmtValor = (c, v) => ((c === "valor" || c === "valor_unitario") && v != null && v !== "" && !isNaN(Number(v))) ? brl(v) : (v ?? "");   // lote S54 (#172): unitário também em R$
+  const fmtValor = (c, v) => ((c === "valor" || c === "valor_unitario") && v != null && v !== "" && !isNaN(Number(v))) ? brl(v) : (v ?? "");
   const logs = (rl.data || []).map(l => {
     const ano = anoDe[l.registro_id];
     const quando = l.criado_em ? `${dataBR(l.criado_em)} ${String(l.criado_em).slice(11, 16)}` : "";
     const oque = l.tipo === "criacao" ? `avaliação de ${ano ?? "?"} lançada`
       : `${ano ?? ""} · ${esc(l.campo || "")}: ${esc(fmtValor(l.campo, l.valor_anterior))} → ${esc(fmtValor(l.campo, l.valor_novo))}`;
-    return `<li><span class="meta">${esc(quando)} · ${esc(l.autor_nome || "sistema")}</span> — ${/* html */ oque}</li>`;
+    return `<li><span class="meta">${esc(quando)} · ${esc(l.autor_nome || "sistema")}</span> — ${  oque}</li>`;
   }).join("");
   const outros = (rt.data || []).map(l => {
     const quando = l.criado_em ? `${dataBR(l.criado_em)} ${String(l.criado_em).slice(11, 16)}` : "";
@@ -1069,10 +1069,10 @@ async function carregarHistoricoPat(b){
       ${outros ? `<ul class="pat-log">${outros}</ul>` : `<p class="vazio">Nada registrado.</p>`}` : ""}`;
 }
 
-/* ---------- Aba "Vida do bem" (fase 136): lê os módulos que já existem, ao abrir a aba ----------
-   Equipamento: aquisição, avaliações, operação (contadores com atalho para a ficha de Equipamentos), gastos acumulados
-   (vw_custos por equipamento_id, custo de operação: nunca somado à aquisição, D4a) e venda com parcelas e transferência.
-   Kit: avaliações e gastos do jogo. Imóvel, usina, grupo global e modelo de raiz: só as avaliações. */
+
+
+
+
 const PAT_VIDA_OP = [
   { chave: "mob", rotulo: "mobilizações", aba: "mobilizacoes" },
   { chave: "rdo", rotulo: "RDOs", aba: "rdos" },
@@ -1080,7 +1080,7 @@ const PAT_VIDA_OP = [
   { chave: "os",  rotulo: "OS", aba: "manutencao" },
   { chave: "rep", rotulo: "reparos", aba: "manutencao" }
 ];
-/* gastos do bem em vw_custos: equipamento por equipamento_id; kit pelas peças ou pelo jogo (acessorio_jogo = TAG do kit) */
+
 function patFiltroCustos(b){
   if(b.bem_tipo === "equipamento") return q => q.eq("equipamento_id", b.bem_id);
   if(b.bem_tipo === "acessorio"){
@@ -1108,17 +1108,17 @@ async function carregarVidaBemPat(b){
     eqp ? contar(sb.from("viagens").select("id", { count: "exact", head: true }).or(`caminhao_id.eq.${id},equipamento_atendido_id.eq.${id}`)) : null,
     eqp ? contar(sb.from("manutencoes").select("id", { count: "exact", head: true }).eq("equipamento_id", id)) : null,
     eqp ? contar(sb.from("reparos_caldeiraria").select("id", { count: "exact", head: true }).eq("equipamento_id", id)) : null,
-    // ordem por todas as colunas lidas: linhas empatadas são iguais, então a paginação do lerTudo não troca o total
+
     filtroCustos ? lerTudo(() => filtroCustos(sb.from("vw_custos").select("categoria,origem,origem_id,data,valor")), ["categoria", "data", "origem", "origem_id", "valor"]) : null,
     eqp ? sb.from("vw_vendas_bens").select("id,numero,status,comprador_nome,data_venda,valor_venda,valor_entrada,forma,n_parcelas,recebido,saldo,parcelas_vencidas,valor_vencido,proximo_vencimento,quitada_em,comunicacao_venda_em,crv_entregue_em,transferencia_concluida,nf_numero,resultado")
       .eq("equipamento_id", id).neq("status", "cancelada").order("data_venda", { ascending: false, nullsFirst: false }).limit(1) : null
   ]);
-  if(patEditKey !== k) return;   // trocou de bem enquanto carregava
+  if(patEditKey !== k) return;
   const venda = rv && !rv.error ? (rv.data || [])[0] : null;
   const rp = venda ? await sb.from("vw_vendas_parcelas").select("numero,descricao,vencimento,valor,valor_recebido,saldo,status,recebido_em").eq("venda_id", venda.id).order("numero") : null;
   if(patEditKey !== k) return;
 
-  /* 1. aquisição e avaliações */
+
   const avs = patAvaliacoesDo(b);
   const aquis = eqp
     ? `<p>${b.valor_aquisicao != null ? `<strong>${brl(b.valor_aquisicao)}</strong>${b.data_aquisicao ? ` em ${esc(dataBR(b.data_aquisicao))}` : ""}` : `<span class="tag vermelho">sem custo de aquisição</span> <span class="meta">lance na ficha do equipamento</span>`}</p>`
@@ -1129,7 +1129,7 @@ async function carregarVidaBemPat(b){
       </tbody></table></div>`
     : `<p class="vazio">Nenhuma avaliação lançada${b.grupo === "veiculo" && b.valor_fipe != null ? ` (vale a FIPE do cadastro, ${brl(b.valor_fipe)})` : ""}.</p>`;
 
-  /* 2. operação (só equipamento): contador com atalho para a aba da ficha de Equipamentos */
+
   const nums = { mob: nMob, rdo: nRdo, vg: nVg, os: nOs, rep: nRep };
   const operacao = eqp
     ? `<h3 class="titulo-bloco">Operação</h3>
@@ -1137,7 +1137,7 @@ async function carregarVidaBemPat(b){
         <span class="sb-num">${nums[o.chave] == null ? "?" : esc(nums[o.chave])}</span><span class="sb-lbl">${esc(o.rotulo)}</span></button>`).join("")}</div>`
     : "";
 
-  /* 3. gastos acumulados por categoria (custo de operação) */
+
   let gastos = "";
   if(filtroCustos){
     if(rc.error) gastos = `<p class="vazio">Não foi possível ler os gastos: ${esc(rc.error.message)}</p>`;
@@ -1147,7 +1147,7 @@ async function carregarVidaBemPat(b){
         if(c.data){ if(!g.ini || c.data < g.ini) g.ini = c.data; if(!g.fim || c.data > g.fim) g.fim = c.data; } porCat.set(c.categoria, g); });
       const cats = [...porCat.entries()].sort((a, b) => b[1].v - a[1].v);
       const total = cats.reduce((t, [, g]) => t + g.v, 0);
-      const moRestrita = (rc.data || []).some(c => c.valor == null);   // lote S67-h: mão de obra sem valor para quem não a vê
+      const moRestrita = (rc.data || []).some(c => c.valor == null);
       const rot = (c) => (typeof CMP_CAT_LBL === "object" && CMP_CAT_LBL[c]) || c || "Sem categoria";
       gastos = cats.length
         ? `<div class="tabela-rola"><table class="pat-tabela"><thead><tr><th>Categoria</th><th class="num">Lançamentos</th><th>Período</th><th class="num">Valor</th></tr></thead><tbody>
@@ -1156,10 +1156,10 @@ async function carregarVidaBemPat(b){
         : `<p class="vazio">Nenhum gasto lançado no app para este bem.</p>`;
     }
     gastos = `<h3 class="titulo-bloco">Gastos acumulados</h3>
-      <p class="texto-apoio compacto">Custo de operação (peças, serviços, combustível, deslocamento…) lido da aba Custos. Fica separado: não soma no custo de aquisição nem no valor de mercado.</p>${/* html */ gastos}`;
+      <p class="texto-apoio compacto">Custo de operação (peças, serviços, combustível, deslocamento…) lido da aba Custos. Fica separado: não soma no custo de aquisição nem no valor de mercado.</p>${  gastos}`;
   }
 
-  /* 4. venda, parcelas e transferência */
+
   let vendaHtml = "";
   if(eqp){
     const s = _patSitPorBem.get(k);
@@ -1185,14 +1185,14 @@ async function carregarVidaBemPat(b){
     } else {
       vendaHtml = `<p class="vazio">${s ? `Sem venda registrada; marcado como ${esc(STATUS.pat_situacao[s.situacao]?.label.toLowerCase() || s.situacao)}.` : "Sem venda registrada."}${rv && rv.error ? ` (Não foi possível ler as vendas: ${esc(rv.error.message)})` : ""}</p>`;
     }
-    vendaHtml = `<h3 class="titulo-bloco">Venda</h3>${/* html */ vendaHtml}`;
+    vendaHtml = `<h3 class="titulo-bloco">Venda</h3>${  vendaHtml}`;
   }
 
-  el.innerHTML = `<h3 class="titulo-bloco">Aquisição</h3>${/* html */ aquis}
-    <h3 class="titulo-bloco">Avaliações</h3>${/* html */ tabAv}
-    ${/* html */ operacao}${/* html */ gastos}${/* html */ vendaHtml}`;
+  el.innerHTML = `<h3 class="titulo-bloco">Aquisição</h3>${  aquis}
+    <h3 class="titulo-bloco">Avaliações</h3>${  tabAv}
+    ${  operacao}${  gastos}${  vendaHtml}`;
 }
-/* atalho da Vida do bem para a aba da ficha de Equipamentos */
+
 async function patVidaAbrirEquipamento(aba){
   const b = patBemDaFicha();
   if(!b || b.bem_tipo !== "equipamento" || !irParaSecao("equipamentos") || typeof abrirEquipamento !== "function") return;
@@ -1200,8 +1200,8 @@ async function patVidaAbrirEquipamento(aba){
   if(typeof ativarTabEquipamento === "function") ativarTabEquipamento(aba);
 }
 
-/* ---------- Exportação .xlsx no leiaute da planilha (por grupo, valor vigente) ---------- */
-/* fase 136: gastos acumulados (vw_custos) por equipamento e por kit, para as colunas L a N da planilha */
+
+
 async function patGastosPorBem(){
   const r = await lerTudo(() => sb.from("vw_custos").select("equipamento_id,acessorio_id,acessorio_jogo,origem,origem_id,valor")
     .or("equipamento_id.not.is.null,acessorio_id.not.is.null,acessorio_jogo.not.is.null"),
@@ -1233,7 +1233,7 @@ async function exportarPatrimonio(){
     [`Valor vigente: a última avaliação de cada bem (veículos: FIPE do cadastro quando não avaliados). Aquisição e gastos acumulados (custo de operação) ficam nas colunas L a N, fora do total. Gerado pelo app em ${dataBR(hojeISO())}.`],
     []
   ];
-  /* L a N: aquisição (só equipamento), data de aquisição e gastos acumulados (equipamento e kit) */
+
   const cauda = (b) => {
     const g = gastos.de ? gastos.de(b) : null;
     return [b.bem_tipo === "equipamento" && b.valor_aquisicao != null ? Number(b.valor_aquisicao) : "",
@@ -1241,8 +1241,8 @@ async function exportarPatrimonio(){
   };
   const CAB_CAUDA = ["Aquisição", "Data de aquisição", "Gastos acumulados"];
   let totalGeral = 0, grupoAtual = null, item = 0, sub = 0;
-  const linhasUnitario = new Set();   /* linhas de bem avulso e de modelo de raiz: a coluna F é R$/m², verba ou R$/peça */
-  /* lote S54 (#172): dentro de ACESSÓRIOS DAS RAÍZES, subtotal por grupo da Contagem Geral (CAMISAS, HASTES…) */
+  const linhasUnitario = new Set();
+
   let subNome = null, subTot = 0, subPecas = 0;
   const fecharSub = () => {
     if(subNome == null) return;
@@ -1294,7 +1294,7 @@ async function exportarPatrimonio(){
   aoa.push(["", "", "TOTAL GERAL", "", "", "", "", totalGeral]);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"] = [{ wch: 6 }, { wch: 12 }, { wch: 52 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 28 }, { wch: 16 }, { wch: 10 }, { wch: 11 }, { wch: 40 }, { wch: 16 }, { wch: 14 }, { wch: 18 }];
-  /* valores em R$: colunas H, L (aquisição) e N (gastos) em toda linha; F só nas linhas de bem avulso (valor unitário) */
+
   const rng = XLSX.utils.decode_range(ws["!ref"]);
   for(let r = 0; r <= rng.e.r; r++){
     const colunas = linhasUnitario.has(r) ? ["H", "L", "N", "F"] : ["H", "L", "N"];
@@ -1305,18 +1305,18 @@ async function exportarPatrimonio(){
   XLSX.writeFile(wb, `patrimonio-avaliacao-${hojeISO()}.xlsx`);
 }
 
-/* ---------- Ligação dos eventos ---------- */
+
 function ligarPatrimonio(){
   if(!$("sec-patrimonio")) return;
   document.querySelectorAll("#pat-views .serv-view-btn").forEach(b => b.addEventListener("click", () => {
-    _patView = b.dataset.view;   // fase 136: Vendas deixou de ser atalho para Equipamentos
+    _patView = b.dataset.view;
     renderPatrimonio();
   }));
   $("pat-busca")?.addEventListener("input", debounce(renderPatrimonio, 150));
   $("pat-f-grupo")?.addEventListener("change", renderPatrimonio);
   $("pat-f-sem")?.addEventListener("change", renderPatrimonio);
   $("pat-f-situacao")?.addEventListener("change", renderPatrimonio);
-  // fase 136: indicador "Custo de aquisição" abre a lista dos equipamentos sem o valor
+
   $("pat-kpi-aq-card")?.addEventListener("click", () => { if(!_patCarregado || !_patAquis) return; _patView = "aquisicao"; renderPatrimonio(); });
   $("pat-sit-sel")?.addEventListener("change", () => patGravarSituacao());
   $("pat-vida")?.addEventListener("click", (e) => {
@@ -1335,11 +1335,11 @@ function ligarPatrimonio(){
     patCliqueConteudo(e);
   });
   _patOrdem.ligar("pat-conteudo", renderPatrimonio);
-  // lote S59 (D12): lista da troca da verba
+
   $("pat-troca-lista")?.addEventListener("change", patTrocaResumo);
   $("btn-pat-troca-fechar")?.addEventListener("click", patFecharTrocaVerba);
   $("btn-pat-troca-gravar")?.addEventListener("click", () => comBotaoTravado("btn-pat-troca-gravar", patGravarTrocaVerba));
-  $("btn-pat-exportar")?.addEventListener("click", () => comBotaoTravado("btn-pat-exportar", exportarPatrimonio));   // fase 136: lê os gastos antes
+  $("btn-pat-exportar")?.addEventListener("click", () => comBotaoTravado("btn-pat-exportar", exportarPatrimonio));
   $("btn-pat-novo")?.addEventListener("click", novoBemPatrimonio);
   $("btn-voltar-pat")?.addEventListener("click", mostrarPainelPat);
   $("btn-salvar-pat")?.addEventListener("click", () => comBotaoTravado("btn-salvar-pat", salvarPatrimonio));
@@ -1347,7 +1347,7 @@ function ligarPatrimonio(){
   $("btn-pat-retirar")?.addEventListener("click", () => comBotaoTravado("btn-pat-retirar", retirarBemPat));
   $("btn-pat-tit-gravar")?.addEventListener("click", () => comBotaoTravado("btn-pat-tit-gravar", gravarTitularidadePat));
   $("pat-aval-ano")?.addEventListener("change", () => patPreencherAvaliacaoDoAno(patBemDaFicha()));
-  // lote S54 (#172): unitário digitado na ficha mostra o total calculado; o link do modelo abre Acessórios (raiz) com a busca
+
   $("pat-aval-unit")?.addEventListener("input", () => {
     const b = patEditKey && patEditKey !== "novo" ? patBemPorChave(patEditKey) : null;
     if(!patEhModelo(b)) return;
@@ -1361,9 +1361,9 @@ function ligarPatrimonio(){
   });
   document.querySelectorAll("#pat-notebook button").forEach(b => b.addEventListener("click", () => {
     ativarTabPat(b.dataset.tab);
-    if(b.dataset.tab === "vida") carregarVidaBemPat(patBemDaFicha());   // fase 136: só carrega ao abrir a aba
+    if(b.dataset.tab === "vida") carregarVidaBemPat(patBemDaFicha());
   }));
-  /* carga a cada abertura do menu (os valores mudam pouco, mas a ficha de outro módulo pode ter mudado o cadastro) */
+
   document.querySelector('nav button[data-secao="patrimonio"]')?.addEventListener("click", () => { mostrarPainelPat(); carregarPatrimonio(); });
 }
 

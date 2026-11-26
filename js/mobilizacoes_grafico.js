@@ -1,26 +1,26 @@
-/* ====================================================================
-   Mobilizações: visão Gráfico (fase 189b, chamado 230). Prefixo mgr-.
-   Gantt de equipamentos do Word "Cronograma e gráfico de equipamentos": uma linha por TAG, agrupada como no
-   Cronograma (mcrGrupos, js/mobilizacoes_cronograma.js), lendo as views da 189a:
-   - vw_equipamentos_cronograma (linhas, pelos filtros do Cronograma) e vw_equipamentos_cronograma_barras (barras).
-   - Barra da mobilização sólida com a cor da metodologia (tokens --metodo-*); reserva tracejada; linha "hoje";
-     dias livres entre duas barras da mesma máquina (para encaixar obra pequena).
-   - Escala dia, semana ou mês (guardada no localStorage, com try/catch). Imprime em A3 paisagem numa janela própria.
-   - SVG desenhado aqui, sem biblioteca. Cor só por elemento.style.fill / style.stroke com token do :root (CLAUDE.md).
-   - Término da mobilização sem desmobilização: previsão da obra pelo ritmo (fase 140) ou data prevista da obra; sem
-     nenhuma, a barra vai até o fim da janela ("sem término previsto"). Reserva sem término idem.
-   - Lote S68-f (chamado 366, Bruno): OS de manutenção aberta (tipo_barra 'manutencao') vira barra cinza (--mgr-manutencao) até a
-     data_prevista da OS (atrasada vai até hoje, já na view); conta como ocupada em mgrLivres; o clique abre a OS só para
-     quem tem o item Manutenção no menu (mgrVeManutencao); os demais veem só o título.
-   ==================================================================== */
 
-let _mgrBarras    = [];       // linhas de vw_equipamentos_cronograma_barras
-let _mgrBaseLinhas = null;    // _mcrLinhas da última leitura (quando o Cronograma relê, as barras também são relidas)
-let _mgrDesloc    = 0;        // deslocamento da janela, em passos de navegação
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _mgrBarras    = [];
+let _mgrBaseLinhas = null;
+let _mgrDesloc    = 0;
 let _mgrEscala    = (() => { try { const v = localStorage.getItem("cgl.mgr.escala"); return ["dia", "semana", "mes"].includes(v) ? v : "semana"; } catch(e){ return "semana"; } })();
 
 const MGR_SVG_NS = "http://www.w3.org/2000/svg";
-// px por dia, dias na janela, dias antes de hoje e passo da navegação (dias)
+
 const MGR_ESCALAS = {
   dia:    { rot: "Dia",    px: 26,  dias: 42,  antes: 7,  passo: 21 },
   semana: { rot: "Semana", px: 8,   dias: 182, antes: 28, passo: 91 },
@@ -29,20 +29,20 @@ const MGR_ESCALAS = {
 const MGR_GEO = { rotulo: 190, topo: 38, linha: 26, grupo: 22, barra: 18 };
 const MGR_MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
-/* ---------- Datas em dias inteiros (UTC, sem fuso) ---------- */
+
 function mgrDia(iso){ const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number); return Math.round(Date.UTC(y, m - 1, d) / 864e5); }
 function mgrISO(n){ return new Date(n * 864e5).toISOString().slice(0, 10); }
 
-/* Janela da escala: { ini, dias } em dias inteiros, a partir de hoje e do deslocamento */
+
 function mgrJanela(escala, hoje, desloc){
   const e = MGR_ESCALAS[escala] || MGR_ESCALAS.semana;
   let ini = mgrDia(hoje) - e.antes + (desloc || 0) * e.passo;
-  if(escala === "semana"){ const dow = new Date(ini * 864e5).getUTCDay(); ini -= (dow + 6) % 7; }   // começa na segunda
+  if(escala === "semana"){ const dow = new Date(ini * 864e5).getUTCDay(); ini -= (dow + 6) % 7; }
   if(escala === "mes"){ const d = new Date(ini * 864e5); ini = Math.round(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 864e5); }
   return { ini, dias: e.dias, px: e.px };
 }
 
-/* Barra da view -> { inicio, fim, aberta, estimada } (ISO). prevObra: obra_id -> previsão de término pelo ritmo */
+
 function mgrNormalizar(b, prevObra){
   if(!b.inicio) return null;
   let fim = b.termino || null, estimada = false;
@@ -54,9 +54,9 @@ function mgrNormalizar(b, prevObra){
   return { ...b, inicio: String(b.inicio).slice(0, 10), fim: fim ? String(fim).slice(0, 10) : null, aberta: !fim, estimada };
 }
 
-/* Dias livres entre barras consecutivas de UMA máquina: [{ de, ate, dias }] (ISO, inclusivo).
-   Barra aberta (sem término) encerra a conta: depois dela não se sabe quando a máquina fica livre.
-   Toda barra conta como ocupada: mobilização, reserva e OS de manutenção aberta (lote S68-f). */
+
+
+
 function mgrLivres(barras){
   const ord = barras.filter(Boolean).slice().sort((a, b) => a.inicio.localeCompare(b.inicio));
   const out = [];
@@ -72,9 +72,9 @@ function mgrLivres(barras){
   return out;
 }
 
-/* Geometria do Gantt, sem DOM (testada em scripts/testar-fase189b.mjs).
-   grupos: [{ grupo, metodo, linhas: [{ equipamento_id, codigo, nome, metodologia, operadores, mob_id }] }]
-   barras: barras já normalizadas (mgrNormalizar). */
+
+
+
 function mgrLayout({ grupos, barras, escala, hoje, desloc }){
   const G = MGR_GEO;
   const jan = mgrJanela(escala, hoje, desloc);
@@ -113,7 +113,7 @@ function mgrLayout({ grupos, barras, escala, hoje, desloc }){
   });
   lay.altura = y + 1;
 
-  // Régua: dia = cada dia (e o mês acima); semana = cada segunda (e o mês acima); mês = cada mês (e o ano acima)
+
   for(let d = jan.ini; d <= jFim; d++){
     const dt = new Date(d * 864e5), dia = dt.getUTCDate(), dow = dt.getUTCDay(), mes = dt.getUTCMonth();
     if(escala === "dia"){
@@ -132,7 +132,7 @@ function mgrLayout({ grupos, barras, escala, hoje, desloc }){
   return lay;
 }
 
-/* ---------- Desenho em SVG (DOM; cor só por style com token do :root) ---------- */
+
 function mgrEl(tag, attrs, estilo){
   const el = document.createElementNS(MGR_SVG_NS, tag);
   Object.entries(attrs || {}).forEach(([k, v]) => { if(v !== null && v !== undefined) el.setAttribute(k, String(v)); });
@@ -178,7 +178,7 @@ function mgrDesenhar(lay){
 
   lay.fds.forEach(f => fundo.appendChild(mgrEl("rect", { x: f.x, y: G.topo, width: f.w, height: lay.altura - G.topo }, { fill: "var(--sup-2)" })));
   lay.linhas.filter(l => l.tipo === "grupo").forEach(l => fundo.appendChild(mgrEl("rect", { x: 0, y: l.y, width: lay.largura, height: l.h }, { fill: "var(--sup-2)" })));
-  // régua
+
   lay.meses.forEach(m => frente.appendChild(mgrTexto({ x: Math.max(m.x, G.rotulo) + 3, y: 13, class: "mgr-txt-mes" }, { fill: "var(--txt)" }, m.rotulo)));
   lay.ticks.forEach(t => {
     grade.appendChild(mgrEl("line", { x1: t.x, x2: t.x, y1: 18, y2: lay.altura }, { stroke: "var(--borda)" }));
@@ -186,7 +186,7 @@ function mgrDesenhar(lay){
   });
   grade.appendChild(mgrEl("line", { x1: 0, x2: lay.largura, y1: G.topo - 0.5, y2: G.topo - 0.5 }, { stroke: "var(--borda-forte)" }));
   grade.appendChild(mgrEl("line", { x1: G.rotulo - 0.5, x2: G.rotulo - 0.5, y1: 0, y2: lay.altura }, { stroke: "var(--borda-forte)" }));
-  // coluna das TAGs: grupo próprio, desenhado por último; na tela acompanha a rolagem horizontal (mgrLigarSvg)
+
   const rotulos = mgrEl("g", { class: "mgr-rotulos" });
   rotulos.appendChild(mgrEl("rect", { x: 0, y: 0, width: G.rotulo, height: lay.altura }, { fill: "var(--sup-1)" }));
   rotulos.appendChild(mgrEl("line", { x1: G.rotulo - 0.5, x2: G.rotulo - 0.5, y1: 0, y2: lay.altura }, { stroke: "var(--borda-forte)" }));
@@ -204,7 +204,7 @@ function mgrDesenhar(lay){
     }
   });
   rotulos.appendChild(mgrTexto({ x: 10, y: 31, class: "mgr-txt-tick" }, { fill: "var(--txt-sec)" }, "Equipamento"));
-  // dias livres
+
   lay.livres.forEach(v => {
     const g = mgrEl("g", { class: "mgr-livre" });
     const t = mgrEl("title"); t.textContent = `${v.dias} ${v.dias === 1 ? "dia livre" : "dias livres"}: ${dataBR(v.de)} a ${dataBR(v.ate)}`; g.appendChild(t);
@@ -217,11 +217,11 @@ function mgrDesenhar(lay){
     }
     frente.appendChild(g);
   });
-  // barras
+
   const veOS = mgrVeManutencao();
   lay.barras.forEach(b => {
     const r = b.barra;
-    const semLink = b.manutencao && !veOS;   // OS sem o item Manutenção no menu: só o título, sem clique
+    const semLink = b.manutencao && !veOS;
     const g = mgrEl("g", { class: "mgr-barra" + (b.reserva ? " mgr-reserva" : "") + (b.manutencao ? " mgr-manutencao" : "") + (semLink ? " mgr-sem-link" : ""),
       tabindex: semLink ? null : 0, role: semLink ? "img" : "button",
       "data-mgr-tipo": r.tipo_barra, "data-mgr-id": semLink ? null : r.barra_id, "data-mgr-eq": r.equipamento_id });
@@ -240,7 +240,7 @@ function mgrDesenhar(lay){
     if(r.aberta) g.appendChild(mgrTexto({ x: b.x + b.w - 4, y: b.y + 13, "text-anchor": "end", class: "mgr-txt-barra" }, { fill: b.reserva || b.prevista ? "var(--txt)" : "var(--txt-sobre)" }, "›"));
     frente.appendChild(g);
   });
-  // hoje
+
   if(lay.hojeX !== null){
     frente.appendChild(mgrEl("line", { x1: lay.hojeX, x2: lay.hojeX, y1: 18, y2: lay.altura, "stroke-width": 1.5 }, { stroke: "var(--perigo)" }));
     frente.appendChild(mgrTexto({ x: lay.hojeX + 3, y: G.topo + 10, class: "mgr-txt-hoje" }, { fill: "var(--perigo-txt)" }, "hoje"));
@@ -249,7 +249,7 @@ function mgrDesenhar(lay){
   return svg;
 }
 
-/* ---------- Carga ---------- */
+
 async function mgrCarregar(){
   if(typeof mcrCarregar === "function") await mcrCarregar(false);
   if(_mgrBaseLinhas === _mcrLinhas) return;
@@ -259,7 +259,7 @@ async function mgrCarregar(){
   _mgrBaseLinhas = _mcrLinhas;
 }
 
-/* ---------- Render ---------- */
+
 function renderGraficoMob(){
   const cont = $("mob-conteudo");
   if(!cont) return;
@@ -302,7 +302,7 @@ function renderGraficoMob(){
   mgrLigar(cont);
 }
 
-/* Lote S68-f: o item Manutenção do menu está visível para este perfil (mesmo critério de irParaSecao) */
+
 function mgrVeManutencao(){
   if(typeof document === "undefined" || !document.querySelector) return false;
   const b = document.querySelector('.sidebar-nav button[data-secao="manutencao"]');
@@ -330,7 +330,7 @@ function mgrLigarSvg(svg){
 function mgrLigar(cont){
   cont.querySelectorAll("button[data-mgr-escala]").forEach(b => b.addEventListener("click", () => {
     _mgrEscala = b.dataset.mgrEscala; _mgrDesloc = 0;
-    try { localStorage.setItem("cgl.mgr.escala", _mgrEscala); } catch(e){ /* sem localStorage: vale só nesta tela */ }
+    try { localStorage.setItem("cgl.mgr.escala", _mgrEscala); } catch(e){   }
     renderGraficoMob();
   }));
   $("btn-mgr-ant")?.addEventListener("click", () => { _mgrDesloc--; renderGraficoMob(); });
@@ -340,21 +340,21 @@ function mgrLigar(cont){
   $("btn-mgr-imprimir")?.addEventListener("click", mgrImprimir);
 }
 
-/* ---------- Impressão em A3 paisagem (D10) ---------- */
+
 function mgrImprimir(){
   const svg = document.querySelector("#mgr-rola svg");
   if(!svg){ aviso("app-aviso", "Nenhuma máquina no gráfico para imprimir.", "erro"); return; }
   const w = window.open("", "_blank");
   if(!w){ aviso("app-aviso", "O navegador bloqueou a janela de impressão. Libere pop-ups para este site.", "erro"); return; }
   const copia = svg.cloneNode(true);
-  copia.querySelector(".mgr-rotulos")?.removeAttribute("transform");   // na folha a coluna das TAGs fica no lugar
+  copia.querySelector(".mgr-rotulos")?.removeAttribute("transform");
   const css = new URL("css/estilo.css", location.href).href;
   const periodo = document.querySelector("#mob-conteudo .mcr-filtros .meta")?.textContent || "";
   w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>RG 11.15 · Gráfico de equipamentos</title>
     <link rel="stylesheet" href="${esc(css)}">
     <style>@page { size: A3 landscape; margin: 8mm; } body { margin: 0; padding: 0; background: var(--sup-1); -webkit-print-color-adjust: exact; print-color-adjust: exact; } .mgr-svg { width: 100%; height: auto; } .mgr-imp-topo { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4mm; font-family: var(--font-family); }</style></head>
     <body><div class="mgr-imp-topo"><strong>CGL FUNDAÇÕES · RG 11.15 · GRÁFICO DE EQUIPAMENTOS</strong><span>${esc(periodo)} · emitido em ${esc(dataBR(hojeISO()))}</span></div>
-    ${/* html */ $("mgr-legenda").outerHTML}${/* html */ copia.outerHTML}</body></html>`);
+    ${  $("mgr-legenda").outerHTML}${  copia.outerHTML}</body></html>`);
   w.document.close();
   let foi = false;
   const imprimir = () => { if(foi) return; foi = true; w.focus(); w.print(); };

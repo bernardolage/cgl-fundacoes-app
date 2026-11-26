@@ -1,39 +1,39 @@
-/* =====================================================================
-   Fase 184c (#311): RDO de raiz numa grade só, no modelo da aba SEPARADOS da RG 11.1 (prefixo rgd-).
-   Aba "Grade do dia" na ficha do RDO de raiz; as outras abas continuam. Uma linha por atividade do dia: início, fim,
-   descrição e categoria (À disposição, Produção, Manutenção, Outros); na produção, tipo (Perfuração, Refuro, Injeção),
-   estaca, Ø, inicial, final, inclinação, solo e ferramenta; na injeção, sacos, volume e pressão.
 
-   A grade não grava nada sozinha: edita o que a ficha já tem na memória e o "Salvar" de sempre grava (rdoSalvarAgora):
-     - toda linha com hora ou descrição é atividade hora a hora (rdo_raiz_justificativa, execucao_id nulo), com
-       categoria, tipo_linha e solo_id (o trecho que a linha gerou);
-     - Perfuração e Refuro viram trecho (rdo_raiz_solo) da execução da estaca (rdo_execucao_estaca; Refuro na execução
-       com modalidade refuro); De = menor inicial, Acum. = maior final, No dia = Acum. − De, como na aba Execuções;
-     - Injeção vai para a execução: hora em concretagem_inicio/fim, sacos em consumo_cimento_raiz (unidade saco),
-       volume_injetado_m3, pressao_injecao_kgcm2 e a palavra "Injeção" na observação (o gatilho fn_rdo_exec_etapa_final
-       marca etapa_final = injecao quando não há metragem).
-   Hora é hora de parede (memória da 154a): vai como foi digitada, sem fuso.
-   Abrir a grade não muda nada; só a primeira edição aplica a grade na ficha. Execução antiga sem trecho continua sem
-   trecho, e injeção sem hora continua sem hora.
-   Atalhos: Enter desce (na última linha cria outra), Tab anda; a linha nova copia estaca e Ø da anterior e o início é o
-   fim da anterior; Ctrl+V de várias células do Excel abre a conferência antes de entrar na grade.
-   Teste: scripts/testar-fase184c.mjs (funções puras, sem banco).
-   ===================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const RGD_CATEGORIAS = { disposicao: "À disposição", producao: "Produção", manutencao: "Manutenção", outros: "Outros" };
 const RGD_TIPOS = { prof: "Perfuração", ref: "Refuro", sim: "Injeção" };
 const RGD_FERRAMENTAS = { revestimento: "Revestimento", tricone: "Tricone", martelo: "Martelo", trado: "Trado", outro: "Outro" };
-/* ordem das colunas da grade (é também a ordem de quem cola sem cabeçalho) */
+
 const RGD_COLUNAS = ["h_inicial", "h_final", "descricao", "categoria", "tipo", "estaca", "diametro", "inicial", "final",
   "inclinacao", "solo", "ferramenta", "sacos", "volume", "pressao"];
 const RGD_NUMERICAS = ["diametro", "inicial", "final", "sacos", "volume", "pressao"];
 const RGD_ROTULO = { h_inicial: "início", h_final: "fim", diametro: "Ø", inicial: "inicial", final: "final", sacos: "sacos", volume: "volume", pressao: "pressão" };
 
-/* ---------- funções puras (testadas em scripts/testar-fase184c.mjs) ---------- */
+
 const rgdSemAcento = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "");
 const rgdChave = (s) => rgdSemAcento(s).toLowerCase().replace(/[^a-z0-9]/g, "");
 
-/* "07:30", "7:30", "07:30:00", "7h30" ou fração do dia do Excel ("0,3125") → "HH:MM"; o resto → null */
+
 function rgdHora(v){
   const t = String(v ?? "").trim();
   if(!t) return null;
@@ -49,13 +49,13 @@ function rgdHora(v){
   return String(h).padStart(2, "0") + ":" + m[2];
 }
 const rgdMin = (hhmm) => { const h = rgdHora(hhmm); return h ? Number(h.slice(0, 2)) * 60 + Number(h.slice(3)) : null; };
-/* duração em minutos (fim antes do início = passou da meia-noite) */
+
 function rgdDuracao(hi, hf){
   const a = rgdMin(hi), b = rgdMin(hf);
   if(a == null || b == null) return null;
   return b >= a ? b - a : b + 1440 - a;
 }
-/* "12,60" e "1.234,5" (pt-BR), "12.6"; vazio → null; texto → NaN */
+
 function rgdNum(v){
   if(v == null) return null;
   if(typeof v === "number") return isFinite(v) ? v : NaN;
@@ -72,7 +72,7 @@ function rgdCategoria(v){
   if(k === "p" || k.startsWith("prod")) return "producao";
   if(k === "m" || k.startsWith("manut")) return "manutencao";
   if(k === "o" || k.startsWith("outr")) return "outros";
-  return undefined;   // não reconhecida
+  return undefined;
 }
 function rgdTipo(v){
   const k = rgdChave(v);
@@ -91,7 +91,7 @@ function rgdFerramenta(v){
   if(k.startsWith("trado")) return "trado";
   return "outro";
 }
-/* cabeçalho da SEPARADOS (ou da grade) → campo */
+
 const RGD_CABECALHO = {
   inicio: "h_inicial", horainicio: "h_inicial", hinicial: "h_inicial", horainicial: "h_inicial",
   fim: "h_final", horafim: "h_final", hfinal: "h_final", horafinal: "h_final",
@@ -111,8 +111,8 @@ function rgdDataISO(v){
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
-/* Texto colado do Excel (células separadas por tabulação) → linhas da grade.
-   Com cabeçalho (tem "início" e "fim"), as colunas vêm pelo nome, como na SEPARADOS; sem cabeçalho, na ordem da grade. */
+
+
 function rgdColar(texto, dataISO){
   const brutas = String(texto ?? "").replace(/\r\n?/g, "\n").split("\n").filter(l => l.replace(/\t/g, "").trim() !== "");
   const out = { linhas: [], erros: [], avisos: [], cabecalho: false };
@@ -160,7 +160,7 @@ const rgdTs = (dataISO, hhmm, diaSeguinte) => {
 };
 const rgdTemInjecao = (e) => !!(e && (e.concretagem_inicio || e.volume_injetado_m3 != null || (e.consumo_cimento_raiz != null && e.consumo_cimento_raiz !== "") || e.pressao_injecao_kgcm2 != null));
 
-/* Linhas da grade → o que a ficha grava: execuções (com _solo) e atividades. Não toca na ficha. */
+
 function rgdParaRdo(linhas, dataISO){
   const erros = [], execs = new Map(), ordem = [], atividades = [];
   const execDe = (l, tipo) => {
@@ -249,8 +249,8 @@ function rgdParaRdo(linhas, dataISO){
   return { execucoes, atividades, erros };
 }
 
-/* O que a ficha tem → linhas da grade. Atividade ligada a trecho (solo_id ou _soloRef) traz a estaca e o trecho; a de
-   injeção casa pela hora com a execução; trecho, injeção ou execução que nenhuma atividade cobre vira linha sem hora. */
+
+
 function rgdDeRdo(execucoes, atividades){
   const linhas = [], soloDe = new Map(), usadoSolo = new Set(), usadaSim = new Set(), citada = new Set();
   (execucoes || []).forEach(e => (e._solo || []).forEach(s => { if(s.id) soloDe.set(s.id, { s, e }); }));
@@ -304,13 +304,13 @@ function rgdDeRdo(execucoes, atividades){
         solo: null, ferramenta: null, sacos: null, volume: null, pressao: null });
     }
   });
-  // a linha de injeção sem atividade (só para não perder o dado) não vira atividade com hora inventada
+
   return linhas.map(l => { if(l._semAtividade){ const c = { ...l }; delete c._semAtividade; if(!c.descricao && !c.h_inicial) c._semAtividade = true; return c; } return l; });
 }
 
-/* Execuções da grade × as que a ficha já tem (mesma estaca e modalidade): a que já existe guarda o id, o vínculo, a máquina,
-   o operador, o boletim e as paradas da estaca; a grade manda nos trechos, no De/Acum., no Ø, na inclinação e na injeção.
-   A que existia e não está mais na grade sai e vem em `removidas`. */
+
+
+
 function rgdMesclar(atuais, novos){
   const chave = (e) => rgdNormEstaca(e.estaca_numero) + "|" + (e.modalidade_execucao === "refuro" ? "refuro" : "n");
   const usados = new Set(), execucoes = [];
@@ -349,7 +349,7 @@ function rgdMesclar(atuais, novos){
   return { execucoes, removidas: lista.filter(a => !usados.has(a)) };
 }
 
-/* minutos por categoria (linha sem categoria em "sem"), como as abas PRODUÇÃO e À DISPOSIÇÃO da planilha */
+
 function rgdHorasPorCategoria(linhas){
   const t = { disposicao: 0, producao: 0, manutencao: 0, outros: 0, sem: 0, total: 0 };
   (linhas || []).forEach(l => {
@@ -361,9 +361,9 @@ function rgdHorasPorCategoria(linhas){
   return t;
 }
 
-/* ---------- tela (aba "Grade do dia" da ficha do RDO) ---------- */
+
 let _rgdLinhas = [];
-let _rgdColagem = null;   // { linhas, erros, avisos } esperando "Substituir" ou "Acrescentar"
+let _rgdColagem = null;
 let _rgdErros = [];
 
 function rgdFmt(min){
@@ -373,7 +373,7 @@ function rgdFmt(min){
 }
 const rgdTxtNum = (v) => v == null || Number.isNaN(v) ? "" : String(v).replace(".", ",");
 
-/* Ao entrar na aba: a grade sai do que a ficha tem agora (o que foi mudado nas outras abas aparece aqui) */
+
 function abrirGradeRDO(){
   _rgdLinhas = rgdDeRdo(typeof _rdoExecucoes !== "undefined" ? _rdoExecucoes : [], typeof _rdoAtividades !== "undefined" ? _rdoAtividades : []);
   _rgdColagem = null;
@@ -392,15 +392,15 @@ function rgdLinhaHTML(l, idx){
     <td><input type="text" class="rgd-c col-xs" data-campo="h_inicial" value="${esc(l.h_inicial || "")}" placeholder="HH:MM" inputmode="numeric" /></td>
     <td><input type="text" class="rgd-c col-xs" data-campo="h_final" value="${esc(l.h_final || "")}" placeholder="HH:MM" inputmode="numeric" /></td>
     <td><input type="text" class="rgd-c" data-campo="descricao" value="${esc(l.descricao || "")}" style="min-width:220px;" /></td>
-    <td><select class="rgd-c" data-campo="categoria">${/* html */ rgdOpcoes(RGD_CATEGORIAS, l.categoria)}</select></td>
-    <td><select class="rgd-c" data-campo="tipo"${dis(prod)}>${/* html */ rgdOpcoes(RGD_TIPOS, l.tipo)}</select></td>
+    <td><select class="rgd-c" data-campo="categoria">${  rgdOpcoes(RGD_CATEGORIAS, l.categoria)}</select></td>
+    <td><select class="rgd-c" data-campo="tipo"${dis(prod)}>${  rgdOpcoes(RGD_TIPOS, l.tipo)}</select></td>
     <td><input type="text" class="rgd-c col-sm" data-campo="estaca" value="${esc(l.estaca || "")}"${dis(prod)} /></td>
     <td><input type="text" class="rgd-c col-xs" data-campo="diametro" value="${esc(rgdTxtNum(l.diametro))}" inputmode="decimal"${dis(prod)} /></td>
     <td><input type="text" class="rgd-c col-xs" data-campo="inicial" value="${esc(rgdTxtNum(l.inicial))}" inputmode="decimal"${dis(trecho)} /></td>
     <td><input type="text" class="rgd-c col-xs" data-campo="final" value="${esc(rgdTxtNum(l.final))}" inputmode="decimal"${dis(trecho)} /></td>
     <td><input type="text" class="rgd-c col-xs" data-campo="inclinacao" value="${esc(l.inclinacao || "")}" list="rgd-inclinacoes"${dis(prod)} /></td>
     <td><input type="text" class="rgd-c" data-campo="solo" value="${esc(l.solo || "")}" list="rdo-solo-classif-lista" style="min-width:150px;"${dis(trecho)} /></td>
-    <td><select class="rgd-c" data-campo="ferramenta"${dis(trecho)}>${/* html */ rgdOpcoes(RGD_FERRAMENTAS, l.ferramenta)}</select></td>
+    <td><select class="rgd-c" data-campo="ferramenta"${dis(trecho)}>${  rgdOpcoes(RGD_FERRAMENTAS, l.ferramenta)}</select></td>
     <td><input type="text" class="rgd-c col-xs" data-campo="sacos" value="${esc(rgdTxtNum(l.sacos))}" inputmode="decimal"${dis(inj)} /></td>
     <td><input type="text" class="rgd-c col-xs" data-campo="volume" value="${esc(rgdTxtNum(l.volume))}" inputmode="decimal"${dis(inj)} /></td>
     <td><input type="text" class="rgd-c col-xs" data-campo="pressao" value="${esc(rgdTxtNum(l.pressao))}" inputmode="decimal"${dis(inj)} /></td>
@@ -456,7 +456,7 @@ function rgdRenderAvisos(){
   } else { el.className = "aviso"; el.innerHTML = ""; }
 }
 
-/* Aplica a grade na ficha (execuções, trechos e atividades na memória). O Salvar do diário é quem grava. */
+
 function rgdAplicar(){
   const r = rgdParaRdo(_rgdLinhas, $("rdo-data")?.value || null);
   _rgdErros = r.erros;
@@ -472,7 +472,7 @@ function rgdAplicar(){
   rgdRenderAvisos();
 }
 
-/* rdoSalvarAgora chama antes de gravar: com a aba aberta, erro da grade impede o salvar */
+
 function rgdConferirAntesDeSalvar(){
   if(!document.querySelector('#rdo-notebook button[data-tab="grade"].ativo')) return null;
   return _rgdErros.length ? "A grade do dia tem erro: " + _rgdErros[0] : null;
@@ -480,7 +480,7 @@ function rgdConferirAntesDeSalvar(){
 
 function rgdNovaLinha(ant){
   return { h_inicial: ant && ant.h_final ? ant.h_final : null, h_final: null, descricao: null, categoria: ant ? ant.categoria : null,
-    tipo: ant && ant.categoria === "producao" && (ant.tipo === "prof" || ant.tipo === "ref") ? ant.tipo : null,   // injeção não se repete sozinha estaca: ant ? ant.estaca : null, diametro: ant ? ant.diametro : null,
+    tipo: ant && ant.categoria === "producao" && (ant.tipo === "prof" || ant.tipo === "ref") ? ant.tipo : null,
     inicial: ant && (ant.tipo === "prof" || ant.tipo === "ref") ? ant.final : null, final: null, inclinacao: ant ? ant.inclinacao : null,
     solo: null, ferramenta: ant ? ant.ferramenta : null, sacos: null, volume: null, pressao: null };
 }
@@ -541,7 +541,7 @@ function ligarGradeRDO(){
     if(!el) return;
     const r = rgdLerCampo(el);
     if(!r) return;
-    if(el.tagName === "SELECT"){   // categoria e tipo ligam e desligam colunas da linha
+    if(el.tagName === "SELECT"){
       const tr = el.closest("tr");
       if(tr){ tr.outerHTML = rgdLinhaHTML(r.l, r.idx); $("rgd-corpo")?.querySelector(`tr[data-idx="${r.idx}"] [data-campo="${r.campo}"]`)?.focus(); }
     } else if(r.campo === "h_inicial" || r.campo === "h_final"){
@@ -556,7 +556,7 @@ function ligarGradeRDO(){
     renderGradeRDO();
     rgdAplicar();
   });
-  // Enter desce para a mesma coluna; na última linha cria a próxima (que copia estaca e Ø, e começa no fim da anterior)
+
   tb.addEventListener("keydown", (ev) => {
     if(ev.key !== "Enter" || ev.shiftKey || ev.ctrlKey || ev.altKey) return;
     const el = ev.target.closest(".rgd-c");
@@ -567,10 +567,10 @@ function ligarGradeRDO(){
     if(idx >= _rgdLinhas.length - 1){ rgdAdicionarLinha(campo === "h_inicial" ? "h_final" : campo); return; }
     $("rgd-corpo")?.querySelector(`tr[data-idx="${idx + 1}"] [data-campo="${campo}"]`)?.focus();
   });
-  // Ctrl+V de várias células do Excel: conferência antes de entrar na grade
+
   $("rgd-tabela")?.addEventListener("paste", (ev) => {
     const txt = ev.clipboardData ? ev.clipboardData.getData("text/plain") : "";
-    if(!txt || (!txt.includes("\t") && !/\n./.test(txt.trim()))) return;   // uma célula só: colagem normal no campo
+    if(!txt || (!txt.includes("\t") && !/\n./.test(txt.trim()))) return;
     ev.preventDefault();
     _rgdColagem = rgdColar(txt, $("rdo-data")?.value || null);
     rgdRenderAvisos();

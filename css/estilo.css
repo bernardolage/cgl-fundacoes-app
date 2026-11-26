@@ -1,124 +1,124 @@
-/* ====================================================================
-   CAMADAS (fase 193a, 18/11/2026)
 
-   Ordem de prioridade, da mais fraca para a mais forte (a de baixo ganha sempre, seja qual for a especificidade):
-     reset, tokens, base  -> piso das páginas novas (ui.html); ficam abaixo do legado para não mudar tela antiga
-     legado               -> todo o CSS anterior à fase 193, sem nenhuma regra alterada
-     componentes          -> os componentes de js/ui.js (catálogo em ui.html): o novo nunca perde para o antigo
-     utilitarios          -> ajustes pontuais de uma classe só
-   Regra: CSS novo nunca vai para o legado. Componente novo vai em "componentes"; token novo, em "tokens".
-   O legado encolhe quando um módulo migra para os componentes (uma fase por módulo).
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
 @layer reset, tokens, base, legado, componentes, utilitarios;
 
 @layer legado {
-/* ====================================================================
-   CGL Fundações — Sistema de Gestão | Folha de Estilo Premium
-   ==================================================================== */
 
-/* --------------------------------------------------------------------
-   PALETA ÚNICA
 
-   Antes desta versão conviviam duas paletas: a declarada aqui (um azul
-   3b82f6, verde esmeralda, vermelho vivo) e a que os módulos escreviam
-   à mão (o azul institucional 1B5FA8, verde 2D7D46, vermelho C0392B).
-   Resultado: dois azuis diferentes na mesma tela. Ficou valendo a
-   institucional — a que os módulos já usavam.
 
-   Regra: nenhuma cor nova em hex fora deste bloco. Se falta um tom,
-   ele nasce aqui. Os nomes antigos (--azul-accent, --danger, ...)
-   seguem existindo como apelidos para não quebrar o que já usa.
-   -------------------------------------------------------------------- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 :root {
-  /* ---- Marca ---- */
-  --marca-50:  #EEF8F8;   /* fundo de realce muito leve (teal) */
-  --marca-100: #D6EFF0;   /* fundo de item selecionado */
-  --marca-200: #A8DFE1;   /* borda de realce */
-  --marca-500: #52B8BC;   /* hover de ações */
-  --marca-600: #3BA7AC;   /* TEAL do site CGL — ações, links, aba ativa, foco (Variante A, 01/09/2026) */
-  --marca-700: #2E8A8E;   /* pressionado */
-  --marca-900: #1B3F42;   /* teal escuro — títulos, barra lateral, banner */
-  --marca-txt: var(--marca-900);   /* fase 138: teal de TEXTO (título, rótulo, link escuro). No escuro vira um teal claro;
-                                      --marca-900 continua sendo o FUNDO da barra lateral e dos chips nos dois temas */
 
-  --marca-laranja: #FF9318;   /* LARANJA do site CGL — destaque de marca: item ativo, CTA, realce */
+  --marca-50:  #EEF8F8;
+  --marca-100: #D6EFF0;
+  --marca-200: #A8DFE1;
+  --marca-500: #52B8BC;
+  --marca-600: #3BA7AC;
+  --marca-700: #2E8A8E;
+  --marca-900: #1B3F42;
+  --marca-txt: var(--marca-900);
 
-  /* ---- Ação (fase 147): --marca-600 com texto branco dá 2,87:1. Fundo de botão, item ativo e etapa atual usam --acao (4,71:1);
-     texto em teal usa --acao-txt. --marca-600 continua em borda, barra e foco. ---- */
+
+  --marca-laranja: #FF9318;
+
+
+
   --acao:       #2A7F83;
   --acao-hover: #236B6E;
   --acao-txt:   var(--acao-hover);
 
-  /* ---- Barra lateral (fase 147): o fundo é --marca-900 nos dois temas, então o texto também não muda ---- */
+
   --menu-txt:    #cbd5e1;
   --menu-perigo: #fca5a5;
 
-  /* ---- Superfícies ---- */
-  --sup-0: #ffffff;   /* cartão */
-  --sup-1: #f8fafc;   /* fundo da aplicação */
-  --sup-2: #f6f9fc;   /* bloco sutil dentro do cartão */
-  --sup-3: #eef2f6;   /* cabeçalho de tabela, faixa */
 
-  /* ---- Traços ---- */
+  --sup-0: #ffffff;
+  --sup-1: #f8fafc;
+  --sup-2: #f6f9fc;
+  --sup-3: #eef2f6;
+
+
   --borda:       #e2e8f0;
   --borda-forte: #cbd5e1;
 
-  /* ---- Texto ---- */
-  --txt:       #0f172a;   /* principal */
-  --txt-sec:   #475569;   /* secundário */
-  --txt-fraco: #64748b;   /* rótulos, meta */
-  --txt-sutil: #94a3b8;   /* placeholder e travessão de célula vazia — 2,4:1,
-                             abaixo do mínimo de leitura: nunca use para
-                             informação que o usuário precise ler */
-  --txt-sobre: #ffffff;   /* sobre fundo colorido */
-  --txt-sobre-aviso: #0f172a;   /* sobre o âmbar sólido, nos dois temas (fase 147) */
 
-  /* ---- Estados: cor sólida / fundo / texto sobre o fundo ---- */
+  --txt:       #0f172a;
+  --txt-sec:   #475569;
+  --txt-fraco: #64748b;
+  --txt-sutil: #94a3b8;
+
+
+  --txt-sobre: #ffffff;
+  --txt-sobre-aviso: #0f172a;
+
+
   --sucesso:     #2D7D46;
   --sucesso-bg:  #e6f4ea;
   --sucesso-txt: #1b5e2a;
-  --sucesso-claro: #2EC787;   /* fase 138: ponta clara do gradiente da barra de progresso da planta */
+  --sucesso-claro: #2EC787;
 
   --perigo:      #C0392B;
   --perigo-bg:   #fdecec;
   --perigo-txt:  #8a2020;
 
-  --aviso:       #E0A100;   /* âmbar — separado do laranja da marca; só preenchimento e borda */
+  --aviso:       #E0A100;
   --aviso-bg:    #FFF4CC;
-  --aviso-txt:   #7A5600;   /* texto em âmbar (contraste ok) */
+  --aviso-txt:   #7A5600;
 
-  --info:        #2B7AD1;   /* azul mantido para "informativo" (distinto da marca teal) */
+  --info:        #2B7AD1;
   --info-bg:     #E7F1FC;
   --info-txt:    #1F5FA8;
-  --lilas-bg:    #F1ECFA;   /* fase 154: grupo INJEÇÃO do acompanhamento raiz (cor da planilha da engenharia) */
+  --lilas-bg:    #F1ECFA;
   --lilas-txt:   #5B3A9A;
 
   --neutro:      #64748b;
   --neutro-bg:   #eef2f6;
   --neutro-txt:  #475569;
 
-  /* ---- Cores de domínio: planta de estacas (js/estacas.js) ----
-     Os outros status da estaca reusam --aviso / --sucesso / --perigo;
-     estes dois não têm equivalente semântico na paleta de interface. */
-  --estaca-prevista: #B4B2A9;   /* ainda não executada — cinza terroso */
-  --estaca-hoje:     #378ADD;   /* executada hoje — realce no mapa */
 
-  /* ---- Traços da planta de estacas (fase 138): malha forte, contorno de bloco, linha de cota ---- */
+
+
+  --estaca-prevista: #B4B2A9;
+  --estaca-hoje:     #378ADD;
+
+
   --planta-grid:  #d3dbe4;
   --planta-bloco: #b8c4d0;
   --planta-cota:  #9aa8b6;
-  --tooltip-bg:   rgba(26, 46, 68, 0.95);   /* tooltip da estaca (texto em --txt-sobre) */
+  --tooltip-bg:   rgba(26, 46, 68, 0.95);
 
-  /* ---- Documento, não tela (fase 138): o que vira PNG/PDF sai sempre em papel branco e tinta escura,
-     nos dois temas (assinatura do EPI). Nunca redefinir no bloco escuro. ---- */
+
+
   --doc-papel: #ffffff;
   --doc-tinta: #0f172a;
 
-  /* ---- Tela de login (fase 138): o fundo em gradiente é escuro nos dois temas; só o card troca ---- */
+
   --login-card:       rgba(255, 255, 255, 0.95);
   --login-card-borda: rgba(255, 255, 255, 0.8);
 
-  /* ---- Escala de espaçamento (múltiplos de 4) ---- */
+
   --esp-1: 4px;
   --esp-2: 8px;
   --esp-3: 12px;
@@ -127,38 +127,38 @@
   --esp-6: 24px;
   --esp-8: 32px;
 
-  /* ---- Tipografia ---- */
-  /* fase 161 (redesign, lote 1): Outfit no texto e JetBrains Mono só em código e número de documento */
+
+
   --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
-  --txt-xs: 11px;   /* rótulo de chip, meta */
-  --txt-sm: 12px;   /* tabela, filtros */
-  --txt-md: 13px;   /* corpo */
-  --txt-base: 14px;   /* inputs, botões, texto de formulário (faltava na escala) */
-  --txt-lg: 15px;   /* título de bloco */
-  --txt-xl: 20px;   /* título de seção */
-  --txt-titulo-doc: 22px;   /* fase 161: título em frase da ficha-documento (peso 600) */
-  --txt-kpi: 26px;   /* fase 161: número de KPI (peso 700), o extremo grande da escala */
+  --txt-xs: 11px;
+  --txt-sm: 12px;
+  --txt-md: 13px;
+  --txt-base: 14px;
+  --txt-lg: 15px;
+  --txt-xl: 20px;
+  --txt-titulo-doc: 22px;
+  --txt-kpi: 26px;
 
-  /* ---- Formas e profundidade ---- */
+
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 16px;
-  --radius-pill: 999px;   /* etiqueta, chip, contador */
+  --radius-pill: 999px;
 
-  /* ---- Altura de controle (fase 147): botão, filtro e alternador da mesma tira têm a mesma altura ---- */
+
   --ctl-h: 36px;
   --ctl-h-sm: 28px;
-  --shadow-sm: 0 1px 0 rgba(20, 35, 59, 0.04), 0 1px 2px rgba(20, 35, 59, 0.06);   /* fase 161: mais discretas e frias */
+  --shadow-sm: 0 1px 0 rgba(20, 35, 59, 0.04), 0 1px 2px rgba(20, 35, 59, 0.06);
   --shadow-md: 0 2px 8px rgba(20, 35, 59, 0.08), 0 1px 2px rgba(20, 35, 59, 0.05);
   --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.06);
   --shadow-premium: 0 20px 25px -5px rgba(15, 23, 42, 0.05), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
 
   --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-rapido: all 0.15s ease;   /* hover/foco */
-  --transition-lento:  all 0.3s ease;    /* painéis, colapsos */
+  --transition-rapido: all 0.15s ease;
+  --transition-lento:  all 0.3s ease;
 
-  /* ---- Apelidos dos nomes antigos (não usar em código novo) ---- */
+
   --azul-primary: var(--marca-900);
   --azul-primary-dark: var(--marca-900);
   --azul-accent: var(--marca-600);
@@ -176,7 +176,7 @@
   --warning-bg: var(--aviso-bg);
   --warning-text: var(--aviso-txt);
   --info-text: var(--info-txt);
-  --radius: var(--radius-md);   /* era usada em 3 regras sem nunca ter sido definida */
+  --radius: var(--radius-md);
   --muted: var(--neutro);
   --muted-bg: var(--neutro-bg);
   --muted-text: var(--neutro-txt);
@@ -184,65 +184,65 @@
   --bg-card: var(--sup-0);
   --border-color: var(--borda);
   --text-main: var(--txt);
-  --text-sec: var(--txt-sec);   /* alinhado ao PT (era --txt-fraco: cores diferentes p/ o mesmo nome) */
+  --text-sec: var(--txt-sec);
 
-  /* ---- Metodologia no cronograma de equipamentos (fase 189, D7; no SVG só por elemento.style.fill) ---- */
-  --metodo-helice:     #E8772E;   /* laranja */
-  --metodo-secante:    #2B6CB0;   /* azul */
-  --metodo-raiz:       #2F855A;   /* verde */
-  --metodo-bomba:      #B794F4;   /* roxo claro */
-  --metodo-compressor: #2C7A7B;   /* azul petróleo */
-  --metodo-gerador:    #B7791F;   /* amarelo escuro */
-  --metodo-trado:      #F56565;   /* vermelho claro */
+
+  --metodo-helice:     #E8772E;
+  --metodo-secante:    #2B6CB0;
+  --metodo-raiz:       #2F855A;
+  --metodo-bomba:      #B794F4;
+  --metodo-compressor: #2C7A7B;
+  --metodo-gerador:    #B7791F;
+  --metodo-trado:      #F56565;
 }
 
-/* --------------------------------------------------------------------
-   TEMA ESCURO (fase 138, FO-01)
 
-   Segundo bloco de tokens, aplicado quando js/tema.js (no <head>) carimba
-   data-theme="escuro" no <html>. Só tokens: nenhuma regra de componente
-   usa [data-theme] como seletor. Marca (--marca-600/700/laranja), cores
-   sólidas dos estados, --estaca-hoje, --doc-* e espaçamento/tipografia
-   ficam iguais nos dois temas. Contraste conferido por
-   scripts/checar-contraste.js (WCAG AA, 4,5:1).
 
-   No escuro as superfícies afundam a partir do cartão (--sup-0 > --sup-2 >
-   --sup-3 > --sup-1), a mesma relação do claro, onde são mais escuras que o
-   branco; é o que mantém --marca-600 legível como texto sobre todas elas.
 
-   Intencionalmente fixos nos dois temas (não viram token): o gradiente do
-   fundo do login (já é escuro), os véus de modal rgba(15,23,42,…) e
-   rgba(0,0,0,…), as sombras soltas rgba(0,0,0,…) e os realces
-   rgba(255,255,255,…) da barra lateral sobre --marca-900.
-   -------------------------------------------------------------------- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 :root[data-theme="escuro"] {
-  color-scheme: dark;   /* select, input de data, scrollbar e <dialog> nativos acompanham */
+  color-scheme: dark;
 
-  /* ---- Marca: só os realces claros ---- */
+
   --marca-50:  #15302f;
   --marca-100: #1b3d3d;
   --marca-200: #2a5c5e;
   --marca-txt: #A8DFE1;
-  --acao-txt:  var(--marca-500);   /* --acao-hover escurece no escuro; aqui o teal de texto clareia */
+  --acao-txt:  var(--marca-500);
 
-  /* ---- Superfícies ---- */
+
   --sup-0: #1e293b;
   --sup-1: #0f172a;
-  --sup-2: #192235;   /* bloco sutil: afunda em relação ao cartão, como no claro (mais escuro que --sup-0) */
-  --sup-3: #141c2c;   /* cabeçalho de tabela e faixa: mais fundo ainda; --marca-600 como texto fica ≥ 4,5:1 sobre ele */
+  --sup-2: #192235;
+  --sup-3: #141c2c;
 
-  /* ---- Traços ---- */
+
   --borda:       #334155;
   --borda-forte: #475569;
 
-  /* ---- Texto ---- */
+
   --txt:       #f1f5f9;
   --txt-sec:   #cbd5e1;
   --txt-fraco: #a3b0c2;
   --txt-sutil: #64748b;
   --txt-sobre: #ffffff;
 
-  /* ---- Estados: fundo / texto sobre o fundo (a cor sólida não muda) ---- */
+
   --sucesso-bg:  #14301d;
   --sucesso-txt: #86efac;
   --perigo-bg:   #3a1a17;
@@ -256,24 +256,24 @@
   --neutro-bg:   #2a3444;
   --neutro-txt:  #cbd5e1;
 
-  /* ---- Domínio e traços da planta ---- */
+
   --estaca-prevista: #6b6a63;
   --planta-grid:  #3b4a5e;
   --planta-bloco: #4b5b70;
   --planta-cota:  #5e6e84;
   --tooltip-bg:   rgba(15, 23, 42, 0.96);
 
-  /* ---- Login ---- */
+
   --login-card:       rgba(30, 41, 59, 0.95);
   --login-card-borda: rgba(255, 255, 255, 0.12);
 
-  /* ---- Profundidade: sombra mais funda sobre fundo escuro ---- */
+
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45), 0 2px 4px -2px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
   --shadow-premium: 0 20px 25px -5px rgba(0, 0, 0, 0.45), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
 
-  /* ---- Metodologia no cronograma (fase 189): um pouco mais claras sobre o fundo escuro ---- */
+
   --metodo-helice:     #F08A45;
   --metodo-secante:    #5B9BE0;
   --metodo-raiz:       #48A878;
@@ -283,7 +283,7 @@
   --metodo-trado:      #F87171;
 }
 
-/* Reset Geral */
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -307,7 +307,7 @@ button {
   transition: var(--transition);
 }
 
-/* fase 147: sem esta regra o link saía no azul do navegador (1,56:1 no escuro). Quem tem classe própria define a sua */
+
 a { color: var(--marca-txt); }
 .aviso a, .con-alerta a, .dist-aviso a { color: inherit; }
 
@@ -318,14 +318,14 @@ input, select, textarea {
   transition: var(--transition);
 }
 
-/* --------------------------------------------------------------------
-   TÍTULOS
 
-   Antes não havia regra alguma para h2/h3/h4 — só `.card h3`. Como o
-   reset zera as margens, cada tela acertava tamanho e espaçamento no
-   próprio HTML, e nenhuma ficava igual à outra. Aqui fica o ritmo
-   padrão; quem precisar de exceção usa `.sub-titulo` ou `.titulo-bloco`.
-   -------------------------------------------------------------------- */
+
+
+
+
+
+
+
 h2 {
   font-size: var(--txt-xl);
   font-weight: 700;
@@ -346,8 +346,8 @@ h4 {
   margin: 0 0 var(--esp-2);
 }
 
-/* Título que divide blocos dentro de um formulário longo
-   (Origem / Destino / Preço de referência...) */
+
+
 .titulo-bloco {
   font-size: var(--txt-md);
   font-weight: 700;
@@ -357,13 +357,13 @@ h4 {
   border-top: 1px solid var(--borda);
 }
 
-/* Título que encabeça um bloco com ações à direita, ou o topo de um
-   diálogo: o espaçamento vem do contêiner, não do título. */
+
+
 .titulo-linha { margin: 0; }
 
-/* ---------- TELA DE LOGIN (12/11/2026): duas colunas, marca à esquerda e acesso à direita.
-   Maquete do redesign (docs/referencias/redesign-2026-11) com o teal da CGL; textos e números do site.
-   No celular fica só a coluna de acesso. ---------- */
+
+
+
 #tela-login {
   min-height: 100vh;
   display: flex;
@@ -396,7 +396,7 @@ h4 {
 }
 .login-selo-ponto { width: 6px; height: 6px; border-radius: 50%; background: var(--marca-laranja); }
 .login-arte h2 { position: relative; margin: 0; max-width: 520px; font-size: 44px; font-weight: 700; line-height: 1.05; letter-spacing: -0.8px; color: var(--txt-sobre); }
-.login-arte h2 em { color: var(--marca-laranja); font-style: normal; }   /* contraste-ok: fundo do login é escuro fixo nos dois temas */
+.login-arte h2 em { color: var(--marca-laranja); font-style: normal; }
 .login-arte p { position: relative; margin: 0; max-width: 460px; font-size: var(--txt-base); line-height: 1.5; color: rgba(255, 255, 255, 0.78); }
 .login-numeros { position: relative; margin: var(--esp-3) 0 0; display: flex; flex-wrap: wrap; gap: 40px; padding-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.14); }
 .login-numeros div { display: flex; flex-direction: column; gap: 2px; }
@@ -493,9 +493,9 @@ h4 {
   color: var(--acao-txt);
 }
 
-/* O padrão é o botão ter a largura do próprio conteúdo. Era 100%, o que
-   servia à tela de login e obrigava cada contexto a desfazer — quem não
-   desfazia (o header de ações das fichas) ficava com um Salvar gigante. */
+
+
+
 .btn {
   background: var(--acao);
   color: var(--txt-sobre);
@@ -511,7 +511,7 @@ h4 {
   gap: 8px;
   box-shadow: var(--shadow-sm);
 }
-/* No login o botão acompanha a largura do cartão */
+
 #form-login .btn { width: 100%; }
 .btn:hover {
   background: var(--acao-hover);
@@ -567,8 +567,8 @@ h4 {
   color: var(--success-text);
   display: block;
 }
-/* aviso não bloqueante: aviso(el, msg, "aviso") — lote S39 (#26). Classe "atencao" (fase 79): ".aviso.aviso"
-   casava com todo .aviso e deixava a faixa amarela vazia visível no topo */
+
+
 .aviso.atencao {
   background: var(--aviso-bg);
   border-left: 4px solid var(--aviso);
@@ -576,20 +576,20 @@ h4 {
   display: block;
 }
 
-/* ---------- APLICAÇÃO (LAYOUT COM SIDEBAR) ---------- */
+
 #tela-app {
-  display: none; /* Controlado via JS */
-  height: 100vh;          /* era min-height: a sidebar mais alta que a tela esticava o body e
-                             aparecia uma 2ª barra de rolagem vertical ao lado da do <main> */
+  display: none;
+  height: 100vh;
+
   overflow: hidden;
   flex-direction: row;
 }
 
-/* Sidebar Estilos */
+
 #app-sidebar {
-  width: 232px;   /* fase 148: era 280; o que sobra vai para a tabela */
-  height: 100vh;          /* a rolagem da sidebar fica dentro de .sidebar-nav */
-  background-color: var(--marca-900);   /* fundo: fica teal escuro nos dois temas (fase 138) */
+  width: 232px;
+  height: 100vh;
+  background-color: var(--marca-900);
   color: var(--menu-txt);
   display: flex;
   flex-direction: column;
@@ -614,7 +614,7 @@ h4 {
   color: var(--txt-sobre);
 }
 .sidebar-header .marca span {
-  color: var(--marca-600);   /* contraste-ok: título de 20 px em negrito sobre o fundo fixo --marca-900 */
+  color: var(--marca-600);
 }
 
 .sidebar-nav {
@@ -696,7 +696,7 @@ h4 {
   flex-direction: column;
   overflow: hidden;
 }
-/* fase 129b: link para o app de campo (encarregado e engenharia) */
+
 .usuario-detalhes .usr-modo-campo { font-size: var(--txt-sm); color: var(--menu-txt); text-decoration: underline; margin-top: 2px; white-space: nowrap; }
 .usuario-detalhes .usr-modo-campo[hidden] { display: none; }
 .usuario-detalhes span {
@@ -721,7 +721,7 @@ h4 {
   color: var(--menu-perigo);
 }
 
-/* Viewport do Conteúdo */
+
 #app-viewport {
   flex: 1;
   display: flex;
@@ -773,24 +773,24 @@ h4 {
   display: none;
   animation: fadeIn 0.25s ease;
 }
-/* O título da seção já aparece no cabeçalho (#app-secao-titulo, alimentado pelo h2);
-   o h2 dentro da seção repetia a mesma palavra logo abaixo. */
+
+
 .secao > h2:first-child,
-.secao > [id$="-painel"] > h2:first-child { display: none; }   /* fase 147: os 9 módulos com o h2 dentro do painel */
+.secao > [id$="-painel"] > h2:first-child { display: none; }
 .secao.ativa {
   display: block;
 }
 
-/* ---------- COMPONENTES REUTILIZÁVEIS ---------- */
 
-/* Cards Modernos */
+
+
 .card {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: var(--esp-4);
   margin-bottom: var(--esp-4);
-  box-shadow: none;   /* o cartão se delimita pela borda; a sombra é resposta ao hover */
+  box-shadow: none;
   transition: var(--transition);
 }
 .card:hover {
@@ -806,7 +806,7 @@ h4 {
   justify-content: space-between;
 }
 
-/* Formulários em Grid */
+
 .grade {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -826,7 +826,7 @@ h4 {
   width: auto;
 }
 
-/* Tabelas Premium */
+
 .tabela-rola {
   overflow-x: auto;
   border-radius: var(--radius-sm);
@@ -872,7 +872,7 @@ td.num, th.num {
   padding: 24px !important;
 }
 
-/* Tags de Status Harmonizadas */
+
 .tag {
   display: inline-flex;
   align-items: center;
@@ -903,10 +903,10 @@ td.num, th.num {
   color: var(--warning-text);
 }
 
-/* Indicadores / Dashboard Widgets */
+
 .indicadores {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));   /* fase 148: faixa compacta; cabem 8 numa linha em 1440 */
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
   gap: var(--esp-2);
   margin-bottom: var(--esp-2);
 }
@@ -918,10 +918,10 @@ td.num, th.num {
   box-shadow: none;
   display: flex;
   flex-direction: column;
-  container-type: inline-size;   /* o número acompanha a largura do cartão: "R$ 10.835.817,39" não quebra (espaço fixo) nem vaza */
+  container-type: inline-size;
   transition: var(--transition);
 }
-.ind-click:hover {   /* só KPIs clicáveis "levantam" (era .ind:hover: falsa affordância) */
+.ind-click:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
   border-color: color-mix(in srgb, var(--marca-600) 35%, transparent);
@@ -941,7 +941,7 @@ td.num, th.num {
   margin-top: 2px;
 }
 
-/* Link-mini / Actions inside Headers */
+
 .link-mini {
   color: var(--acao-txt);
   font-size: 12px;
@@ -952,7 +952,7 @@ td.num, th.num {
   text-decoration: underline;
 }
 
-/* ---------- LISTA + FICHA VIEW TEMPLATE ---------- */
+
 .lista-topo {
   display: flex;
   justify-content: space-between;
@@ -1004,7 +1004,7 @@ td.num, th.num {
   font-size: var(--txt-sm);
 }
 
-/* ---------- ORÇAMENTO ITEMS EDITOR ---------- */
+
 .itens-tabela input, .itens-tabela select {
   width: 100%;
   padding: 8px 10px;
@@ -1040,7 +1040,7 @@ td.num, th.num {
   background: var(--danger);
   color: var(--txt-sobre);
 }
-/* lote S65-e (#317): setas de ordem dos itens (orçamento e catálogo de Serviços) */
+
 .itens-tabela .col-acao-ordem { width: 112px; white-space: nowrap; }
 .btn-ordem {
   background: var(--sup-3);
@@ -1065,7 +1065,7 @@ td.num, th.num {
   margin-left: 8px;
 }
 
-/* ---------- CHECKBOX & RADIOS ---------- */
+
 .check-inline {
   display: inline-flex;
   align-items: center;
@@ -1081,7 +1081,7 @@ td.num, th.num {
   cursor: pointer;
 }
 
-/* ---------- MOBILE INTERACTION LAYOUT (MEDIA QUERIES) ---------- */
+
 #sidebar-overlay {
   display: none;
   position: fixed;
@@ -1096,7 +1096,7 @@ td.num, th.num {
 }
 
 @media (max-width: 991px) {
-  /* Sidebar colapsável */
+
   #app-sidebar {
     position: fixed;
     top: 0;
@@ -1105,24 +1105,24 @@ td.num, th.num {
     transform: translateX(-100%);
     box-shadow: none;
   }
-  
+
   #tela-app.sidebar-aberta #app-sidebar {
     transform: translateX(0);
     box-shadow: var(--shadow-lg);
   }
-  
+
   #tela-app.sidebar-aberta #sidebar-overlay {
     display: block;
   }
-  
+
   #btn-menu-toggle {
     display: block;
   }
-  
+
   #app-header {
     padding: 0 20px;
   }
-  
+
   #app-viewport main {
     padding: 20px;
   }
@@ -1137,7 +1137,7 @@ td.num, th.num {
   }
 }
 
-/* ---------- ANIMAÇÕES ---------- */
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1148,7 +1148,7 @@ td.num, th.num {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ---------- CATÁLOGO DE SERVIÇOS ---------- */
+
 .serv-views {
   display: inline-flex;
   background: var(--bg-body);
@@ -1157,10 +1157,10 @@ td.num, th.num {
   padding: 3px;
   gap: 2px;
 }
-/* .geo-modo-btn (fase 184d): o mesmo botão, com outra classe para o toggle "Agrupado / Lista" das Chegadas não cair
-   no seletor "#rdo-painel .serv-view-btn" do rdo.js, que troca a visão do painel */
+
+
 .serv-view-btn, .geo-modo-btn {
-  min-height: calc(var(--ctl-h) - 8px);   /* 3 px de respiro e 1 px de borda de .serv-views, em cima e embaixo */
+  min-height: calc(var(--ctl-h) - 8px);
   padding: 0 var(--esp-3);
   font-size: 13px;
   font-weight: 600;
@@ -1176,9 +1176,9 @@ td.num, th.num {
 
 .serv-filtros {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));   /* adapta ao número de filtros; fase 148: cabem 8 colunas em 1440 */
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
   gap: var(--esp-2);
-  align-items: center;   /* fase 148: um item alto na linha não estica os filtros */
+  align-items: center;
   margin-bottom: var(--esp-3);
 }
 .serv-filtros .check-inline { padding: 0; font-size: var(--txt-sm); line-height: 1.25; }
@@ -1200,10 +1200,10 @@ td.num, th.num {
 }
 @media (max-width: 760px) {
   .serv-filtros { grid-template-columns: 1fr 1fr; }
-  .serv-views { flex-wrap: wrap; }   /* fase 148: muitas visões não empurram a tela para o lado no celular */
+  .serv-views { flex-wrap: wrap; }
 }
 
-/* Kanban */
+
 .serv-kanban {
   display: flex;
   gap: 16px;
@@ -1258,9 +1258,9 @@ td.num, th.num {
   border-top: 1px solid var(--border-color);
   padding-top: 8px;
 }
-.serv-kan-card-rod strong { color: var(--aviso-txt); }  /* laranja puro reprova contraste como texto */
+.serv-kan-card-rod strong { color: var(--aviso-txt); }
 
-/* Catálogo (agrupado por categoria) */
+
 .serv-cat-grupo { margin-bottom: 28px; }
 .serv-cat-head {
   font-size: 15px;
@@ -1304,7 +1304,7 @@ td.num, th.num {
   margin-top: 2px;
 }
 
-/* Contexto da ficha de serviço */
+
 .serv-contexto {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -1328,7 +1328,7 @@ td.num, th.num {
   color: var(--text-main);
 }
 
-/* ---------- HISTÓRICO (chatter) ---------- */
+
 .historico {
   margin-top: 8px;
   border-top: 1px solid var(--border-color);
@@ -1384,7 +1384,7 @@ td.num, th.num {
 }
 .hist-compositor-acoes .meta { margin-right: auto; }
 .hist-compositor-acoes .btn { width: auto; }
-/* lote S55 (#176): lista de usuários do "@" flutua sob o textarea do compositor (mesma .autocomplete-lista das buscas) */
+
 .hist-mencoes-wrap { position: relative; }
 .hist-mencoes-wrap .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; margin-top: 0; }
 .autocomplete-lista .resultado-item.ativo { background: var(--marca-50); }
@@ -1420,7 +1420,7 @@ td.num, th.num {
 }
 
 
-/* ========== Movimentações ========== */
+
 .autocomplete-lista {
   position: relative;
   max-height: 240px;
@@ -1442,10 +1442,10 @@ td.num, th.num {
 .linha-clicavel { cursor: pointer; }
 .linha-clicavel:hover { background: var(--sup-2); }
 .btn-sm { min-height: var(--ctl-h-sm); padding: 2px 8px !important; font-size: 12px !important; }
-/* fase 147: dentro de célula o botão é sempre o compacto; a altura da linha vem do dado */
+
 td .btn, td .btn-sec { min-height: var(--ctl-h-sm); padding: 2px var(--esp-2); font-size: var(--txt-sm); }
 
-/* Badges de confiança da reconciliação de estacas */
+
 .rec-badge {
   display: inline-block;
   font-size: 11px;
@@ -1461,7 +1461,7 @@ td .btn, td .btn-sec { min-height: var(--ctl-h-sm); padding: 2px var(--esp-2); f
 .rec-badge-baixa { background: var(--perigo-bg); color: var(--perigo-txt); }
 .rec-badge-zero  { background: var(--sup-3); color: var(--txt-fraco); font-style: italic; }
 
-/* Badge ALTERADO/REFURO nas linhas de estaca (estilo Maya Fundações) */
+
 .badge-alterado {
   display: inline-flex;
   align-items: center;
@@ -1487,7 +1487,7 @@ td .btn, td .btn-sec { min-height: var(--ctl-h-sm); padding: 2px var(--esp-2); f
   animation: pulso-alterado 2s ease-in-out infinite;
 }
 
-/* Dashboard / Home */
+
 .dash-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1501,7 +1501,7 @@ td .btn, td .btn-sec { min-height: var(--ctl-h-sm); padding: 2px var(--esp-2); f
   padding: 14px 16px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
-/* Indicadores/itens clicáveis do dashboard (levam ao fluxo correspondente) */
+
 .clicavel { cursor: pointer; }
 .dash-card.clicavel { transition: var(--transition-rapido); }
 .dash-card.clicavel:hover { background: var(--sup-2); box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
@@ -1543,7 +1543,7 @@ td .btn, td .btn-sec { min-height: var(--ctl-h-sm); padding: 2px var(--esp-2); f
   font-size: 12px;
 }
 
-/* Fase 63: Início como Sala de Comando */
+
 .dash-topo {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-3);
   background: linear-gradient(135deg, var(--marca-900) 0%, var(--marca-600) 100%);
@@ -1562,8 +1562,8 @@ td .btn, td .btn-sec { min-height: var(--ctl-h-sm); padding: 2px var(--esp-2); f
   border-radius: 50%; border: 1px solid var(--borda-forte); color: var(--txt-fraco);
   font-size: 9px; cursor: help; text-transform: none; margin-left: 2px;
 }
-/* Fase 164: o "?" virou botão (abre por toque e por teclado, não só por title). O círculo continua com 14 px para não mexer
-   na densidade; a área de toque cresce pelo ::after. O painel abre logo abaixo da linha ou do rótulo do indicador. */
+
+
 button.dash-ajuda {
   position: relative; flex: none; padding: 0; background: none; font-family: inherit; font-weight: 600; line-height: 1;
   cursor: pointer; vertical-align: middle;
@@ -1582,12 +1582,12 @@ button.dash-ajuda:focus-visible { outline: 2px solid var(--marca-600); outline-o
 .dash-card .dash-explica { margin: 0 0 var(--esp-2); }
 .dash-card .dash-explica-linha { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 @media (max-width: 600px) { .dash-explica-linha { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
-/* de quem é o bloco: uma linha discreta sob o título */
+
 .dash-bloco-dono { margin: 0 0 var(--esp-2); font-size: var(--txt-xs); color: var(--txt-fraco); }
 .dash-reg-visoes { margin-bottom: var(--esp-2); }
 .dash-origem { background: none; border: 0; padding: 0; margin-top: var(--esp-1); color: var(--acao-txt); font-size: var(--txt-xs); cursor: pointer; }
 .dash-origem:hover { text-decoration: underline; }
-/* minmax(0, …): sem isso a descrição em nowrap de .dash-acao-txt .meta alarga a coluna e o Início ganha rolagem lateral */
+
 .dash-duas-col { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--esp-4); margin-bottom: var(--esp-4); align-items: start; }
 .dash-duas-col-inv { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); }
 @media (max-width: 900px) { .dash-duas-col, .dash-duas-col-inv { grid-template-columns: minmax(0, 1fr); } }
@@ -1610,7 +1610,7 @@ button.dash-ajuda:focus-visible { outline: 2px solid var(--marca-600); outline-o
 .dash-pin.ativo { color: var(--aviso-txt); }
 .dash-secao-tit { font-size: var(--txt-md); color: var(--txt-fraco); margin: var(--esp-2) 0; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* Drag & drop em kanbans (genérico) */
+
 .serv-kan-card[draggable="true"]:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.10); transform: translateY(-1px); }
 .serv-kan-card.kan-dragging { opacity: 0.5; cursor: grabbing; transform: rotate(-1deg); }
 .serv-kan-col.kan-drop-target {
@@ -1621,7 +1621,7 @@ button.dash-ajuda:focus-visible { outline: 2px solid var(--marca-600); outline-o
 }
 .serv-kan-col.kan-drop-target .serv-kan-col-head { background: var(--acao); color: var(--txt-sobre); }
 
-/* Badge de origem do preço (medicao_itens) */
+
 .badge-origem {
   display: inline-flex;
   align-items: center;
@@ -1639,7 +1639,7 @@ button.dash-ajuda:focus-visible { outline: 2px solid var(--marca-600); outline-o
 }
 
 
-/* ========== Padrão Odoo (statusbar, header actions, notebook) ========== */
+
 .odoo-actions-header {
   display: flex;
   align-items: center;
@@ -1701,12 +1701,12 @@ button.dash-ajuda:focus-visible { outline: 2px solid var(--marca-600); outline-o
 .odoo-statusbar .stage.cancelada {
   color: var(--txt-sobre); background: var(--perigo);
 }
-/* fase 105b: statusbar só informativa (status da NF-e vem da Focus, não do clique) */
+
 .odoo-statusbar.informativa .stage { cursor: default; }
 .odoo-statusbar.informativa .stage:hover { background: var(--sup-0); }
 .odoo-statusbar.informativa .stage.atual:hover { background: var(--acao); }
 .odoo-statusbar.informativa .stage.cancelada:hover { background: var(--perigo); }
-/* fase 105b: JSON da NF-e na simulação (105c: e da NFS-e da medição) */
+
 .mov-nfe-json, .med-nfse-json {
   background: var(--sup-2);
   padding: var(--esp-3);
@@ -1736,14 +1736,14 @@ button.dash-ajuda:focus-visible { outline: 2px solid var(--marca-600); outline-o
 .odoo-contexto .chip strong {
   font-size: 14px; color: var(--marca-txt);
 }
-/* Lote S40 (#31): chip de alerta na ficha (ex.: obra sem jornada no RDO) */
+
 .odoo-contexto .chip.chip-aviso {
   background: var(--aviso-bg); border: 1px solid var(--aviso); border-radius: var(--radius-sm); padding: 2px 8px;
 }
 .odoo-contexto .chip.chip-aviso strong { color: var(--aviso-txt); font-size: 13px; }
 .odoo-contexto .chip.chip-aviso a { color: var(--aviso-txt); text-decoration: underline; }
 
-/* Chamado #4: obra clicável em qualquer tela (linkObra em core.js) */
+
 a.link-obra, a.link-cad, a.link-cod {
   color: inherit; text-decoration: none; cursor: pointer;
   border-bottom: 1px dotted currentColor;
@@ -1751,7 +1751,7 @@ a.link-obra, a.link-cad, a.link-cod {
 a.link-obra:hover, a.link-obra:focus-visible, a.link-cad:hover, a.link-cad:focus-visible, a.link-cod:hover, a.link-cod:focus-visible {
   color: var(--acao-txt); border-bottom-style: solid;
 }
-/* lote S63a: número de documento citado em texto livre (linkificarCodigos em core.js) */
+
 a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 .odoo-notebook {
@@ -1794,7 +1794,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
 }
 .odoo-sheet > .odoo-body { padding: 0 18px 18px; }
 
-/* ========== Planta SVG de estacas ========== */
+
 .planta-toolbar {
   display: flex;
   align-items: center;
@@ -1884,7 +1884,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   font-weight: 600;
 }
 
-/* Tooltip da estaca (no canto da planta) */
+
 #est-planta-tooltip {
   position: absolute;
   background: var(--tooltip-bg);
@@ -1898,7 +1898,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   z-index: 100;
 }
 
-/* ========== Smart-buttons da ficha (Odoo style) ========== */
+
 .odoo-smart-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -1940,7 +1940,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   font-weight: 600;
 }
 
-/* ========== Timeline da obra ========== */
+
 .tl-filtros {
   display: flex;
   flex-wrap: wrap;
@@ -2018,7 +2018,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   cursor: help;
 }
 
-/* ========== Conferência do Projeto — badges nas abas ========== */
+
 .conf-badge {
   display: inline-block;
   min-width: 18px;
@@ -2034,9 +2034,9 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
 .conf-badge:empty { display: none; }
 .conf-badge.zero { background: var(--sucesso); }
 
-/* ========== Funcionários — Fase 19 ========== */
 
-/* Layout painel: sidebar dept + conteúdo */
+
+
 .func-painel-layout {
   display: flex;
   min-height: 260px;
@@ -2089,7 +2089,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
 .func-dept-item.dept-neto  { padding-left: 34px; font-size: 11px; }
 .func-conteudo-wrap { flex: 1; min-width: 0; padding: 8px; }
 
-/* Avatar circular */
+
 .func-kan-avatar {
   border-radius: 50%;
   background: var(--acao);
@@ -2103,7 +2103,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
 }
 .func-kan-avatar img { width:100%; height:100%; object-fit:cover; }
 
-/* Kanban card de funcionário */
+
 .func-kan-card {
   background: var(--sup-0);
   border: 1px solid var(--border-color);
@@ -2140,7 +2140,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   margin-top: 4px;
 }
 
-/* Tag tipo de contrato */
+
 .func-contrato-tag {
   display: inline-block;
   font-size: 10px;
@@ -2153,7 +2153,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   white-space: nowrap;
 }
 
-/* Foto circular na ficha */
+
 .func-ficha-topo {
   display: flex;
   gap: 0;
@@ -2205,11 +2205,11 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   align-content: flex-start;
 }
 
-/* Smart buttons de alerta */
+
 .sb-btn.func-sb-alerta { border-color: var(--marca-laranja); }
 .sb-btn.func-sb-alerta .sb-num { color: var(--aviso-txt); }
 
-/* Tabela de documentos */
+
 .func-docs-table { width:100%; border-collapse:collapse; font-size:13px; }
 .func-docs-table th {
   text-align: left;
@@ -2241,7 +2241,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
 }
 
 
-/* ========== RDO Boletim por Estaca (Estaca Raiz) ========== */
+
 .rdo-boletim-row > td.rdo-boletim-cell {
   padding: 0;
   border-bottom: 2px solid var(--marca-600);
@@ -2271,7 +2271,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   padding-top: 8px;
   border-top: 1px solid var(--borda-forte);
 }
-/* fase 101 (#99): camadas de solo, ferramenta e injeção visíveis na linha da estaca, sem expandir o boletim */
+
 .rdo-camadas-resumo > td {
   padding: 2px var(--esp-2) var(--esp-1) var(--esp-4);
   font-size: var(--txt-xs);
@@ -2292,9 +2292,9 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
 }
 .rdo-raiz-totais strong { color: var(--txt); }
 
-/* ========== Fase 21 — Contratos de fornecedores ========== */
 
-/* Texto de ajuda dentro de uma aba/ficha */
+
+
 .ajuda-campo {
   font-size: 12px;
   color: var(--txt-fraco);
@@ -2306,7 +2306,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   line-height: 1.5;
 }
 
-/* Subtítulo de bloco dentro de uma aba */
+
 .sub-titulo {
   font-size: 12px;
   font-weight: 700;
@@ -2318,7 +2318,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   border-top: 1px solid var(--border-color);
 }
 
-/* Badge numérico no botão de aba do notebook */
+
 .aba-badge:empty { display: none; }
 .aba-badge {
   display: inline-block;
@@ -2336,7 +2336,7 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
 }
 .aba-badge.alerta { background: var(--perigo); }
 
-/* Faixa de alerta de vencimento no painel de contratos */
+
 .con-alerta {
   display: flex;
   align-items: flex-start;
@@ -2368,10 +2368,10 @@ a.link-cod { font-family: var(--font-mono); font-variant-numeric: tabular-nums; 
   cursor: pointer;
 }
 
-/* Linha da lista de contratos: destaque de vencimento */
+
 tr.con-vencendo td { background: var(--aviso-bg); }
 tr.con-vencido td  { background: var(--perigo-bg); }
-/* Fase 93c: linha da equipe do RDO já liberada para a folha (travada, 🔒) e grupos em "Horas e alocação" */
+
 tr.eq-liberada td  { background: var(--sucesso-bg); }
 tr.rhh-grupo td    { background: var(--sup-3); border-top: 2px solid var(--borda-forte); }
 tr.rhh-liberada td { color: var(--txt-sec); }
@@ -2387,25 +2387,25 @@ tr.rhh-liberada td { color: var(--txt-sec); }
 }
 .con-dias-tag.critico { background: var(--perigo-bg); color: var(--perigo-txt); border-color: var(--perigo); }
 
-/* ====================================================================
-   PADRÕES QUE ANTES ERAM ESTILO INLINE
 
-   Cada classe abaixo substitui um style="..." que se repetia no HTML.
-   Ao criar tela nova, use estas em vez de escrever estilo na marcação —
-   é o que permite mudar a aparência do sistema inteiro num lugar só.
-   ==================================================================== */
 
-/* Ação destrutiva no header da ficha (Excluir) */
+
+
+
+
+
+
+
 .acao-perigo { color: var(--perigo-txt); }
 
-/* Nome do registro aberto, à direita do header da ficha */
+
 .ficha-titulo {
   font-size: var(--txt-lg);
   font-weight: 700;
   color: var(--marca-txt);
 }
 
-/* Linha explicativa sob um título de bloco */
+
 .texto-apoio {
   font-size: var(--txt-md);
   color: var(--txt-sec);
@@ -2417,8 +2417,8 @@ tr.rhh-liberada td { color: var(--txt-sec); }
   margin-bottom: var(--esp-2);
 }
 
-/* Fundo escurecido dos diálogos. O display fica inline porque é estado
-   alternado pelo JS (none <-> flex), não aparência. */
+
+
 .modal-fundo {
   position: fixed;
   inset: 0;
@@ -2428,17 +2428,17 @@ tr.rhh-liberada td { color: var(--txt-sec); }
   justify-content: center;
 }
 
-/* Botão de confirmação positiva (concluir, aprovar) */
+
 .btn.btn-sucesso { background: var(--sucesso); }
 .btn.btn-sucesso:hover { background: var(--sucesso-txt); }
 
-/* ---- Variantes compactas: mesmos componentes, dentro de abas e diálogos ---- */
+
 .card.compacto      { padding: var(--esp-3); }
 .lista-topo.compacta{ margin-bottom: var(--esp-2); }
 .form-acoes.compacta{ margin-top: var(--esp-3); }
 
-/* Legenda curta sob um campo ou bloco. Usa --txt-fraco (e não
-   --txt-sutil) porque carrega informação que precisa ser lida. */
+
+
 .nota {
   font-size: var(--txt-xs);
   color: var(--txt-fraco);
@@ -2446,58 +2446,58 @@ tr.rhh-liberada td { color: var(--txt-sec); }
   margin: var(--esp-2) 0 0;
 }
 
-/* ---- Texto auxiliar em listas e cartões ---- */
 
-/* Linha pequena de apoio dentro de um card ou célula (categoria,
-   documento, data secundária). Era font-size:11px;color:... repetido
-   ~20 vezes nos módulos. */
+
+
+
+
 .meta {
   font-size: var(--txt-xs);
   color: var(--txt-fraco);
 }
 .meta.bloco { display: block; }
 
-/* Texto/ação em vermelho fora de botão */
+
 .txt-perigo { color: var(--perigo-txt); }
-/* Fase 98: texto de atenção (prazo perto, imóvel a identificar) */
+
 .txt-aviso { color: var(--aviso-txt); }
 
-/* Coluna de kanban sem cartões */
+
 .kan-vazio {
   padding: var(--esp-2);
   font-size: var(--txt-xs);
   color: var(--txt-sutil);
 }
 
-/* Larguras fixas de coluna em tabelas de lançamento (RDO, estacas).
-   Existem porque a tabela é de digitação: a coluna não pode dançar
-   conforme o conteúdo. */
+
+
+
 .col-xs { width: 80px; }
 .col-sm { width: 90px; }
 .col-md { width: 100px; }
 .col-lg { width: 155px; }
 .col-xl { width: 160px; }
 
-/* ====================================================================
-   ACABAMENTO
 
-   O sistema acumulava traços concorrentes: o cartão tinha borda E
-   sombra, e a tabela dentro dele tinha a própria borda — três molduras
-   aninhadas para delimitar a mesma coisa. Aqui fica uma só por nível,
-   e a separação passa a vir do espaço.
-   ==================================================================== */
 
-/* Tabela dentro de cartão ou de aba não precisa de moldura própria —
-   o contêiner já delimita. Descendente, e não filho direto: o conteúdo
-   costuma vir embrulhado num #*-conteudo. */
+
+
+
+
+
+
+
+
+
+
 .card .tabela-rola,
 .odoo-tab .tabela-rola {
   border: none;
   border-radius: 0;
 }
 
-/* Cabeçalho de tabela: a distinção vem do peso do texto e de um traço
-   mais firme embaixo, não de uma faixa cinza. */
+
+
 th {
   background-color: transparent;
   border-bottom: 1px solid var(--borda-forte);
@@ -2505,22 +2505,22 @@ th {
   padding-bottom: var(--esp-2);
 }
 
-/* Campos de formulário com mais respiro entre si */
+
 .grade {
   gap: var(--esp-5);
 }
 
-/* ====================================================================
-   ACABAMENTO DA FICHA (padrão Odoo)
 
-   Dois problemas: (1) header de ações, statusbar, chips de contexto,
-   smart-buttons e notebook tinham cada um a sua linha divisória — cinco
-   traços empilhados em pouco mais de 200px; (2) os paddings (10/14/18px)
-   não seguiam escala nenhuma, então nada alinhava verticalmente.
 
-   Aqui as faixas passam a se distinguir pelo fundo e pelo espaço, com
-   linha só onde a separação é estrutural. Paddings vão para a escala.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
 
 .odoo-actions-header {
   gap: var(--esp-2);
@@ -2529,25 +2529,25 @@ th {
 .odoo-actions-header .actions-left,
 .odoo-actions-header .actions-right { gap: var(--esp-2); }
 
-/* Statusbar encosta no header sem linha entre os dois: o degrau de
-   fundo (cinza -> branco) já separa. */
+
+
 .odoo-statusbar {
   border-bottom: none;
 }
 .odoo-statusbar .stage {
   padding: var(--esp-3) var(--esp-5);
-  color: var(--txt-fraco);   /* era --txt-sutil: 2,4:1, ilegível */
+  color: var(--txt-fraco);
 }
 
-/* Chips de contexto: sem linha embaixo, o notebook logo abaixo já traz
-   a sua. Ganham respiro no lugar. */
+
+
 .odoo-contexto {
   gap: var(--esp-5);
   padding: var(--esp-4) var(--esp-4) var(--esp-5);
   border-bottom: none;
 }
 .odoo-contexto .chip span {
-  color: var(--txt-fraco);   /* rótulo do chip precisa ser legível */
+  color: var(--txt-fraco);
 }
 
 .odoo-smart-buttons {
@@ -2566,8 +2566,8 @@ th {
 .odoo-tab { padding: var(--esp-5) 0; }
 .odoo-sheet > .odoo-body { padding: 0 var(--esp-4) var(--esp-5); }
 
-/* Rótulos e metadados que estavam em --txt-sutil (2,4:1) e carregam
-   informação que o usuário precisa ler */
+
+
 .dash-card-rot,
 .dash-card-sub,
 .tl-data,
@@ -2577,20 +2577,20 @@ th {
   color: var(--txt-fraco);
 }
 
-/* ====================================================================
-   BARRAS DE ROLAGEM
 
-   Os contêineres que rolam na horizontal (notebook de abas, tabelas
-   largas, statusbar, kanban) mostravam a barra nativa do sistema —
-   grossa, cinza e permanente, roubando a atenção logo abaixo das abas.
-   Aqui ela fica fina e discreta, ganhando contraste ao passar o mouse.
-   ==================================================================== */
+
+
+
+
+
+
+
 .odoo-notebook,
 .odoo-statusbar,
 .tabela-rola,
 .serv-kanban,
 .odoo-smart-buttons {
-  scrollbar-width: thin;                          /* Firefox */
+  scrollbar-width: thin;
   scrollbar-color: var(--borda-forte) transparent;
 }
 .odoo-notebook::-webkit-scrollbar,
@@ -2624,21 +2624,21 @@ th {
   background: var(--borda-forte);
 }
 
-/* A seta da etapa atual é 1px mais alta que a faixa e provocava uma
-   barra de rolagem vertical parasita na statusbar. */
+
+
 .odoo-statusbar {
   overflow-y: hidden;
 }
 
-/* ====================================================================
-   CAMPOS DENTRO DE TABELA
 
-   As telas de lançamento (RDO, estacas, importação) montam a tabela em
-   JS e os campos herdavam só o `input` base — sem padding (o reset zera)
-   e com fonte de formulário, maior que a da tabela em volta. O editor de
-   itens do orçamento já tinha o tratamento certo em `.itens-tabela`;
-   aqui ele passa a valer para qualquer tabela.
-   ==================================================================== */
+
+
+
+
+
+
+
+
 table input:not([type="checkbox"]):not([type="radio"]),
 table select,
 table textarea {
@@ -2649,8 +2649,8 @@ table textarea {
   font-size: var(--txt-md);
   background-color: var(--sup-0);
 }
-/* Repete os :not() do seletor acima de propósito: sem eles esta regra
-   fica menos específica que a base e o foco não pinta a borda. */
+
+
 table input:not([type="checkbox"]):not([type="radio"]):focus,
 table select:focus,
 table textarea:focus {
@@ -2659,19 +2659,19 @@ table textarea:focus {
   box-shadow: 0 0 0 2px var(--marca-100);
 }
 
-/* Célula que hospeda um campo não precisa do respiro de célula de
-   leitura — o campo já traz o seu. Mantém a linha mais baixa, que é o
-   que importa numa tela de digitação. */
+
+
+
 table td:has(> input),
 table td:has(> select),
 table td:has(> textarea) {
   padding: var(--esp-1) var(--esp-2);
 }
 
-/* Piso dos campos em tabela: o width: 100% acima vence .col-* e deixa a tabela
-   encolher o campo até cortar o que está escrito. Sem caber, a tabela rola para
-   o lado. :where() zera a especificidade: a ordem decide aqui, e qualquer classe
-   de módulo manda. Campo com largura própria no style fica como está. */
+
+
+
+
 :where(table) :where(input[type="text"], input:not([type]), select, textarea):where(:not([style*="width"])) { min-width: 130px; }
 :where(table) :where(input.col-xs, select.col-xs) { min-width: 80px; }
 :where(table) :where(input.col-sm, select.col-sm) { min-width: 110px; }
@@ -2679,11 +2679,11 @@ table td:has(> textarea) {
 :where(table) :where(input.col-lg, select.col-lg, input.col-xl, select.col-xl) { min-width: 175px; }
 :where(table) :where(input[type="number"], input[type="time"]):where(:not([style*="width"])) { min-width: 96px; }
 
-/* Campos de texto que precisam de mais que o piso. */
+
 .it-cat-wrap { min-width: 210px; }
 .it-desc { min-width: 260px; }
 .it-obs { min-width: 180px; }
-/* nota interna do catálogo na linha do item do orçamento: dica de quem orça, não sai na proposta */
+
 .it-nota { margin-top: var(--esp-1); font-size: var(--txt-xs); color: var(--txt-sec); max-width: 320px; white-space: normal; line-height: 1.35; }
 .it-nota[hidden] { display: none; }
 .it-un { min-width: 80px; }
@@ -2693,12 +2693,12 @@ table td:has(> textarea) {
 .prev-input[data-field="numero"] { min-width: 110px; }
 .man-a-f[data-c="atividade"] { min-width: 240px; }
 
-/* Itens da medição: o Ø da descrição e a quantidade com 6 casas. */
+
 .mi-desc { min-width: 360px; }
 .mi-qty { min-width: 110px; }
 .mi-unit { min-width: 100px; }
 
-/* ---- Caixa interna dos diálogos (o fundo é .modal-fundo) ---- */
+
 .modal-caixa {
   background: var(--sup-0);
   max-width: 680px;
@@ -2710,9 +2710,9 @@ table td:has(> textarea) {
   flex-direction: column;
   overflow-y: auto;
 }
-.modal-caixa > .tabela-rola { flex-shrink: 0; }   /* lote S50 (achado da 108b): em tela baixa a tabela do "Receber NF" encolhia a ~2 px; a caixa rola */
+.modal-caixa > .tabela-rola { flex-shrink: 0; }
 
-/* ---- Bloco de assinatura eletrônica (D4Sign) na ficha ---- */
+
 .assin-bloco {
   display: flex;
   flex-wrap: wrap;
@@ -2731,7 +2731,7 @@ table td:has(> textarea) {
   align-items: center;
 }
 
-/* ---- Carteira: controle de contratos & pendências ---- */
+
 .cart-cliente {
   max-width: 200px;
   overflow: hidden;
@@ -2758,13 +2758,13 @@ tr.cart-aberta td { background: var(--info-bg); }
 }
 .cart-det-linha:last-child { border-bottom: none; }
 
-/* KPI clicável da carteira: leva direto à fila filtrada */
+
 .ind-click { cursor: pointer; }
 .ind-click:hover { border-color: var(--marca-600); box-shadow: var(--shadow-sm); }
-.ind-click.ativo { border-color: var(--marca-600); box-shadow: inset 0 -3px 0 var(--marca-600); }   /* lote S46 (#95): cartão com filtro em uso */
+.ind-click.ativo { border-color: var(--marca-600); box-shadow: inset 0 -3px 0 var(--marca-600); }
 
-/* Nº do contrato no sistema do cliente: trunca para a coluna
-   Pendências caber na tela */
+
+
 .cart-numcli {
   max-width: 130px;
   overflow: hidden;
@@ -2772,7 +2772,7 @@ tr.cart-aberta td { background: var(--info-bg); }
   white-space: nowrap;
 }
 
-/* ---- Caixa de novo comentário na timeline da obra (fase 23) ---- */
+
 .tl-nova-caixa {
   display: flex;
   flex-wrap: wrap;
@@ -2801,7 +2801,7 @@ tr.cart-aberta td { background: var(--info-bg); }
 }
 
 
-/* Link "Esqueci minha senha" na tela de login */
+
 .link-esqueci {
   display: block;
   margin: var(--esp-3) auto 0;
@@ -2814,7 +2814,7 @@ tr.cart-aberta td { background: var(--info-bg); }
 .link-esqueci:hover { color: var(--acao-txt); }
 .link-esqueci:disabled { color: var(--txt-sutil); cursor: default; text-decoration: none; }
 
-/* ---- Estacas: validação de distância na planta (fase 25) ---- */
+
 .dist-aviso {
   font-size: var(--txt-sm);
   padding: var(--esp-2) var(--esp-3);
@@ -2825,21 +2825,21 @@ tr.cart-aberta td { background: var(--info-bg); }
 .dist-aviso.ok      { background: var(--sucesso-bg); color: var(--sucesso-txt); }
 .dist-aviso.alerta  { background: var(--aviso-bg);   color: var(--aviso-txt); }
 .dist-aviso.neutro  { background: var(--sup-2);      color: var(--txt-fraco); }
-.dist-aviso.perigo  { background: var(--perigo-bg);  color: var(--perigo-txt); }   /* fase 105b: rejeição da NF-e, produção */
+.dist-aviso.perigo  { background: var(--perigo-bg);  color: var(--perigo-txt); }
 .dist-aviso ul { margin: var(--esp-1) 0 0; padding-left: 18px; }
 .dist-aviso li { margin-bottom: 2px; }
-/* pendência que abre a medição (lote S39, #26): o fundo da caixa já é --sup-2, então o hover sublinha */
+
 .dist-aviso li.linha-clicavel { cursor: pointer; border-radius: var(--radius-sm); }
 .dist-aviso li.linha-clicavel:hover { background: var(--sup-3); text-decoration: underline; }
 .dist-aviso .meta { display: block; margin-top: 2px; }
 
-/* ====================================================================
-   ACESSIBILIDADE GLOBAL (Onda 3 — 01/09/2026)
-   Foco de teclado visível em TUDO que é clicável, na cor da marca;
-   estado desabilitado padronizado. Antes: foco só em inputs (e num azul
-   que não era de paleta nenhuma), botões/abas/statusbar/linhas invisíveis
-   para quem navega por Tab.
-   ==================================================================== */
+
+
+
+
+
+
+
 :focus-visible {
   outline: 2px solid var(--marca-600);
   outline-offset: 2px;
@@ -2856,7 +2856,7 @@ tr.cart-aberta td { background: var(--info-bg); }
 }
 tr.linha-clicavel:focus-visible { outline-offset: -2px; }
 #est-planta-svg .estaca-circ:focus-visible { outline: none; stroke: var(--marca-600) !important; stroke-width: 3 !important; }
-/* mouse não precisa do anel */
+
 :focus:not(:focus-visible) { outline: none; }
 
 .btn-sec:disabled, .btn-sec[disabled],
@@ -2866,23 +2866,23 @@ input:disabled, select:disabled, textarea:disabled {
   background: var(--sup-3);
 }
 
-/* ---- Onda 5: estado vazio de KPI e botão de aviso (sem estilo inline) ---- */
+
 .dash-card-num.dash-num-vazio { color: var(--txt-fraco); font-weight: 600; }
 .btn.btn-aviso { background: var(--aviso); border-color: var(--aviso); color: var(--txt-sobre-aviso); }
 .btn.btn-aviso:hover { filter: brightness(0.95); }
 
-/* ---- Onda 6: utilitárias extraídas dos inlines mais repetidos ---- */
-.serv-filtros > :first-child { grid-column: span 2; }          /* a busca é mais larga */
+
+.serv-filtros > :first-child { grid-column: span 2; }
 .modal-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .bloco-preview { margin-top: 18px; border-top: 1px solid var(--borda); padding-top: 14px; }
-/* cabeçalho fixo nas tabelas com rolagem (RDO com 16 colunas, listas longas) */
+
 .tabela-rola { position: relative; }
 .tabela-rola thead th { position: sticky; top: 0; z-index: 1; background: var(--sup-3); }
-/* lote S63-f (#283): horímetro semanal rola dentro da caixa; o cabeçalho gruda e o Salvar, logo acima, fica sempre à vista */
+
 .eqp-sem-rola { max-height: calc(100vh - 260px); min-height: 240px; overflow-y: auto; }
 #eqp-sem-filtros { position: sticky; top: 0; z-index: 2; background: var(--bg-card); }
 
-/* ---- Orçamentos: tipo de obra (segmentado) + filtro do catálogo (fase 31) ---- */
+
 .orc-filtro-cat { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:var(--txt-sm); background:var(--marca-50); border:1px solid var(--marca-100); border-radius: var(--radius-sm); padding:6px 10px; margin-bottom:10px; }
 .orc-filtro-dica { color:var(--txt-fraco); font-style:italic; font-size:var(--txt-xs); }
 .it-cat-wrap { display:flex; gap:4px; align-items:center; }
@@ -2890,7 +2890,7 @@ input:disabled, select:disabled, textarea:disabled {
 .it-cat-all { border:1px solid var(--sup-3); background:var(--sup-1); color:var(--txt-sec); border-radius: var(--radius-sm); padding:2px 7px; cursor:pointer; font-size:var(--txt-sm); line-height:1.4; }
 .it-cat-all.ativo { background:color-mix(in srgb, var(--aviso) 18%, transparent); border-color:var(--aviso); color:var(--txt); }
 
-/* ---- Planta de estacas em escala real: malha, eixos, blocos, cotas, escala ---- */
+
 #est-planta-svg .planta-grid { stroke: var(--sup-3); stroke-width: 0.6; }
 #est-planta-svg .planta-grid.forte { stroke: var(--planta-grid); stroke-width: 0.9; }
 #est-planta-svg .planta-eixo { font-size: 7px; fill: var(--txt-fraco); pointer-events: none; }
@@ -2905,7 +2905,7 @@ input:disabled, select:disabled, textarea:disabled {
 #est-planta-svg .planta-hud-txt { font-size: 8px; fill: var(--txt-sec); pointer-events: none; }
 #est-planta-svg .estaca-label.fora { dominant-baseline: auto; fill: var(--txt); }
 
-/* ---- RDO: conferência do diário lido por IA ---- */
+
 .ia-conf-topo { background: var(--marca-50); border-left: 3px solid var(--marca-600); padding: 10px 14px; margin: 10px 0; font-size: var(--txt-sm); display: flex; flex-direction: column; gap: 6px; }
 .ia-duvidas { background: color-mix(in srgb, var(--aviso) 15%, transparent); border-radius: var(--radius-sm); padding: 6px 10px; font-size: var(--txt-xs); }
 .ia-dia { border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; }
@@ -2914,8 +2914,8 @@ input:disabled, select:disabled, textarea:disabled {
 .ia-tabela input, .ia-tabela select { font-size: var(--txt-xs); padding: 3px 5px; min-width: 0; }
 .ia-tabela input[type="time"] { width: 86px; }
 .ia-tabela td { padding: 3px 4px; }
-/* Conferência antes de gravar: o min-width: 0 acima deixava nome e funcionário com
-   32 e 81 px. O que precisa ser lido ganha piso; sem caber, a tabela rola para o lado. */
+
+
 .ia-tabela:where(:not(.med-imp-tabela)) select:where(:not([style*="width"])) { min-width: 110px; }
 .ia-tabela input[data-c="estaca_numero"] { min-width: 96px; }
 .ia-tabela input[data-e="nome"] { min-width: 220px; }
@@ -2924,7 +2924,7 @@ input:disabled, select:disabled, textarea:disabled {
 .ia-equipe { margin-top: 8px; }
 .ia-equipe summary { cursor: pointer; font-size: var(--txt-sm); color: var(--txt-sec); }
 
-/* ---- Planta: regra de distância por diâmetro (editável por obra) ---- */
+
 .regra-dist { font-size: var(--txt-sm); margin: 4px 0 8px; }
 .regra-dist summary { cursor: pointer; color: var(--txt-sec); }
 .regra-dist summary .meta { margin-left: 6px; }
@@ -2934,30 +2934,30 @@ input:disabled, select:disabled, textarea:disabled {
 .regra-dist-form input { width: 80px; }
 .regra-dist-form > .meta { flex-basis: 100%; }
 
-/* ---- Planta: cota âmbar = abaixo da distância de execução (cura); vermelha = fere a locação ---- */
+
 #est-planta-svg .planta-cota.atencao { stroke: var(--aviso); stroke-width: 1.2; stroke-dasharray: 3 2; }
 #est-planta-svg .planta-cota-txt.atencao { fill: var(--aviso-txt); font-weight: 600; }
 .dist-aviso.atencao { background: var(--aviso-bg); border-left: 3px solid var(--aviso); color: var(--aviso-txt); }
 
-/* ---- Estacas: acompanhamento raiz (RG 11.1) ---- */
+
 .raiz-resumo { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: var(--txt-sm); color: var(--txt-sec); padding: 8px 0 10px; }
 .raiz-tabela { font-size: var(--txt-xs); border-collapse: collapse; white-space: nowrap; }
 .raiz-tabela th, .raiz-tabela td { padding: 4px 6px; border-bottom: 1px solid var(--sup-3); }
-.raiz-tabela thead { position: sticky; top: 0; z-index: 1; }   /* fase 154: as duas linhas do cabeçalho grudam juntas */
+.raiz-tabela thead { position: sticky; top: 0; z-index: 1; }
 .raiz-tabela thead th { background: var(--sup-3); }
 .raiz-tabela .raiz-cab-grupo th { text-align: center; letter-spacing: .3px; }
-/* fase 154: grupos da planilha da engenharia (projeto, execução, injeção, outros) */
+
 .raiz-tabela thead th.raiz-g-proj   { background: var(--marca-100); color: var(--marca-txt); }
 .raiz-tabela thead th.raiz-g-exec   { background: var(--marca-50);  color: var(--marca-txt); }
 .raiz-tabela thead th.raiz-g-inj    { background: var(--lilas-bg);  color: var(--lilas-txt); }
 .raiz-tabela thead th.raiz-g-outros { background: var(--sucesso-bg); color: var(--sucesso-txt); }
 .raiz-tabela .raiz-ini { border-left: 2px solid var(--sup-3); }
 .raiz-tabela .raiz-sem-local { background: var(--aviso-bg); color: var(--aviso-txt); border-radius: var(--radius-sm); padding: 0 6px; font-weight: 600; }
-.raiz-tabela tr.ok td:nth-child(3) { color: var(--sucesso-txt); }   /* fase 154: a estaca é a 3ª coluna */
+.raiz-tabela tr.ok td:nth-child(3) { color: var(--sucesso-txt); }
 .raiz-tabela tr.perigo td:nth-child(3) { color: var(--perigo-txt); }
 .raiz-tabela tfoot td { background: var(--sup-2); }
 
-/* ---- Fase 184a: vista Trechos (ert-) e conferência da raiz pelo histórico (crz-) ---- */
+
 .ert-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--esp-3); align-items: start; }
 .ert-resumo { max-height: 70vh; overflow-y: auto; }
 .ert-periodo { display: inline-flex; align-items: center; gap: 4px; font-size: var(--txt-sm); color: var(--txt-sec); }
@@ -2986,7 +2986,7 @@ input:disabled, select:disabled, textarea:disabled {
 .crz-tabela tr.crz-alerta-etapa td { background: var(--aviso-bg); }
 .crz-tabela tr.crz-alerta-duplicidade td { background: var(--sup-2); box-shadow: inset 0 -1px 0 var(--marca-laranja); }
 .crz-tabela tr.crz-alerta-vinculo td { background: var(--perigo-bg); }
-/* ---- Fase 184b: corrigir e descartar execução fora do RDO (exc-) ---- */
+
 .exc-caixa { background: var(--sup-0); max-width: 720px; width: 94%; max-height: 90vh; overflow-y: auto; border-radius: 8px; padding: 20px; }
 .exc-caixa-p { max-width: 520px; }
 .exc-trechos { width: 100%; margin: var(--esp-2) 0; }
@@ -3004,7 +3004,7 @@ input:disabled, select:disabled, textarea:disabled {
 .crz-menu > summary::-webkit-details-marker { display: none; }
 .crz-menu[open] > button { position: absolute; right: 0; top: 100%; z-index: 2; white-space: nowrap; }
 
-/* ---- Mobilizações: quadro (fase 34) ---- */
+
 .mob-quadro { display: flex; gap: 12px; overflow-x: auto; align-items: flex-start; padding: 4px 0 10px; }
 .mob-col { flex: 0 0 290px; width: 290px; background: var(--sup-2); border-radius: var(--radius-md); padding: 8px; max-height: 70vh; overflow-y: auto; }
 .mob-col.colapsada { flex-basis: 170px; width: 170px; max-height: none; }
@@ -3017,13 +3017,13 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-card:hover, .mob-card:focus-visible { box-shadow: 0 2px 8px color-mix(in srgb, var(--txt) 15%, transparent); }
 .mob-card-titulo { font-weight: 600; line-height: 1.3; margin-bottom: 6px; }
 .mob-card-chips, .mob-drawer-sub { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; align-items: center; }
-/* fase 141: chips de motivo (chipsMotivo, core.js) */
+
 .chips-motivo { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-motivo { min-height: 36px; padding: 6px 12px; border: 1px solid var(--borda); border-radius: var(--radius-pill); background: var(--sup-1); color: var(--txt-sec); font: inherit; font-size: var(--txt-sm); cursor: pointer; }
 .chip-motivo:hover { border-color: var(--marca-600); color: var(--txt); }
 .chip-motivo[aria-checked="true"] { background: var(--marca-900); border-color: var(--marca-900); color: var(--txt-sobre); font-weight: 600; }
 .chip-motivo:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
-/* fase 141: barra metros ÷ mediana da peça instalada */
+
 .ace-vida-barra { display: flex; align-items: center; gap: 8px; min-width: 140px; }
 .ace-vida-barra > .trilha { flex: 1; height: 8px; border-radius: 4px; background: var(--borda); overflow: hidden; }
 .ace-vida-barra > .trilha > div { height: 100%; background: var(--marca-600); }
@@ -3034,13 +3034,13 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-chip.st { background: var(--marca-50); border-color: var(--marca-100); color: var(--acao-txt); }
 .mob-chip.ok { background: var(--sucesso-bg); color: var(--sucesso-txt); border-color: transparent; }
 .mob-chip.perigo { background: var(--perigo-bg); color: var(--perigo-txt); border-color: transparent; }
-.mob-chip.aviso { background: var(--aviso-bg); color: var(--aviso-txt); border-color: transparent; }   /* fase 157c: sem receita / sem custo */
+.mob-chip.aviso { background: var(--aviso-bg); color: var(--aviso-txt); border-color: transparent; }
 .mob-card-rodape { display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--txt-xs); color: var(--txt-sec); }
 .mob-badge { border-radius: var(--radius-pill); padding: 1px 8px; font-size: var(--txt-xs); font-weight: 600; }
 .mob-badge.ok { background: var(--sucesso-bg); color: var(--sucesso-txt); }
 .mob-badge.aviso { background: var(--aviso-bg); color: var(--aviso-txt); }
 .mob-badge.perigo { background: var(--perigo-bg); color: var(--perigo-txt); }
-/* drawer */
+
 .mob-drawer { background: var(--sup-0); width: min(960px, 96vw); max-height: 92vh; overflow-y: auto; border-radius: var(--radius-md); padding: 18px 22px; }
 .mob-drawer-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
 .mob-drawer-titulo { font-size: var(--txt-md); font-weight: 700; }
@@ -3048,7 +3048,7 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-sec { border-top: 1px solid var(--borda); padding: 12px 0; }
 .mob-sec h4 { margin: 0 0 8px; font-size: var(--txt-sm); text-transform: uppercase; letter-spacing: .3px; color: var(--txt-sec); }
 .mob-est-tabela input { font-size: var(--txt-xs); padding: 3px 5px; }
-/* pendências */
+
 .mob-pend-setor { margin-bottom: 10px; }
 .mob-pend-setor-titulo { font-weight: 600; font-size: var(--txt-sm); margin-bottom: 4px; }
 .mob-pend { display: grid; grid-template-columns: auto 1fr 170px 130px 1fr; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--borda); border-radius: var(--radius-sm); margin-bottom: 4px; font-size: var(--txt-sm); background: var(--sup-0); }
@@ -3059,7 +3059,7 @@ input:disabled, select:disabled, textarea:disabled {
 .mob-pend-lista .mob-pend { grid-template-columns: auto 1fr auto; cursor: pointer; }
 .mob-pend-meta { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .mob-pend-topo { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: var(--txt-sm); padding: 6px 0 10px; }
-/* fase 157d: quadro por contrato, ficha com abas e equipe */
+
 .mob-ctr-topo { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
 .mob-ctr-maqs { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
 .mob-ctr-maq { border-top: 1px dashed var(--borda); padding-top: 6px; }
@@ -3087,16 +3087,16 @@ tr.mob-linha-click:hover td, tr.mob-linha-click:focus-visible td { background: v
 }
 @media (max-width: 720px){ .mob-pend { grid-template-columns: auto 1fr; } .mob-pend-lista .mob-pend { grid-template-columns: auto 1fr; } .mob-pend-meta { justify-content: flex-start; } }
 
-/* ---- Funcionários: vista Logística ---- */
+
 .func-log-row { cursor: pointer; }
 .func-log-row:hover td { background: var(--marca-50); }
 
-/* Fase 40: linha do ISS abaixo do total dos itens do orçamento */
+
 .itens-total.orc-iss-linha { margin-top: 4px; font-size: var(--txt-sm); font-weight: 500; color: var(--txt-sec); }
 .itens-total.orc-iss-linha span { margin-left: 4px; font-weight: 700; }
 
 
-/* ---------- fase 42: import por IA (trechos de solo / equipe) ---------- */
+
 .ia-sub > td { background: var(--sup-2); padding: 2px 8px 6px 28px !important; border-bottom: 1px solid var(--borda-forte); }
 .ia-trechos summary { cursor: pointer; font-size: var(--txt-xs); color: var(--txt-sec); padding: 3px 0; }
 .ia-trechos-tbl { width: auto; margin-top: 4px; }
@@ -3104,10 +3104,10 @@ tr.mob-linha-click:hover td, tr.mob-linha-click:focus-visible td { background: v
 .ia-sem-cadastro td { background: color-mix(in srgb, var(--aviso) 12%, transparent); }
 .ia-funcao-cadastro { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------- fase 42: chamados ---------- */
+
 .header-direita { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
-/* fase 138: botão sol/lua do tema. O JS (aplicarTema) mostra o ícone do tema para o qual o botão leva. */
+
 .btn-tema { padding: 4px 8px !important; line-height: 0; }
 .btn-tema svg { width: 16px; height: 16px; }
 .btn-tema-login { position: absolute; top: 16px; right: 16px; z-index: 10; }
@@ -3128,10 +3128,10 @@ tr.mob-linha-click:hover td, tr.mob-linha-click:focus-visible td { background: v
 .cham-status-bar .stage[aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
 @media (max-width: 720px){ #btn-val-sens span { display: none; } }
 
-/* ---------- fase 48: anexos do chamado ---------- */
+
 .cham-anexo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
 .cham-anexo-novo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: var(--txt-xs); }
-/* Lote S47: bloco "Esperando: X · até dd/mm" com a pergunta e os botões de aprovar / reabrir / perguntar */
+
 .cham-espera { border-left: 3px solid var(--aviso); background: var(--aviso-bg); border-radius: 0 4px 4px 0; padding: 8px 12px; margin: 10px 0; font-size: var(--txt-sm); }
 .cham-espera.vencido { border-left-color: var(--perigo); background: var(--perigo-bg); }
 .cham-espera textarea { width: 100%; box-sizing: border-box; margin-top: 6px; }
@@ -3141,16 +3141,16 @@ tr.mob-linha-click:hover td, tr.mob-linha-click:focus-visible td { background: v
 .cham-perguntar summary { cursor: pointer; font-weight: 600; }
 .cham-perguntar .grade { margin-top: 8px; }
 .dash-fila-acoes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: var(--esp-1); }
-/* Lote S47 (#112): cabeçalho de tabela que ordena (ordenarTabela em core.js) */
+
 th.th-ordena { cursor: pointer; user-select: none; white-space: nowrap; }
 th.th-ordena:hover { color: var(--acao-txt); }
 th.th-ordena::after { content: "↕"; margin-left: 4px; color: var(--txt-sutil); font-size: var(--txt-xs); }
 th.th-ordena[aria-sort="ascending"]::after { content: "▲"; color: var(--acao-txt); }
 th.th-ordena[aria-sort="descending"]::after { content: "▼"; color: var(--acao-txt); }
-/* Lote S47 (#111): linha de grupo da concorrência na lista de orçamentos */
+
 tr.orc-grupo-conc td { background: var(--sup-3); font-weight: 600; color: var(--txt-sec); font-size: var(--txt-sm); }
 
-/* ---- Movimentações: acessórios na carga (fase 49) ---- */
+
 .autocomplete-lista .resultado-item.ja { opacity: .55; }
 .autocomplete-lista .resultado-item.mov-ace-jogo { background: var(--marca-50); }
 .mov-ace-sugestao { margin-top: 14px; border: 1px dashed var(--borda); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--sup-1); }
@@ -3163,33 +3163,33 @@ tr.orc-grupo-conc td { background: var(--sup-3); font-weight: 600; color: var(--
 .mov-ace-sug-item.ja { opacity: .5; cursor: default; }
 .mov-ace-sug-item .tag { font-size: 10px; padding: 0 6px; }
 
-/* ---- Equipamentos (fase 50) ---- */
+
 .eqp-card-rodape { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
 .eqp-diam-bloco { margin-bottom: 14px; }
 .eqp-diam-titulo { font-weight: 700; font-size: var(--txt-sm); margin: 6px 0; padding: 4px 8px; background: var(--sup-1); border-left: 3px solid var(--marca-600); border-radius: var(--radius-sm); }
 .eqp-diam-bloco table td, .eqp-diam-bloco table th { font-size: 12.5px; }
 
-/* ---- Estoque: reposição (fase 51) ---- */
+
 .est-rep-tabela tr.est-rep-critico td { background: var(--perigo-bg); }
 .est-rep-tabela td .btn-sm { min-width: 28px; }
 
-/* ---- Diálogos: nenhum pode passar da altura da tela (o corpo rola; cabeçalho/rodapé ficam alcançáveis).
-   Cobre as caixas montadas com estilo inline (frota, mobilização nova, acessórios) e a .modal-caixa. ---- */
+
+
 .modal-fundo > div:not(.mob-drawer):not(.cham-drawer) { max-height: 90vh; overflow-y: auto; box-sizing: border-box; }
 @media (max-height: 700px){ .modal-fundo > div:not(.mob-drawer):not(.cham-drawer) { max-height: 96vh; padding-top: 12px; padding-bottom: 12px; } }
 
-/* Diálogos: grade mais compacta (o .campo já tem margem própria; dentro de modal ela só alonga a caixa) */
+
 .modal-fundo .grade { gap: 10px 16px; }
 .modal-fundo .grade .campo { margin-bottom: 4px; }
 .modal-fundo .grade.grade-3 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 
-/* ---- Compras / custos (fase 53) ---- */
+
 .custos-resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 24px; margin: 6px 0 12px; }
 .custos-linha { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border-bottom: 1px dashed var(--borda); font-size: 13px; }
 .cmp-itens-tabela td, .cmp-itens-tabela th { font-size: 12.5px; }
 .cmp-itens-tabela select { max-width: 100%; }
 
-/* ---- Compras: importação de XML e casamento de produto na linha (fase 54) ---- */
+
 .cmp-rec-xml { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; padding: 8px 10px; border: 1px dashed var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-1); }
 .cmp-rec-xml.arrastando { border-color: var(--marca-600); background: var(--marca-50); }
 .cmp-ri-pick { position: relative; margin-top: 3px; }
@@ -3197,7 +3197,7 @@ tr.orc-grupo-conc td { background: var(--sup-3); font-weight: 600; color: var(--
 .cmp-ri-pick .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; background: var(--sup-0); }
 .cmp-ri-badge { font-size: 10.5px; padding: 0 6px; border-radius: var(--radius-pill); margin-left: 4px; }
 
-/* ---- Lote S43 (#53): fornecedor com busca (select escondido + campo de busca + chip com ×) ---- */
+
 .forn-campo { position: relative; }
 .forn-campo .autocomplete-lista { position: absolute; z-index: 20; left: 0; right: 0; background: var(--sup-0); }
 .forn-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 6px 4px 10px;
@@ -3206,7 +3206,7 @@ tr.orc-grupo-conc td { background: var(--sup-3); font-weight: 600; color: var(--
 .forn-chip-x { border: 0; background: transparent; cursor: pointer; color: var(--txt-sec); font-size: 15px; line-height: 1; padding: 0 2px; }
 .forn-chip-x:hover { color: var(--perigo-txt); }
 
-/* ---- Fase 131a: TAG com busca em Compras (select escondido + campo que abre a lista agrupada por tipo) ---- */
+
 .cmp-tag-campo { position: relative; }
 td .cmp-tag-campo { display: inline-block; vertical-align: middle; }
 .cmp-tag-campo .cmp-tag-busca { width: 100%; min-width: 0; text-overflow: ellipsis; }
@@ -3219,16 +3219,16 @@ td .cmp-tag-campo { display: inline-block; vertical-align: middle; }
 .cmp-tag-frota input { width: auto; min-height: 0; margin: 0; }
 .cmp-tag-mais { color: var(--acao-txt); }
 
-/* ---- Bens do contrato na ficha da obra (fase 80) ---- */
+
 .obr-bens-fam { margin: 2px 0; border-bottom: 1px solid var(--borda); }
 .obr-bens-fam summary { cursor: pointer; padding: 6px 0; }
 .obr-bens-fam .mov-ace-sug-lista { padding: 4px 0 8px 16px; }
 
-/* ---- Compras no balcão (fase 78): serviço sem evidência há mais de 7 dias ---- */
+
 tr.cmp-srv-atraso td { background: var(--aviso-bg); }
 .serv-kan-card.cmp-srv-atraso { border-left: 3px solid var(--aviso); }
 
-/* ---- Acessórios: fotos e valor (fase 55) ---- */
+
 .ace-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .ace-foto { border: 1px solid var(--borda); border-radius: var(--radius-md); overflow: hidden; background: var(--sup-1); }
 .ace-foto img { width: 100%; height: 130px; object-fit: cover; display: block; cursor: zoom-in; background: var(--sup-2); }
@@ -3237,7 +3237,7 @@ tr.cmp-srv-atraso td { background: var(--aviso-bg); }
 .ace-foto-rod .acoes { display: flex; gap: 4px; flex-wrap: wrap; }
 .ace-capa { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); vertical-align: middle; margin-right: 8px; border: 1px solid var(--borda); }
 
-/* ---- Usuário de revisão, cargo auditor (fase 79): só leitura. A RLS barra a gravação; aqui só some o botão ---- */
+
 .faixa-so-leitura { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 9998; pointer-events: none;
   padding: 2px 12px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); font-size: 11.5px; font-weight: 600;
   background: var(--aviso-bg); color: var(--aviso-txt); border: 1px solid var(--aviso); border-top: 0; }
@@ -3245,46 +3245,46 @@ body.so-leitura .btn[type=submit],
 body.so-leitura .btn-salvar,
 body.so-leitura .btn-novo,
 body.so-leitura .form-acoes .btn:not(#btn-copiar-uninfe),
-/* lote S43 (L5): ações de gravação do cabeçalho das fichas Odoo (Salvar, Aprovar, Receber, Iniciar, Concluir…) são
-   `type="button" class="btn"` fora de .form-acoes; os `.btn-sec` (PDF, Imprimir, Voltar) continuam. Botões "Salvar"
-   criados pelo JS (btn-exec-salvar, btn-regra-salvar, btn-rep-custo-salvar, btn-mob-kit-salvar, btn-aprop-params)
-   somem pelo id; a senha do próprio usuário (#btn-senha-salvar) fica. */
+
+
+
+
 body.so-leitura .odoo-actions-header .btn:not(.btn-sec),
 body.so-leitura [id$="-salvar"]:not(#btn-senha-salvar),
 body.so-leitura [id^="btn-salvar-"],
-/* lote S45 (L1): "🗑️ Excluir", "✗ Cancelar" e "✗ Refugar" das fichas (`btn-sec acao-perigo`), os 🗑️/× das linhas
-   (`button.txt-perigo`: documentos da obra, itens, estacas) e todo botão "+ Novo/Nova" das abas e painéis — o id
-   sempre tem "-nov" (btn-nova-obra, btn-medic-nova, btn-frota-novo-veic, btn-orc-nova-revisao…). Só <button>: os
-   inputs e divs com "nov" no id (senha-nova, cham-anexo-novo, fab-ct-novo) ficam. PDFs e Imprimir (`btn-sec`) continuam. */
+
+
+
+
 body.so-leitura .ficha-mais,
-body.so-leitura #btn-finalizar-rdo,   /* fase 161: no diário finalizado ele vira .btn-sec e escaparia da regra do botão principal */
+body.so-leitura #btn-finalizar-rdo,
 body.so-leitura #btn-registrar-entrada,
 body.so-leitura .acao-perigo,
 body.so-leitura button.txt-perigo,
 body.so-leitura button[id*="-nov"],
 body.so-leitura #btn-aprop-params { display: none !important; }
 
-/* ---- Lote S43 (L2): indicadores de Compras enquanto vw_compras_kpis não respondeu; visões travadas até a 1ª carga ---- */
+
 .ind.carregando .num { color: var(--txt-sutil); animation: ind-pulsa 1.2s ease-in-out infinite; }
 @keyframes ind-pulsa { 50% { opacity: .35; } }
 .serv-view-btn:disabled { opacity: .5; cursor: default; }
 
-/* ---- Fase 83: separações (item já separado fica verde; "casar" item livre com o catálogo) ---- */
+
 .sep-ok td { background: var(--sucesso-bg); }
 .sep-ok td:nth-child(2) { color: var(--txt-sec); }
 .sep-casar { margin: 4px 0 0; max-width: 340px; }
 .sep-casar input { font-size: var(--txt-xs); }
 
-/* ---- Fase 86: faixa "Nova versão publicada" no topo do viewport. A cor vem de .aviso.atencao; aqui só leiaute ---- */
+
 .faixa-versao.aviso { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--esp-3);
   flex-shrink: 0; margin: 0; border-radius: 0; padding: var(--esp-2) var(--esp-4); }
-/* ---- Fase 87: política de sessão. A faixa de inatividade reusa .faixa-versao; aqui só o login, o card e o MFA obrigatório ---- */
+
 .login-lembrar { display: flex; margin: -6px 0 14px; font-size: var(--txt-sm); color: var(--txt-sec); }
 .usr-sessao-cargos { display: flex; flex-wrap: wrap; gap: 0 var(--esp-4); }
 .usr-sessao-cargos .check-inline { padding: 4px 0; font-size: var(--txt-sm); }
-/* o modal de MFA já cobre a tela; menu e conteúdo ficam inertes também para o teclado */
+
 body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport main { pointer-events: none; opacity: .6; }
-/* ---- Fase 88: importar boletim de medição (PDF) — zona de arrastar, fila e tabela de conferência ---- */
+
 .med-imp-zona { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; padding: 10px 12px; border: 1px dashed var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-1); }
 .med-imp-zona.arrastando { border-color: var(--marca-600); background: var(--marca-50); }
 .med-imp-fila { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-size: var(--txt-xs); }
@@ -3303,8 +3303,8 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .med-imp-totais .ind .num small { display: block; font-size: var(--txt-xs); color: var(--txt-fraco); font-weight: 400; }
 .med-imp-dup { background: var(--perigo-bg); color: var(--perigo-txt); border-radius: var(--radius-sm); padding: 6px 10px; margin: 6px 0; font-size: var(--txt-xs); }
 
-/* ---- Lote S45 (L4): banner "MFA não configurado" para diretor/admin (core.js verificarMFAAdmin). Antes era estilo
-   inline com hex; agora tokens da paleta: fundo no vermelho escuro de texto, botões translúcidos sobre ele. ---- */
+
+
 .aviso-mfa { z-index: 9999; background: var(--perigo-txt); color: var(--txt-sobre); font-size: var(--txt-md);
   padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; box-shadow: var(--shadow-md); }
 .aviso-mfa-btn { background: color-mix(in srgb, var(--txt-sobre) 25%, transparent); border: 1px solid color-mix(in srgb, var(--txt-sobre) 50%, transparent);
@@ -3312,7 +3312,7 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .aviso-mfa-btn:hover { background: color-mix(in srgb, var(--txt-sobre) 35%, transparent); }
 .aviso-mfa-fechar { background: color-mix(in srgb, var(--txt-sobre) 15%, transparent); border: 0; padding: 4px 10px; font-weight: 400; }
 
-/* ---- Fase 97: Patrimônio (js/patrimonio.js). Tabela por grupo da planilha de avaliação, densidade de ERP. ---- */
+
 .pat-tabela td { vertical-align: top; }
 .pat-tabela td:first-child { white-space: nowrap; }
 .pat-tabela tr.pat-grupo td { background: var(--sup-3); border-top: 2px solid var(--borda-forte); }
@@ -3330,18 +3330,18 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .pat-mfa-linha input { width: 120px; letter-spacing: 3px; text-align: center; }
 .pat-log { list-style: none; margin: 0; padding: 0; font-size: var(--txt-sm); }
 .pat-log li { padding: 4px 0; border-bottom: 1px solid var(--borda); }
-/* fase 136: faixa do bem baixado (ficha só leitura), logo abaixo dos chips */
+
 .pat-ficha-baixado { margin: 0; padding: var(--esp-2) 18px; background: var(--aviso-bg); color: var(--aviso-txt); border-bottom: 1px solid var(--border-color); font-size: var(--txt-sm); }
 .pat-vida-sb { border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin-bottom: var(--esp-3); }
 
-/* ---- Fase 100: EPI por colaborador (js/epi.js). Quadro da assinatura na tela e o card EPI da Sala de Comando. ---- */
+
 .epi-ass-canvas { display: block; width: 100%; height: 180px; margin-top: var(--esp-2); border: 1px dashed var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-0); touch-action: none; cursor: crosshair; }
 .epi-rel tfoot td { background: var(--sup-2); border-top: 2px solid var(--borda-forte); }
 .dash-epi-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--esp-3); }
 .dash-epi-grade .dash-card-num { font-size: var(--txt-xl); }
 
-/* ---- Lote S59: ocultar valores. Barra de tamanho fixo, sem desfoque: o tamanho do número já diria a ordem de grandeza. Só na tela,
-   e nunca dentro da cópia que o html2pdf fotografa (.html2pdf__container): PDF sai com os valores. ---- */
+
+
 @media screen {
   body.valores-ocultos .val-sens:not(.html2pdf__container *) {
     display: inline-block; width: 5em; height: .8em; overflow: hidden; white-space: nowrap;
@@ -3349,8 +3349,8 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
   }
 }
 #btn-val-sens[aria-pressed="true"] { border-color: var(--marca-600); color: var(--acao-txt); }
-/* ---- Fase 139: Maquinas hoje na Sala de Comando (js/dashboard.js, prefixo dmh-). Grade de cards sobre .dash-cards;
-   .dmh-cheia e o estado do painel em requestFullscreen (so o painel aparece: cards e numeros maiores, refresh automatico). ---- */
+
+
 .dmh-painel { background: var(--sup-0); }
 .dmh-topo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2) var(--esp-3); margin-bottom: var(--esp-3); }
 .dmh-busca { flex: 1 1 180px; min-width: 140px; padding: 7px 10px; border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); font-size: var(--txt-sm); }
@@ -3372,7 +3372,7 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .dmh-rodape { margin-top: auto; padding-top: var(--esp-2); border-top: 1px solid var(--borda); font-size: var(--txt-xs); color: var(--txt-fraco); line-height: 1.5; }
 .dmh-aviso { color: var(--aviso-txt); font-weight: 700; }
 @media (max-width: 600px) { .dmh-grade { grid-template-columns: 1fr; } .dmh-retrato { margin-left: 0; } }
-/* tela cheia: o navegador mostra so o painel (menu e cabecalho ficam fora); aqui so o tamanho muda */
+
 .dmh-cheia { padding: var(--esp-5); overflow: auto; background: var(--sup-1); }
 .dmh-cheia .dmh-grade { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--esp-4); }
 .dmh-cheia .dmh-card { padding: var(--esp-4) var(--esp-5); gap: 6px; }
@@ -3385,7 +3385,7 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .geo-card-rodape { margin: var(--esp-2) 0 0; }
 @media (max-width: 600px) { .dmh-topo .serv-views { flex-wrap: wrap; } }
 
-/* ---- Fase 148: menu só com ícones, escolha guardada neste navegador. Abaixo de 992 px o menu já é gaveta ---- */
+
 #btn-menu-close { color: var(--menu-txt); font-size: 24px; line-height: 1; }
 .menu-recolher { display: none; color: var(--menu-txt); padding: var(--esp-1); border-radius: var(--radius-sm); line-height: 0; }
 .menu-recolher svg { width: 18px; height: 18px; transition: var(--transition-rapido); }
@@ -3398,7 +3398,7 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
   #tela-app.menu-recolhido .menu-recolher svg { transform: rotate(180deg); }
   #tela-app.menu-recolhido .sidebar-nav { padding: var(--esp-3) var(--esp-2); }
   #tela-app.menu-recolhido .sidebar-nav button { position: relative; justify-content: center; padding: 11px 0; }
-  /* o rótulo some da tela, não do leitor de tela */
+
   #tela-app.menu-recolhido .sidebar-nav button > span:first-of-type { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   #tela-app.menu-recolhido .sidebar-nav button > .conf-badge { position: absolute; top: 2px; right: 2px; margin: 0; }
   #tela-app.menu-recolhido .sidebar-footer { flex-direction: column; padding: var(--esp-3) 0; }
@@ -3406,17 +3406,17 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
   #tela-app.menu-recolhido .btn-logout span { display: none; }
 }
 
-/* e-mail comprido não dita a largura da tabela; o endereço inteiro fica no title */
+
 .td-email { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---- Fase 148: tela de notebook (até 1360 px). Menos folga na lateral, nunca menos linhas ---- */
+
 @media (max-width: 1360px) {
   th, td { padding-left: var(--esp-2); padding-right: var(--esp-2); }
   #app-viewport main { padding-left: var(--esp-4); padding-right: var(--esp-4); }
   #app-header { padding-left: var(--esp-4); padding-right: var(--esp-4); }
 }
 
-/* ---- Fase 148: o texto que explica a tela abre pelo "?" ao lado do título. Dica de formulário e de aba não entra aqui ---- */
+
 .texto-apoio.ajuda-tela { display: none; }
 .texto-apoio.ajuda-tela.aberta { display: block; }
 .ajuda-tela-btn {
@@ -3426,7 +3426,7 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .ajuda-tela-btn[hidden] { display: none; }
 .ajuda-tela-btn:hover, .ajuda-tela-btn[aria-expanded="true"] { border-color: var(--marca-600); color: var(--acao-txt); }
 
-/* ---- Fase 147: pular o menu pelo teclado, números alinhados e menos movimento para quem pede ---- */
+
 .pular-conteudo {
   position: fixed; top: var(--esp-2); left: var(--esp-2); z-index: 10000;
   padding: var(--esp-2) var(--esp-4); border-radius: var(--radius-sm);
@@ -3436,16 +3436,16 @@ body.mfa-obrigatorio .sidebar-nav button, body.mfa-obrigatorio #app-viewport mai
 .pular-conteudo:focus { transform: none; }
 #app-conteudo:focus { outline: none; }
 td.num, th.num, tfoot td, .ind .num, .dash-card-num, .dash-tabela .num, .sb-btn .sb-num { font-variant-numeric: tabular-nums; }
-/* fase 161: algarismos da mesma largura em toda tabela, chip e contador (número alinhado sem depender da classe .num) */
+
 table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], input[type="date"] { font-variant-numeric: tabular-nums; }
-/* fase 161: o extremo pequeno da escala. Rótulo em caixa alta espaçada, sobre um valor grande ou um título */
+
 .rotulo-caps { font-size: var(--txt-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--txt-fraco); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
-/* ---- Fase 149 (lote C da revisão de design) ---- */
-/* Excluir sai de perto de Salvar: fica no menu "Mais" da ficha. Sem item visível, o "Mais" some junto. */
+
+
 .ficha-mais { position: relative; }
 .ficha-mais > summary { list-style: none; cursor: pointer; user-select: none; }
 .ficha-mais > summary::-webkit-details-marker { display: none; }
@@ -3459,17 +3459,17 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .ficha-mais-menu button:hover { background: var(--sup-2); }
 .ficha-mais:not(:has(button:not([style*="display: none"]):not([style*="display:none"]))) { display: none; }
 @media (max-width: 760px) {
-  .ficha-mais[open] { flex-basis: 100%; }   /* no celular abre na linha de baixo: a ficha corta o que passa da borda */
+  .ficha-mais[open] { flex-basis: 100%; }
   .ficha-mais-menu, .actions-right .ficha-mais-menu { position: static; margin-top: var(--esp-1); }
 }
 
-/* Todas as abas à vista: quebram em linhas. No celular continuam rolando de lado. */
+
 @media (min-width: 761px) {
   .odoo-notebook { flex-wrap: wrap; overflow-x: visible; }
-  .odoo-notebook button { padding-block: var(--esp-2); }   /* a segunda linha não pode empurrar as estacas para baixo */
+  .odoo-notebook button { padding-block: var(--esp-2); }
 }
 
-/* ---- Fase 150 (lote F da revisão de design): grupos no menu ---- */
+
 .sidebar-nav { gap: 2px; }
 .sidebar-nav button { padding-block: 9px; }
 .nav-grupo { display: flex; flex-direction: column; gap: 2px; }
@@ -3477,7 +3477,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
   padding: var(--esp-2) var(--esp-4) var(--esp-1);
   color: var(--menu-txt); font-size: var(--txt-xs); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
 }
-/* grupo sem item visível para o cargo some, título junto; o display vem de aplicarMenuPorCargo */
+
 .nav-grupo:not(:has(button:not([style*="display: none"]):not([style*="display:none"]))) { display: none; }
 @media (min-width: 992px) {
   #tela-app.menu-recolhido .sidebar-nav button { padding-block: 9px; }
@@ -3487,11 +3487,11 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
   }
 }
 
-/* ====================================================================
-   Fase 129b — app do operador (operador.html), prefixo op-.
-   Celular na mão, luva e sol: texto de 15 px para cima, alvo de toque de 48 px, contraste dos tokens.
-   Só tokens; o tema escuro vem dos mesmos tokens do :root[data-theme="escuro"].
-   ==================================================================== */
+
+
+
+
+
 .op-corpo { margin: 0; background: var(--sup-1); color: var(--txt); font-family: var(--font-family); font-size: var(--txt-lg); line-height: 1.45; }
 .op-corpo [hidden] { display: none !important; }
 .op-login { max-width: 460px; margin: 0 auto; padding: var(--esp-6) var(--esp-4); }
@@ -3506,7 +3506,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .op-meta { font-size: var(--txt-lg); color: var(--txt-sec); margin: var(--esp-2) 0; }
 .op-vazio { padding: var(--esp-6) var(--esp-4); text-align: center; color: var(--txt-sec); background: var(--sup-0); border: 1px dashed var(--borda-forte); border-radius: var(--radius-md); margin: var(--esp-3) 0; }
 
-/* blocos e cartões */
+
 .op-card, .op-bloco, .op-folha { background: var(--sup-0); border: 1px solid var(--borda); border-radius: var(--radius-md); padding: var(--esp-4); margin: var(--esp-3) 0; box-shadow: var(--shadow-sm); }
 .op-card p { margin: var(--esp-1) 0; }
 .op-folha { border-color: var(--acao); }
@@ -3524,7 +3524,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .op-detalhes { margin: var(--esp-3) 0; }
 .op-detalhes summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; font-weight: 600; color: var(--acao-txt); }
 
-/* campos */
+
 .op-campo { display: flex; flex-direction: column; gap: var(--esp-1); margin: var(--esp-3) 0; font-size: var(--txt-lg); font-weight: 600; color: var(--txt-sec); }
 .op-campo input, .op-campo select, .op-campo textarea {
   font: inherit; font-weight: 400; font-size: 17px; color: var(--txt); background: var(--sup-0);
@@ -3539,7 +3539,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .op-pergunta { font-weight: 600; margin: var(--esp-3) 0 var(--esp-1); }
 .op-turno { display: flex; gap: var(--esp-3); flex-wrap: wrap; }
 
-/* botões e chips */
+
 .op-acoes { display: flex; gap: var(--esp-2); flex-wrap: wrap; margin: var(--esp-3) 0; }
 .op-acoes-coluna { display: flex; flex-direction: column; gap: var(--esp-2); margin: var(--esp-3) 0; }
 .op-btn {
@@ -3562,13 +3562,13 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .op-chip-btn.ativo, .op-chip.ativo { background: var(--acao); border-color: var(--acao); color: var(--txt-sobre); font-weight: 600; }
 .op-tag { display: inline-block; font-size: var(--txt-lg); padding: 2px var(--esp-2); border-radius: var(--radius-pill); background: var(--neutro-bg); color: var(--neutro-txt); }
 
-/* selo de estado da linha: ícone + texto, nunca só cor */
+
 .op-selo { display: inline-flex; align-items: center; gap: var(--esp-1); font-size: var(--txt-lg); font-weight: 600; padding: 2px var(--esp-2); border-radius: var(--radius-pill); background: var(--neutro-bg); color: var(--neutro-txt); }
 .op-selo-ok { background: var(--sucesso-bg); color: var(--sucesso-txt); }
 .op-selo-aviso { background: var(--aviso-bg); color: var(--aviso-txt); }
 .op-selo-perigo { background: var(--perigo-bg); color: var(--perigo-txt); }
 
-/* alertas e faixa da fila */
+
 .op-alerta { display: block; width: 100%; box-sizing: border-box; text-align: left; font: inherit; font-size: var(--txt-lg); padding: var(--esp-3) var(--esp-4); border-radius: var(--radius-md); border: 1px solid var(--borda); margin: var(--esp-3) 0; background: var(--sup-0); color: var(--txt); }
 .op-alerta p { margin: 0 0 var(--esp-2); }
 .op-alerta-ok { background: var(--sucesso-bg); color: var(--sucesso-txt); border-color: var(--sucesso); }
@@ -3581,7 +3581,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .op-faixa-aviso { background: var(--aviso-bg); color: var(--aviso-txt); }
 .op-faixa-perigo { background: var(--perigo-bg); color: var(--perigo-txt); }
 
-/* Meu dia: números e grade de cartões */
+
 .op-numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--esp-2); margin: var(--esp-3) 0; }
 .op-numeros > div { background: var(--sup-0); border: 1px solid var(--borda); border-radius: var(--radius-md); padding: var(--esp-3) var(--esp-2); text-align: center; }
 .op-numeros strong { display: block; font-size: 22px; color: var(--marca-txt); }
@@ -3599,14 +3599,14 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
   background: var(--sup-0); color: var(--txt); border: 1px solid var(--borda); border-radius: var(--radius-md); margin: var(--esp-2) 0; cursor: pointer; text-align: left;
 }
 
-/* fotos */
+
 .op-fotos { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--esp-2); }
 .op-foto { margin: 0; background: var(--sup-0); border: 1px solid var(--borda); border-radius: var(--radius-md); padding: var(--esp-2); }
 .op-foto img, .op-foto-sem { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-sm); background: var(--sup-2); display: flex; align-items: center; justify-content: center; font-size: 32px; }
 .op-foto figcaption { font-size: var(--txt-lg); margin: var(--esp-2) 0; }
 .op-foto .op-btn { width: 100%; }
 
-/* barra inferior, botão flutuante da parada, aviso e janela da sessão */
+
 .op-barra {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; background: var(--sup-0); border-top: 1px solid var(--borda-forte);
   padding-bottom: env(safe-area-inset-bottom); box-shadow: var(--shadow-md);
@@ -3633,7 +3633,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .op-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: var(--esp-4); background: color-mix(in srgb, var(--txt) 55%, transparent); }
 .op-modal .op-bloco { width: 100%; max-width: 420px; }
 
-/* ---- Fase 129c: ficha do RDO com o que veio do app do campo (js/rdo.js) ---- */
+
 .rdo-ficha-faixa { margin: 0; padding: var(--esp-2) 18px; background: var(--aviso-bg); color: var(--aviso-txt); border-bottom: 1px solid var(--border-color); font-size: var(--txt-sm); }
 .rdo-ficha-faixa-perigo { background: var(--perigo-bg); color: var(--perigo-txt); font-weight: 600; }
 .rdo-ficha-faixa .btn-sm { margin-left: var(--esp-2); }
@@ -3645,7 +3645,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .rdo-foto figcaption { padding: var(--esp-2); font-size: var(--txt-sm); display: flex; flex-direction: column; gap: 2px; }
 .rdo-foto-descons { opacity: .6; }
 
-/* ---- Fase 166: paradas com as duas respostas (aba Observações da ficha do RDO e aba RDOs da obra) ---- */
+
 .rdo-par-resp { min-width: 130px; }
 .rdo-par-resp.rdo-par-falta { border-color: var(--aviso); box-shadow: inset 3px 0 0 var(--aviso); }
 .rdo-par-acoes { margin: var(--esp-2) 0 0; }
@@ -3653,16 +3653,16 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .rdo-par-form .meta { margin: 0; }
 .obr-rdo-paradas { margin: 0 0 var(--esp-3); font-size: var(--txt-md); color: var(--txt-sec); }
 
-/* --------------------------------------------------------------------
-   COMPONENTES DA BASE VISUAL (fase 161, redesign lote 1) — js/ui.js
-   Cartão de seção, linha de item, KPI, avatar, trilha, código e rótulo/valor. Só tokens: valem nos dois temas.
-   -------------------------------------------------------------------- */
+
+
+
+
 .ui-secao { background: var(--sup-0); border: 1px solid var(--borda); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); min-width: 0; }
 .ui-secao-cab { display: flex; align-items: center; gap: var(--esp-2); padding: var(--esp-3) var(--esp-4); border-bottom: 1px solid var(--borda); }
 .ui-secao-cab svg { width: 14px; height: 14px; flex: none; color: var(--acao-txt); }
 .ui-secao-extra { margin-left: auto; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
 .ui-secao-corpo { padding: var(--esp-4); }
-.prod-sug-bloco { margin-top: var(--esp-4); }   /* lote S70-d: "Para o almoxarifado aprovar" na aba Geral do produto */
+.prod-sug-bloco { margin-top: var(--esp-4); }
 .ui-linha { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); }
 .ui-linha + .ui-linha { margin-top: var(--esp-2); }
 .ui-linha-txt { flex: 1; min-width: 0; }
@@ -3693,7 +3693,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .ui-rv-valor { font-size: var(--txt-lg); font-weight: 600; color: var(--txt); overflow-wrap: anywhere; }
 .ui-vazio { margin: 0; font-size: var(--txt-sm); color: var(--txt-fraco); }
 
-/* Cabeçalho da ficha do RDO (fase 161): trilha à esquerda; ação principal, Salvar, menu Ações e paginador à direita */
+
 .rdo-cab { justify-content: space-between; }
 .rdo-cab .actions-left { min-width: 0; flex: 1 1 240px; }
 .rdo-cab .actions-right { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); }
@@ -3704,7 +3704,7 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .ui-paginador > span:empty { display: none; }
 .ui-paginador .btn-sec { min-width: var(--ctl-h); padding: 0 var(--esp-2); font-size: var(--txt-lg); line-height: 1; }
 
-/* Aba "Resumo" do RDO (fase 161): a ficha como documento, largura máxima, duas colunas (uma no celular) */
+
 .rdo-resumo { display: grid; gap: var(--esp-4); max-width: 1100px; margin: 0 auto; padding-top: var(--esp-4); }
 .rdo-res-doc-topo { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--esp-3) var(--esp-4); padding: var(--esp-4) var(--esp-4) 0; }
 .rdo-res-doc-id { min-width: 0; }
@@ -3756,17 +3756,17 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
   .rdo-res-tl li { grid-template-columns: 84px minmax(0, 1fr); }
 }
 
-/* Listas de diários (fase 161): data curta sem quebrar a linha */
+
 .rdo-data-curta { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-/* Apropriação do custo do pedido (lote S62, #271): por item e por destino, lado a lado; uma coluna em tela estreita */
+
 #cmp-aprop { margin-top: var(--esp-4); }
 .cmp-aprop-grade { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--esp-4); align-items: start; }
 .cmp-aprop-grade .rotulo-caps { margin-bottom: var(--esp-2); }
 @media (max-width: 1100px) { .cmp-aprop-grade { grid-template-columns: minmax(0, 1fr); } }
 
-/* Perfil e replay da estaca do Geodigitus (fase 162, js/estaca_perfil.js): janela larga; resumo em uma tira; gráfico à esquerda
-   (rola na vertical quando a estaca é funda) e replay à direita; uma coluna em tela estreita. As cores das curvas entram pelo JS. */
+
+
 .epf-caixa { max-width: 1180px; width: 94%; }
 .epf-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--esp-2) var(--esp-3); margin-bottom: var(--esp-3); }
 .epf-numero { font-family: var(--font-mono); font-size: var(--txt-xl); font-weight: 600; color: var(--txt); overflow-wrap: anywhere; }
@@ -3793,10 +3793,10 @@ table, .chip strong, .contador, .tag, input[type="number"], input[type="time"], 
 .epf-selo:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
 @media (max-width: 900px) { .epf-area { grid-template-columns: minmax(0, 1fr); } .epf-legendas { grid-template-columns: minmax(0, 1fr); } }
 
-/* Faixa dos últimos 14 dias do diário na ficha da obra (fase 163, js/obra_faixa.js): 14 casas na mesma linha (rola de lado em
-   tela estreita). O estado vem em cor de token e em texto curto; a casa com diário é botão. Compacta: não tira linha da tabela.
-   O contador de diários do dia fica no fluxo, na linha do dia (.obf-dia-topo, que não quebra), e a coluna nunca fica menor que o
-   conteúdo da casa (min-content): em tela estreita a casa com contador alarga uns pixels em vez de o contador cobrir o dia. */
+
+
+
+
 .obf-bloco { margin-bottom: var(--esp-3); }
 .obf-bloco .ui-secao-cab { padding-block: var(--esp-2); }
 .obf-bloco .ui-secao-corpo { padding: var(--esp-3) var(--esp-4); }
@@ -3830,7 +3830,7 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .obf-leg-cor.obf-devolvido { background: var(--perigo); border-color: var(--perigo); }
 .obf-leg-cor.obf-sem_diario { border-style: dashed; }
 .obf-leg-cor.obf-nao_conta { background: var(--sup-3); border-color: var(--borda); }
-/* fase 179: produção do dia (vw_rdo_dia) na barra de baixo da casa; o topo continua sendo o estado do diário */
+
 .obf-dia.obf-pr-produtivo { border-bottom: 3px solid var(--sucesso); }
 .obf-dia.obf-pr-parcial { border-bottom: 3px solid var(--aviso); }
 .obf-dia.obf-pr-improdutivo { border-bottom: 3px solid var(--perigo); }
@@ -3843,8 +3843,8 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .obf-nota { font-size: var(--txt-sm); color: var(--txt-sec); }
 .obf-resumo, .obf-previsao { font-size: var(--txt-md); color: var(--txt-sec); }
 .obf-previsao strong { color: var(--txt); }
-/* Matriz de acessos de consulta (fase 165, js/matriz_acessos.js): terceira visão do painel de Usuários. Tabela densa de ERP; cada
-   resposta tem símbolo e texto, a cor só reforça. Em 375 px a tabela rola de lado dentro de .tabela-rola e a primeira coluna gruda. */
+
+
 .serv-view-btn[hidden], #usr-painel .serv-filtros[hidden], .mtz-controles select[hidden] { display: none; }
 .usr-cargo-desc { margin-top: var(--esp-1); font-size: var(--txt-sm); line-height: 1.4; color: var(--txt-sec); }
 .usr-cargo-desc:empty { display: none; }
@@ -3857,7 +3857,7 @@ button.obf-dia:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .mtz-tabela th, .mtz-tabela td { padding: 3px var(--esp-2); font-size: var(--txt-sm); white-space: nowrap; }
 .mtz-tabela tbody th { position: sticky; left: 0; z-index: 1; background: var(--sup-0); text-align: left; font-size: var(--txt-sm); font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--txt); white-space: normal; min-width: 150px; }
 .mtz-tabela .mtz-grupo th { background: var(--sup-2); padding-top: var(--esp-2); }
-.mtz-tabela .mtz-grupo .rotulo-caps { display: inline-block; position: sticky; left: var(--esp-2); }   /* o nome do grupo acompanha a rolagem lateral da tabela */
+.mtz-tabela .mtz-grupo .rotulo-caps { display: inline-block; position: sticky; left: var(--esp-2); }
 .mtz-cel { display: inline-flex; align-items: center; gap: var(--esp-1); padding: 1px var(--esp-2); border: 1px solid transparent; border-radius: var(--radius-sm); font-size: var(--txt-sm); font-weight: 600; line-height: 1.5; white-space: nowrap; }
 .mtz-cel small { font-size: var(--txt-xs); font-weight: 500; }
 .mtz-simb { font-weight: 700; }
@@ -3871,18 +3871,18 @@ button.mtz-cel:hover, button.mtz-cel.mtz-sel { border-color: currentColor; }
 button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 1px; }
 .mtz-detalhe { margin: var(--esp-2) 0 0; min-height: 2.8em; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-2); font-size: var(--txt-sm); color: var(--txt-sec); }
 .mtz-legenda { display: flex; flex-wrap: wrap; gap: var(--esp-1) var(--esp-2); margin: var(--esp-2) 0 0; }
-/* O rodapé gruda no pé da área de rolagem. O main tem respiro embaixo (16 px; 20 px até 991 px) e o grudado para antes dele:
-   sem o deslocamento negativo, as linhas da tabela apareciam numa faixa abaixo do rodapé. */
+
+
 .mtz-rodape { position: sticky; bottom: calc(-1 * var(--esp-4)); z-index: 2; margin: var(--esp-2) 0 0; padding: var(--esp-2) 0; border-top: 1px solid var(--borda); background: var(--sup-0); font-size: var(--txt-sm); color: var(--txt-fraco); }
 @media (max-width: 991px) { .mtz-rodape { bottom: calc(-1 * var(--esp-5)); } }
 @media (max-width: 600px) {
   .mtz-controles select { flex: 1 1 100%; }
-  .mtz-rodape { position: static; }   /* no celular o rodapé grudado comeria um quarto da tela */
+  .mtz-rodape { position: static; }
   .mtz-tabela tbody th { min-width: 110px; }
 }
 
-/* Profundidade de projeto em lote (fase 170a, js/estacas_prof_projeto.js): a linha de estado da aba Estacas, a janela com a grade
-   por grupo (Ø, local e bloco), a prévia antes de gravar e a caixa "atualizar as que já existem" da importação. Só tokens. */
+
+
 .epj-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); margin: 0 0 var(--esp-3); font-size: var(--txt-sm); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
 .epj-linha:empty { display: none; }
 .epj-caixa { max-width: 1080px; width: 94%; }
@@ -3901,9 +3901,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .epj-imp-resumo { margin: 0 0 var(--esp-2); font-size: var(--txt-md); color: var(--txt-sec); }
 .epj-imp-detalhe .tabela-rola { max-height: 220px; margin-top: var(--esp-2); }
 
-/* Estaca raiz só com injeção (fase 173a, js/estacas_perfuracao.js): a faixa entre os filtros e a lista da aba Estacas (resumo
-   clicável, aviso e explicação do filtro), a etiqueta "falta a perfuração" na linha, o aviso na janela da estaca e a janela
-   "Lançar perfuração". A etiqueta é baixa para a linha da tabela não crescer. Só tokens. */
+
+
+
 .est-lp-faixa { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); margin: 0 0 var(--esp-2); font-size: var(--txt-sm); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
 .est-lp-faixa:empty { display: none; }
 .est-lp-faixa .dist-aviso, .est-lp-ficha .dist-aviso { flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); margin: 0; }
@@ -3919,9 +3919,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .est-lp-caixa { max-width: 620px; }
 .est-lp-apoio { margin: 0 0 var(--esp-3); font-size: var(--txt-md); line-height: 1.6; color: var(--txt-sec); }
 
-/* Croqui das estacas pelo GPS do computador de bordo (fase 168a, js/estacas_gps.js): visão "GPS" da aba Estacas da obra. O aviso
-   de posição aproximada abre o bloco e não some. Sem malha de fundo, de propósito: o erro do GPS é de metros. A cor e o contorno
-   de cada círculo vêm do JS, por style (o SVG só aceita token assim). */
+
+
+
 .egp-aviso { margin: 0 0 var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--aviso); border-left-width: 4px; border-radius: var(--radius-sm); background: var(--aviso-bg); color: var(--aviso-txt); font-size: var(--txt-md); font-weight: 600; }
 .egp-resumo { margin: 0 0 var(--esp-2); font-size: var(--txt-md); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
 .egp-barra { padding-top: 0; }
@@ -3943,8 +3943,8 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .egp-nota { margin: var(--esp-2) 0 0; font-size: var(--txt-sm); color: var(--txt-fraco); }
 .egp-nota-topo { margin: 0 0 var(--esp-2); color: var(--txt-sec); }
 .egp-longe { margin-top: var(--esp-3); }
-/* Fase 167a: projeto do cliente como fundo da planta (js/planta_projeto.js). Barra Esquema x folhas, visor da folha e a
-   janela de envio. Só tokens; em folha, somem os blocos que são do Esquema (cor, regra de distância, conflitos, desenho). */
+
+
 .ppj-barra { margin: 0 0 var(--esp-2); }
 .ppj-barra-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); }
 .ppj-fundos { flex-wrap: wrap; }
@@ -3964,7 +3964,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; will-change: transform; pointer-events: none; }
 .ppj-img:not([src]) { visibility: hidden; }
 .ppj-estado { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: var(--esp-4); text-align: center; font-size: var(--txt-md); color: var(--txt-fraco); pointer-events: none; }
-.ppj-estado[hidden], .ppj-rodape [hidden] { display: none; }   /* o atributo hidden perde para o display do .btn-sec: a regra devolve o sumiço */
+.ppj-estado[hidden], .ppj-rodape [hidden] { display: none; }
 .ppj-controles { position: absolute; top: var(--esp-2); right: var(--esp-2); display: flex; gap: var(--esp-1); padding: var(--esp-1); border-radius: var(--radius-sm); background: var(--sup-0); box-shadow: var(--shadow-sm); cursor: default; }
 .ppj-controles button { min-width: 32px; }
 .ppj-rodape { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2) var(--esp-3); margin: var(--esp-2) 0 0; font-size: var(--txt-sm); color: var(--txt-sec); font-variant-numeric: tabular-nums; }
@@ -3987,13 +3987,13 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-folha.ppj-inativa .campo { opacity: .7; }
 .ppj-folha-acoes { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2); }
 .ppj-folha-meta { margin-right: auto; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
-/* Fase 167b: estacas por cima da folha do projeto (js/planta_posicoes.js). Barra da folha (cor, legenda, modo de
-   edição), faixa âmbar do modo de edição, painel "Sem posição nesta folha" e os marcadores em SVG. Só tokens. A camada dos
-   marcadores não recebe o ponteiro (o arrasto da folha passa por ela); só o marcador recebe. */
+
+
+
 .ppj-ferramentas { display: flex; flex-direction: column; gap: var(--esp-2); margin: 0 0 var(--esp-2); }
-.ppj-ferramentas[hidden], .ppj-painel[hidden] { display: none; }   /* o display da regra vence o atributo hidden: a regra devolve o sumiço */
+.ppj-ferramentas[hidden], .ppj-painel[hidden] { display: none; }
 .ppj-ferramentas-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-2) var(--esp-3); }
-.ppj-legenda { flex: 1 1 240px; min-width: 0; }   /* sem 240 px ao lado dos botões, a legenda desce para uma linha só dela (em 400 px ela virava uma coluna de 19 px, com 244 px de altura) */
+.ppj-legenda { flex: 1 1 240px; min-width: 0; }
 .ppj-recusa { margin: 0; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--perigo); border-radius: var(--radius-sm); background: var(--perigo-bg); font-weight: 600; }
 .ppj-legenda .ppj-leg { box-sizing: border-box; border: 1.5px solid var(--sup-3); background: var(--txt-sutil); }
 .ppj-legenda .ppj-leg-prevista { background: var(--estaca-prevista); }
@@ -4009,7 +4009,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-palco.ppj-editando { cursor: crosshair; }
 .ppj-palco.ppj-editando.ppj-arrastando { cursor: grabbing; }
 .ppj-painel { display: flex; flex-direction: column; gap: var(--esp-2); flex: none; width: 250px; max-height: min(72vh, 820px); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-0); }
-.ppj-painel input[type="search"] { width: 100%; min-height: var(--ctl-h); padding: var(--esp-1) var(--esp-2); font-size: var(--txt-md); border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--sup-0); }   /* o mesmo campo dos filtros da aba; sem isso saía o campo cru do navegador */
+.ppj-painel input[type="search"] { width: 100%; min-height: var(--ctl-h); padding: var(--esp-1) var(--esp-2); font-size: var(--txt-md); border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--sup-0); }
 .ppj-painel input[type="search"]:focus { outline: none; border-color: var(--azul-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--marca-600) 25%, transparent); }
 .ppj-ed-sel { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--esp-2); font-size: var(--txt-sm); }
 .ppj-ed-sel:empty { display: none; }
@@ -4026,18 +4026,18 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-marca:focus { outline: none; }
 .ppj-marca:focus-visible circle, .ppj-marca.ppj-selecionada circle { stroke: var(--marca-600) !important; stroke-width: 3.5 !important; stroke-opacity: 1 !important; }
 .ppj-editando .ppj-marca { cursor: move; }
-/* o nome fica sobre a folha, que é papel branco nos dois temas: tinta e papel do documento, que não trocam no escuro */
+
 .ppj-marca-rot { display: none; font-family: var(--font-mono); font-size: 11px; font-weight: 600; fill: var(--doc-tinta); stroke: var(--doc-papel); stroke-width: 3px; paint-order: stroke; pointer-events: none; }
-/* com "reduzir movimento" ligado, a regra geral (transition-duration: 0.01ms em tudo) fazia de cada passo do zoom uma transição por
-   marcador e uma na imagem; a folha e os marcadores andam pela mão, sem transição */
+
+
 .ppj-img, .ppj-marcas g { transition: none; }
 .ppj-com-rotulo .ppj-marca-rot { display: inline; }
 .ppj-contagem { font-weight: 600; color: var(--txt); }
 .ppj-contagem:empty { display: none; }
-/* Fase 169a: executadas sem vínculo na folha do projeto (js/planta_vinculo.js). Painel ao lado da folha, com a execução
-   escolhida, as estacas parecidas e a confirmação; no desenho, anel e etiqueta na estaca sugerida. Só tokens. O anel e a
-   etiqueta ficam sobre o papel, branco nos dois temas: tinta e papel do documento. A confiança é dita pelo traço do anel
-   (cheio, tracejado, pontilhado) e pelo texto, não só pela cor. */
+
+
+
+
 .ppj-ferramentas [data-ppj-vin="abrir"][aria-pressed="true"] { border-color: var(--marca-600); background: var(--sup-2); font-weight: 600; }
 .ppj-vin { width: 300px; overflow-y: auto; }
 .ppj-vin-topo { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-2); }
@@ -4053,7 +4053,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-vin-linha { display: flex; align-items: center; flex-wrap: wrap; gap: var(--esp-1); }
 .ppj-vin .ppj-lista { flex: 1 0 140px; }
 .ppj-vin-confirma { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-2); }
-.ppj-vin .ppj-vin-pares { flex: 0 1 auto; min-height: 0; max-height: 40vh; }   /* fase 175c: a lista do "nome igual" rola dentro da confirmação */
+.ppj-vin .ppj-vin-pares { flex: 0 1 auto; min-height: 0; max-height: 40vh; }
 .ppj-vin-alerta { padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--aviso-bg); color: var(--aviso-txt); font-weight: 600; }
 .ppj-vin-acoes { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
 .ppj-vin-ok { padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--sucesso-bg); color: var(--sucesso-txt); }
@@ -4063,9 +4063,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-vin-etq { font-family: var(--font-mono); font-size: 10px; font-weight: 700; text-anchor: middle; fill: var(--doc-tinta); stroke: var(--doc-papel); stroke-width: 3px; paint-order: stroke; pointer-events: none; }
 .ppj-marca.ppj-vin-sugerida .ppj-marca-rot { display: inline; }
 .ppj-marca.ppj-vin-alvo circle:not(.ppj-vin-anel) { stroke: var(--marca-600) !important; stroke-width: 3.5px !important; stroke-opacity: 1 !important; }
-/* Fase 169b: marcar em sequência, por estaca e por bloco (js/planta_sequencia.js). No painel do modo de edição, os três
-   jeitos de posicionar, a barra da sequência, a lista de blocos e "Definir bloco"; no desenho, a caixa presa ao ponto
-   clicado e a prévia tracejada. Só tokens. A prévia fica sobre o papel: tinta do documento, igual nos dois temas. */
+
+
+
 .ppj-painel { overflow-y: auto; }
 .ppj-seq-modos { flex-wrap: wrap; flex: none; }
 .ppj-painel.ppj-seq-outro-modo > #ppj-ed-vez,
@@ -4087,7 +4087,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppj-seq-alerta { margin: 0; padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--aviso-bg); color: var(--aviso-txt); font-size: var(--txt-sm); font-weight: 600; }
 .ppj-seq-ok { margin: 0; padding: var(--esp-1) var(--esp-2); border-radius: var(--radius-sm); background: var(--sucesso-bg); color: var(--sucesso-txt); font-size: var(--txt-sm); }
 .ppj-seq-confirma { display: flex; flex-direction: column; gap: var(--esp-2); padding: var(--esp-2); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-2); }
-.ppj-seq-caixa { position: absolute; z-index: 3; display: flex; flex-direction: column; gap: var(--esp-1); width: 230px; padding: var(--esp-2); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); box-shadow: var(--shadow-md); cursor: default; user-select: text; transition: none; }   /* a caixa anda com o ponto no zoom e no arrasto: sem transição, como a folha e os marcadores */
+.ppj-seq-caixa { position: absolute; z-index: 3; display: flex; flex-direction: column; gap: var(--esp-1); width: 230px; padding: var(--esp-2); border: 1px solid var(--marca-600); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); box-shadow: var(--shadow-md); cursor: default; user-select: text; transition: none; }
 .ppj-seq-caixa:focus { outline: none; }
 .ppj-seq-caixa:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 1px; }
 .ppj-seq-caixa input { width: 100%; min-height: var(--ctl-h); padding: var(--esp-1) var(--esp-2); font-family: var(--font-mono); font-size: var(--txt-md); border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); }
@@ -4102,9 +4102,9 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .ppj-painel { width: auto; max-height: 40vh; }
 }
 
-/* ===== Fase 174a: painel de Ajuda (assistente, js/assistente.js). Painel lateral fixo; tela cheia no celular.
-   Layout de 12/11/2026 (Claude Design): conversa como registro, sem balões; rótulo "VOCÊ · hora"/"RESPOSTA · hora";
-   passos numerados; rascunho do chamado em ficha. Logo CGL com letra preta no claro e branca no escuro. ===== */
+
+
+
 .ast-painel { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); z-index: 1200; display: flex; flex-direction: column;
   background: var(--sup-0); border-left: 1px solid var(--borda); box-shadow: var(--shadow-lg); }
 .ast-painel[hidden] { display: none; }
@@ -4113,7 +4113,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 :root[data-theme="escuro"] .ast-logo-claro { display: none; }
 :root[data-theme="escuro"] .ast-logo-escuro { display: inline-block; }
 
-/* topo e contexto */
+
 .ast-topo { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-3) var(--esp-4); border-bottom: 1px solid var(--borda); }
 .ast-topo-titulo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .ast-topo-titulo strong { font-size: var(--txt-lg); font-weight: 600; letter-spacing: -0.2px; }
@@ -4128,7 +4128,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ast-contexto-sep { color: var(--txt-sutil); }
 .ast-aviso-sensivel { margin: 0; padding: var(--esp-2) var(--esp-4); background: var(--aviso-bg); color: var(--aviso-txt); font-size: var(--txt-xs); }
 
-/* conversa */
+
 .ast-mensagens { flex: 1; overflow-y: auto; padding: var(--esp-4); display: flex; flex-direction: column; gap: var(--esp-5); }
 .ast-turno { display: flex; flex-direction: column; gap: var(--esp-2); font-size: var(--txt-md); line-height: 1.5; }
 .ast-turno-eu .ast-turno-txt { padding: var(--esp-2) var(--esp-3); background: var(--sup-2); border: 1px solid var(--borda); border-radius: var(--radius-sm);
@@ -4147,7 +4147,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ast-msg-erro { color: var(--perigo-txt); font-size: var(--txt-sm); }
 .ast-digitando { color: var(--txt-fraco); font-size: var(--txt-sm); }
 
-/* chamados parecidos */
+
 .ast-bloco { display: flex; flex-direction: column; gap: var(--esp-2); }
 .ast-parecidos { border: 1px solid var(--borda); border-radius: var(--radius-md); overflow: hidden; }
 .ast-parecido { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-2) var(--esp-3); }
@@ -4157,7 +4157,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ast-parecido-txt span { font-size: var(--txt-xs); color: var(--txt-fraco); }
 .ast-parecido .uicodigo, .ast-parecido code { flex-shrink: 0; }
 
-/* rascunho do chamado (ficha) */
+
 .ast-cartao { border: 1px solid var(--borda-forte); border-radius: var(--radius-md); background: var(--sup-0); box-shadow: var(--shadow-md);
   display: flex; flex-direction: column; }
 .ast-cartao-topo { display: flex; align-items: center; gap: var(--esp-2); padding: var(--esp-3) var(--esp-4); background: var(--sup-1);
@@ -4173,7 +4173,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ast-cartao-acoes .ast-descartar { margin-left: auto; color: var(--perigo-txt); }
 .ast-cartao-simples { padding: var(--esp-3) var(--esp-4); gap: var(--esp-2); }
 
-/* rodapé: caixa única com anexar, microfone e enviar */
+
 .ast-rodape { border-top: 1px solid var(--borda); padding: var(--esp-3) var(--esp-4); display: flex; flex-direction: column; gap: var(--esp-2); }
 .ast-rodape[hidden] { display: none; }
 .ast-caixa { display: flex; align-items: flex-end; gap: var(--esp-1); padding: var(--esp-1) var(--esp-1) var(--esp-1) var(--esp-3);
@@ -4195,7 +4195,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ast-pendente img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--borda); display: block; }
 .ast-pendente button { position: absolute; top: -6px; right: -6px; padding: 0 6px; }
 
-/* fase 174b: modo orçamento (arquivos anexados, resumo do orçamento, aba Arquivos, oferta na importação de estacas) */
+
 #ast-orcamento[hidden] { display: none; }
 .ast-arquivo { display: flex; align-items: center; gap: var(--esp-2); padding: var(--esp-1) var(--esp-2); border: 1px solid var(--borda);
   border-radius: var(--radius-sm); background: var(--sup-1); font-size: var(--txt-sm); max-width: 100%; }
@@ -4220,7 +4220,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .orc-arq-linha .meta { font-size: var(--txt-xs); color: var(--txt-fraco); }
 .aviso.est-orc-leitura { display: flex; align-items: center; gap: var(--esp-3); flex-wrap: wrap; }
 
-/* fase 176: cobrança de resposta de chamado (contador no botão, balão e cartão no painel) */
+
 #btn-assistente { position: relative; }
 #btn-assistente .ast-contador { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
   display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-pill); background: var(--perigo);
@@ -4246,7 +4246,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .ast-cobranca { max-height: 70%; }
 }
 
-/* botão de abrir, na barra do topo */
+
 #btn-assistente { display: inline-flex; align-items: center; gap: var(--esp-1); height: 40px; padding: 0 var(--esp-3) 0 2px; border: 1px solid var(--borda-forte);
   border-radius: var(--radius-pill); background: var(--sup-0); color: var(--marca-txt); font-weight: 600; cursor: pointer; }
 #btn-assistente:hover { border-color: var(--acao); }
@@ -4265,7 +4265,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .ast-topo-titulo span { display: none; }
 }
 
-/* ---------- fase 175b: leitura das estacas da folha (js/planta_leitura.js) ---------- */
+
 .ppl-caixa { margin: 0 0 var(--esp-2); }
 .ppl-caixa[hidden] { display: none; }
 .ppl-progresso { margin: 0; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--info); border-radius: var(--radius-sm); background: var(--sup-2); font-size: var(--txt-sm); }
@@ -4277,10 +4277,10 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppl-linha .campo { display: flex; flex-direction: column; gap: var(--esp-1); margin: 0; }
 .ppl-pilares { display: flex; flex-direction: column; gap: var(--esp-1); }
 .ppl-acoes { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
-/* estaca lida e ainda não conferida: borda tracejada (a cor continua sendo o status) */
+
 .ppj-marca.ppl-a-conferir circle { stroke-dasharray: 3 2; stroke: var(--doc-tinta) !important; stroke-width: 2.5px !important; stroke-opacity: 1 !important; }
 .ppj-marca.ppl-oculta { display: none; }
-/* prévia da leitura: marcadores tracejados, sem clique */
+
 .ppl-previa-g { pointer-events: none; }
 .ppl-prev circle { fill: none; stroke-width: 2px; stroke-dasharray: 4 3; }
 .ppl-prev text { font-family: var(--font-mono); font-size: 11px; font-weight: 600; fill: var(--doc-tinta); stroke: var(--doc-papel); stroke-width: 3px; paint-order: stroke; }
@@ -4289,10 +4289,10 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ppl-prev-ambigua circle { stroke: var(--aviso); }
 .ppl-prev-sem circle { stroke: var(--perigo); }
 
-/* fase 186a (#236, #308): linha do rateio com destino recusado (natureza só máquina fora de TAG ou acessório) */
+
 .cmp-rd-erro td { background: var(--perigo-bg); }
 #cmp-obras-rateio .chip { margin: 2px 4px 0 0; }
-/* Fase 189a: cronograma de equipamentos no quadro de Mobilizações (js/mobilizacoes_cronograma.js, prefixo mcr-) */
+
 .mcr-filtros { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; margin-bottom: var(--esp-2); }
 .mcr-filtros label { display: inline-flex; gap: 6px; align-items: center; font-size: var(--txt-xs); color: var(--txt-sec); }
 .mcr-grupo td { background: var(--sup-2); font-weight: 700; border-left: 4px solid var(--borda); }
@@ -4307,7 +4307,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .mcr-reserva { display: inline-block; border: 1px dashed var(--txt-sec); border-radius: var(--radius-pill); padding: 1px 8px; font-size: var(--txt-xs); color: var(--txt-sec); background: transparent; cursor: pointer; }
 .mcr-reserva:hover, .mcr-reserva:focus-visible { border-color: var(--acao-txt); color: var(--acao-txt); }
 .mcr-aviso { color: var(--aviso-txt); }
-/* Fase 189b: gráfico (Gantt) de equipamentos (js/mobilizacoes_grafico.js, prefixo mgr-). Cor da barra vem do JS (style.fill) */
+
 .mgr-rola { overflow: auto; max-height: 72vh; border: 1px solid var(--borda); border-radius: var(--radius-md); background: var(--sup-1); }
 .mgr-svg { display: block; font-family: var(--font-family); }
 .mgr-svg .mgr-txt-mes { font-size: 11px; font-weight: 700; }
@@ -4331,64 +4331,64 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .mgr-legenda i.mgr-leg-livre { background: transparent; height: 0; border-top: 2px dotted var(--sucesso); border-radius: 0; }
 .mgr-legenda i.mgr-leg-hoje { width: 2px; height: 14px; background: var(--perigo); border-radius: 0; }
 
-/* fase 184c: Grade do dia do RDO de raiz (js/rdo_grade.js) */
+
 .rgd-grade input.rgd-invalido { border-color: var(--perigo); background: var(--perigo-bg); }
 .rgd-grade tr.rgd-sem-hora td { background: var(--sup-1); }
 .rgd-grade td input:disabled, .rgd-grade td select:disabled { opacity: .45; }
 .rgd-totais { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; margin: var(--esp-2) 0; }
 
-} /* fim do @layer legado */
+}
 
-/* ====================================================================
-   CAMADA TOKENS (fase 193a): só o que faltava. Nenhuma cor nova: a elevação aponta para as sombras que já existem,
-   então o tema escuro (que redefine --shadow-*) vale aqui sem bloco próprio.
-   ==================================================================== */
+
+
+
+
 @layer tokens {
-:root { /* camada tokens (fase 193a) */
-  /* espaço: --esp-1 a --esp-8 já existem no legado (4, 8, 12, 16, 20, 24, 32); este fecha a escala em 8 degraus */
+:root {
+
   --esp-10: 40px;
-  /* altura de linha */
-  --lh-compacta: 1.25;   /* tabela, chip, botão */
-  --lh-base: 1.45;       /* corpo */
-  --lh-folgada: 1.6;     /* parágrafo longo, ajuda de campo */
-  /* elevação: no máximo 3 */
-  --elev-1: var(--shadow-sm);   /* cartão */
-  --elev-2: var(--shadow-md);   /* menu suspenso, aviso */
-  --elev-3: var(--shadow-lg);   /* modal */
-  /* largura máxima da ficha e do conteúdo de leitura */
+
+  --lh-compacta: 1.25;
+  --lh-base: 1.45;
+  --lh-folgada: 1.6;
+
+  --elev-1: var(--shadow-sm);
+  --elev-2: var(--shadow-md);
+  --elev-3: var(--shadow-lg);
+
   --ficha-max: 1280px;
-  /* z-index: acima de tudo o que o legado usa (até 10000) só o aviso */
-  --z-fixo: 10;      /* cabeçalho de tabela, barra presa */
-  --z-menu: 100;     /* menu "Ações", grupo de abas */
-  --z-modal: 9999;   /* diálogo (o <dialog> já sobe para a camada superior do navegador) */
-  --z-aviso: 10001;  /* aviso (toast) */
-  /* gráfico de Mobilizações (lote S68-f, chamado 366): barra da OS de manutenção aberta. Apelido do --neutro, que o tema escuro
-     já redefine; texto da barra em --txt-sobre (4,76:1 nos dois temas, checar-contraste) */
+
+  --z-fixo: 10;
+  --z-menu: 100;
+  --z-modal: 9999;
+  --z-aviso: 10001;
+
+
   --mgr-manutencao: var(--neutro);
 }
 }
 
-/* ====================================================================
-   CAMADA BASE: piso das páginas novas sem legado (ui.html usa a classe .ui-doc no <body>).
-   ==================================================================== */
+
+
+
 @layer base {
 .ui-doc { margin: 0; font-family: var(--font-family); font-size: var(--txt-md); line-height: var(--lh-base); color: var(--txt); background: var(--sup-1); }
 }
 
-/* ====================================================================
-   CAMADA COMPONENTES (fase 193a): o CSS dos componentes de js/ui.js. Catálogo vivo em ui.html.
-   Sem cor em hex, sem px de fonte (só --txt-*), espaço só por --esp-*, sombra só por --elev-*.
-   ==================================================================== */
+
+
+
+
 @layer componentes {
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
-/* estados */
+
 .ui-erro { margin: 0; padding: var(--esp-2) var(--esp-3); border-radius: var(--radius-sm); background: var(--perigo-bg); color: var(--perigo-txt); font-size: var(--txt-sm); line-height: var(--lh-compacta); }
 .ui-carregando { margin: 0; font-size: var(--txt-sm); color: var(--txt-fraco); }
 .ui-carregando::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: var(--esp-2); border: 2px solid var(--borda-forte); border-top-color: var(--marca-600); border-radius: 50%; vertical-align: -1px; animation: ui-gira .8s linear infinite; }
 @keyframes ui-gira { to { transform: rotate(360deg); } }
 
-/* botão dos componentes */
+
 .ui-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--esp-1); min-height: var(--ctl-h); padding: 0 var(--esp-3); border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); font: inherit; font-size: var(--txt-base); font-weight: 500; line-height: var(--lh-compacta); cursor: pointer; white-space: nowrap; box-shadow: none; text-transform: none; letter-spacing: normal; }
 .ui-btn:hover:not(:disabled) { border-color: var(--marca-600); color: var(--acao-txt); }
 .ui-btn:focus-visible { outline: 2px solid var(--marca-600); outline-offset: 2px; }
@@ -4398,7 +4398,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-btn-perigo { background: var(--perigo); border-color: var(--perigo); color: var(--txt-sobre); }
 .ui-btn-perigo:hover:not(:disabled) { color: var(--txt-sobre); filter: brightness(.92); }
 
-/* uiPagina */
+
 .ui-pagina { display: flex; flex-direction: column; gap: var(--esp-2); margin-bottom: var(--esp-4); min-width: 0; }
 .ui-pagina-linha { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--esp-3); flex-wrap: wrap; }
 .ui-pagina-tit { min-width: 0; }
@@ -4416,7 +4416,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-pag > span { min-width: 64px; text-align: center; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
 .ui-pag .ui-btn { min-width: var(--ctl-h); padding: 0; font-size: var(--txt-lg); }
 
-/* uiFaixaSituacao */
+
 .ui-faixa { display: flex; align-items: center; gap: var(--esp-3); padding: var(--esp-3) var(--esp-4); border: 1px solid var(--borda); border-radius: var(--radius-md); background: var(--sup-0); font-size: var(--txt-lg); line-height: var(--lh-compacta); color: var(--txt); min-width: 0; }
 .ui-faixa-marca { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--neutro); }
 .ui-faixa-txt { min-width: 0; overflow-wrap: anywhere; }
@@ -4431,7 +4431,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-faixa:has(.ui-faixa-acoes) { flex-wrap: wrap; font-size: var(--txt-base); }
 .req-rasc-faixa { margin-bottom: var(--esp-3); }
 
-/* uiAbas */
+
 .ui-abas { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--esp-1); border-bottom: 1px solid var(--borda); }
 .ui-aba { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 44px; padding: var(--esp-2) var(--esp-3); border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--txt-sec); font: inherit; font-size: var(--txt-md); line-height: var(--lh-compacta); white-space: nowrap; cursor: pointer; box-shadow: none; text-transform: none; }
 .ui-aba:hover { color: var(--txt); background: var(--sup-2); }
@@ -4446,7 +4446,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-abas-grupo-lista .ui-aba { width: 100%; border-bottom: 0; border-radius: var(--radius-sm); }
 .ui-abas-grupo-lista .ui-aba.ativa { background: var(--marca-50); }
 
-/* uiTabela: densidade de ERP (linha de 28 px, igual às tabelas de hoje) */
+
 .ui-tabela-rola { max-width: 100%; overflow: auto; border: 1px solid var(--borda); border-radius: var(--radius-md); background: var(--sup-0); }
 .ui-tabela { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--txt-sm); line-height: var(--lh-compacta); color: var(--txt); }
 .ui-tabela th { position: sticky; top: 0; z-index: var(--z-fixo); padding: var(--esp-2) var(--esp-3); background: var(--sup-2); border-bottom: 1px solid var(--borda-forte); text-align: left; font-size: var(--txt-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--txt-fraco); white-space: nowrap; }
@@ -4459,7 +4459,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-tabela-estado td { height: auto; padding: var(--esp-4); text-align: center; }
 .ui-tabela-estado:hover td { background: transparent; }
 
-/* uiFiltros */
+
 .ui-filtros { display: flex; align-items: center; gap: var(--esp-2); flex-wrap: wrap; min-width: 0; }
 .ui-filtros-busca { flex: 1 1 220px; min-width: 0; max-width: 360px; }
 .ui-filtros-busca input { width: 100%; min-height: var(--ctl-h); box-sizing: border-box; padding: 0 var(--esp-3); border: 1px solid var(--borda-forte); border-radius: var(--radius-sm); background: var(--sup-0); color: var(--txt); font: inherit; font-size: var(--txt-base); }
@@ -4475,7 +4475,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-filtros-cont { margin-left: auto; font-size: var(--txt-sm); color: var(--txt-fraco); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ui-filtros > .ui-erro { margin-left: auto; }
 
-/* uiCampo */
+
 .ui-campo { display: flex; flex-direction: column; gap: var(--esp-1); min-width: 0; }
 .ui-campo > label { font-size: var(--txt-sm); font-weight: 600; color: var(--txt-sec); }
 .ui-campo-obrig { color: var(--perigo-txt); }
@@ -4487,7 +4487,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-campo-ajuda { margin: 0; font-size: var(--txt-xs); line-height: var(--lh-folgada); color: var(--txt-fraco); }
 .ui-campo-erro { margin: 0; font-size: var(--txt-xs); font-weight: 600; color: var(--perigo-txt); }
 
-/* uiLinhaTempo */
+
 .ui-tempo { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
 .ui-tempo-filtros { display: flex; gap: var(--esp-1); flex-wrap: wrap; }
 .ui-tempo-dia h4 { margin: 0 0 var(--esp-1); }
@@ -4504,7 +4504,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-tempo-titulo { font-size: var(--txt-md); font-weight: 600; color: var(--txt); overflow-wrap: anywhere; }
 .ui-tempo-detalhe { font-size: var(--txt-sm); color: var(--txt-fraco); overflow-wrap: anywhere; }
 
-/* uiPulso */
+
 .ui-pulso { margin: 0; min-width: 0; }
 .ui-pulso svg { display: block; width: 100%; height: 72px; }
 .ui-pulso rect.acima { fill: var(--marca-600); }
@@ -4514,7 +4514,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-pulso figcaption { display: flex; justify-content: space-between; gap: var(--esp-2); margin-top: var(--esp-1); font-size: var(--txt-xs); color: var(--txt-fraco); font-variant-numeric: tabular-nums; }
 .ui-pulso-leg { color: var(--txt-sec); }
 
-/* uiProgresso */
+
 .ui-prog { display: flex; flex-direction: column; gap: var(--esp-1); min-width: 0; }
 .ui-prog-cab { display: flex; justify-content: space-between; align-items: baseline; gap: var(--esp-2); }
 .ui-prog-cab strong { font-size: var(--txt-lg); font-weight: 700; color: var(--txt); font-variant-numeric: tabular-nums; }
@@ -4532,13 +4532,13 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-prog-anel-txt span { font-size: var(--txt-sm); color: var(--txt-sec); }
 .ui-prog.sem-dado .ui-vazio { margin-top: var(--esp-1); }
 
-/* uiKpi: linha de comparação (o resto do KPI está no legado, fase 161) */
+
 .ui-kpi-cmp { font-size: var(--txt-sm); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--txt-fraco); }
 .ui-kpi-cmp.bom { color: var(--sucesso-txt); }
 .ui-kpi-cmp.ruim { color: var(--perigo-txt); }
 .ui-kpi-erro .ui-erro { margin-top: var(--esp-1); padding: 2px var(--esp-2); font-size: var(--txt-xs); }
 
-/* uiModal / uiConfirmar */
+
 .ui-modal { margin: auto; padding: 0; border: 0; background: transparent; max-width: calc(100vw - 2 * var(--esp-4)); max-height: calc(100vh - 2 * var(--esp-4)); color: var(--txt); }
 .ui-modal::backdrop { background: color-mix(in srgb, var(--doc-tinta) 45%, transparent); }
 .ui-modal-caixa { display: flex; flex-direction: column; max-height: calc(100vh - 2 * var(--esp-4)); box-sizing: border-box; background: var(--sup-0); border: 1px solid var(--borda); border-radius: var(--radius-md); box-shadow: var(--elev-3); font-family: var(--font-family); }
@@ -4554,7 +4554,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .ui-modal-corpo > p + .ui-pedir-campos { margin-top: var(--esp-3); }
 .ui-modal-acoes { display: flex; justify-content: flex-end; gap: var(--esp-2); flex-wrap: wrap; padding: var(--esp-3) var(--esp-4); border-top: 1px solid var(--borda); }
 
-/* uiAvisar */
+
 .ui-avisos { position: fixed; right: var(--esp-4); bottom: var(--esp-4); z-index: var(--z-aviso); display: flex; flex-direction: column; gap: var(--esp-2); max-width: min(420px, calc(100vw - 2 * var(--esp-4))); }
 .ui-aviso { display: flex; align-items: flex-start; gap: var(--esp-2); padding: var(--esp-3) var(--esp-3) var(--esp-3) var(--esp-4); border: 1px solid var(--borda); border-left: 4px solid var(--neutro); border-radius: var(--radius-md); background: var(--sup-0); color: var(--txt); box-shadow: var(--elev-2); font-size: var(--txt-md); line-height: var(--lh-base); }
 .ui-aviso.tom-ok { border-left-color: var(--sucesso); } .ui-aviso.tom-aviso { border-left-color: var(--aviso); }
@@ -4575,7 +4575,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 }
 }
 
-/* ---- Página do catálogo (ui.html): só a moldura; os exemplos usam os componentes acima ---- */
+
 @layer componentes {
 .cat-topo { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-3); flex-wrap: wrap; padding: var(--esp-3) var(--esp-4); background: var(--marca-900); color: var(--menu-txt); }
 .cat-topo-tit { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -4605,7 +4605,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .cat-uso pre { margin: var(--esp-2) 0 0; padding: var(--esp-3); max-width: 100%; overflow-x: auto; background: var(--sup-2); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--txt-xs); line-height: var(--lh-base); color: var(--txt); }
 }
 
-/* ---- Contratos (fase 180b): formulário das partes, garantias e obrigações e os botões de cada linha ---- */
+
 @layer componentes {
 .con-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--esp-3); min-width: 0; }
 .con-form-msg:not(:empty) { margin-top: var(--esp-3); }
@@ -4614,7 +4614,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .con-acoes-linha .ui-btn { min-height: var(--ctl-h-sm); padding: 0 var(--esp-2); font-size: var(--txt-sm); }
 }
 
-/* ---- Venda de bem (fase 180c): resumo do contrato e da correção, botões das linhas, formulário e erros do cronograma ---- */
+
 @layer componentes {
 .vb-rv-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--esp-3); min-width: 0; }
 .vb-acoes { display: flex; gap: var(--esp-2); flex-wrap: wrap; margin: var(--esp-3) 0; }
@@ -4625,7 +4625,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 #vb-modal [hidden] { display: none; }
 }
 
-/* ---- Processos (fase 180f): Contratos › Processos (prefixo prc-) ---- */
+
 @layer componentes {
 #btn-con-processos[hidden], #con-painel[hidden], #prc-painel[hidden] { display: none; }
 .prc-painel { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
@@ -4641,7 +4641,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .prc-aba-corpo .ui-tabela .ui-btn { min-height: var(--ctl-h-sm); padding: 0 var(--esp-2); font-size: var(--txt-sm); }
 }
 
-/* ---- Envio da proposta pela orcamento@ (fase 192b): modal com campos, prévia do e-mail e anexos ---- */
+
 @layer componentes {
 .orc-envio { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
 .orc-envio-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--esp-3); }
@@ -4650,8 +4650,8 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .orc-envio-previa { width: 100%; height: 340px; border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-0); }
 }
 
-/* ---- camada utilitarios (fase 193b): classe única para o estilo fixo que se repetia no index.html.
-   Fica na camada mais alta para valer como o style="" valia sobre o legado. ---- */
+
+
 @layer utilitarios {
   .u-ml-auto { margin-left: auto; }
   .u-flex-1 { flex: 1; }
@@ -4660,12 +4660,12 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .u-txt-aviso { color: var(--aviso-txt); }
   .u-txt-acao { color: var(--acao-txt); }
   .u-txt-fraco { color: var(--txt-fraco); }
-  /* o display do .btn-sec (camada legado) vencia o atributo hidden: o "Substituir boletim" da medição aparecia para o
-     auditor. Esta camada vem depois e devolve o sumiço a todo .btn-sec com hidden */
+
+
   .btn-sec[hidden] { display: none; }
 }
 
-/* ---- Casca (fase 193b): barra superior única com trilha, busca Ctrl K e botões de ícone; área de conteúdo ---- */
+
 @layer componentes {
   .header-esquerda { min-width: 0; }
   .app-trilha { min-width: 0; }
@@ -4691,31 +4691,31 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
     padding: 1px var(--esp-1); border: 1px solid var(--borda); border-radius: var(--radius-sm);
     background: var(--sup-0); color: var(--txt-fraco); font-family: var(--font-mono); font-size: var(--txt-xs); line-height: 1.4;
   }
-  /* ícone do tema: o do tema para o qual o botão leva (antes era style.display no JS) */
+
   .btn-tema .tema-sol { display: none; }
   :root[data-theme="escuro"] .btn-tema .tema-sol { display: inline; }
   :root[data-theme="escuro"] .btn-tema .tema-lua { display: none; }
-  /* Mostrar valores: olho aberto mostra; olho cortado oculta de novo */
+
   #btn-val-sens .olho-fechado { display: none; }
   #btn-val-sens[aria-pressed="true"] .olho-aberto { display: none; }
   #btn-val-sens[aria-pressed="true"] .olho-fechado { display: inline; }
-  /* Ajuda: só o logo na barra; o nome fica no aria-label */
+
   #app-header #btn-assistente { width: 40px; padding: 0; justify-content: center; }
   @media (max-width: 760px) {
     .topo-busca { min-width: 36px; justify-content: center; border-color: transparent; background: none; }
     .topo-busca-txt, .topo-busca .topo-kbd { display: none; }
-    #app-header .ui-trilha > span { display: none; }   /* no celular fica só o nome da tela */
+    #app-header .ui-trilha > span { display: none; }
     #app-header #btn-assistente { width: 44px; }
   }
 
-  /* área de conteúdo: fundo da aplicação; cartão dentro de cartão perde a moldura (sem mudar medida) */
+
   #app-conteudo { background: var(--sup-1); }
   .card .card, .odoo-sheet .card, .card .odoo-sheet { border-color: transparent; background: transparent; }
   .card .card:hover, .odoo-sheet .card:hover { box-shadow: none; }
-  /* ficha-documento (sem tabela) com largura de leitura; painel com tabela usa a largura toda */
+
   .odoo-sheet:not(:has(table)) { max-width: var(--ficha-max); }
 
-  /* busca (Ctrl K) */
+
   .ui-busca {
     width: min(640px, calc(100vw - 2 * var(--esp-4))); max-height: min(560px, calc(100vh - 2 * var(--esp-8)));
     margin: 10vh auto auto; padding: 0; border: 1px solid var(--borda-forte); border-radius: var(--radius-md);
@@ -4742,7 +4742,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .cat-topo h1.atual { margin: 0; font-size: var(--txt-xl); color: var(--marca-txt); }
 }
 
-/* ---- Pedidos do site (fase 195c): aba em Orçamentos, ficha do pedido e envio da proposta pelo WhatsApp ---- */
+
 @layer componentes {
 #orc-filtros[hidden], #psi-conteudo[hidden], #orc-contador[hidden], #btn-orc-whatsapp[hidden] { display: none; }
 .psi-painel { display: flex; flex-direction: column; gap: var(--esp-3); min-width: 0; }
@@ -4768,7 +4768,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .btn-sec.psi-wa-destaque { background: var(--sucesso-bg); border-color: var(--sucesso); color: var(--sucesso-txt); }
 }
 
-/* Fase 180e: texto longo (uiTextoBloco), comparação de versões (uiDiffLinhas) e a tela Modelos de Contratos (mdl-) */
+
 @layer componentes {
 .ui-texto { margin: 0; padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); background: var(--sup-1); color: var(--txt); font-family: var(--font-mono); font-size: var(--txt-sm); line-height: var(--lh-base); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 70vh; overflow: auto; }
 .ui-texto.numerado { list-style: decimal; padding-left: calc(var(--esp-8) + var(--esp-2)); }
@@ -4797,8 +4797,8 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 .con-modos { margin-bottom: var(--esp-3); }
 }
 
-/* Leitura automática do perfil da estaca (fase 171a, js/estaca_parecer.js): bloco entre o resumo e o gráfico do perfil e
-   bloco "Medição de concreto por máquina" acima das Chegadas. */
+
+
 @layer componentes {
   #epp-leitura { margin-bottom: var(--esp-3); }
   .epp-situacao { margin-bottom: var(--esp-2); }
@@ -4809,7 +4809,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .epp-maquina { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--esp-2); padding: var(--esp-1) 0; }
 }
 
-/* Fase 183b: documentos do cliente e quem assina (js/cliente_documentos.js) */
+
 @layer componentes {
   .cli-doc-secao { margin-bottom: var(--esp-4); }
   .cli-doc-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); margin: var(--esp-3) 0 var(--esp-2); }
@@ -4819,13 +4819,13 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .cli-doc-grupo { margin: var(--esp-2) 0; padding: var(--esp-2) var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-sm); }
   .cli-doc-grupo legend { padding: 0 var(--esp-1); font-size: var(--txt-sm); font-weight: 600; }
   .cli-doc-form-acoes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-2); }
-  /* fase 183c: prévia da leitura por IA */
+
   .cli-doc-ia-linha { display: flex; gap: var(--esp-2); align-items: flex-start; padding: var(--esp-2) 0; border-bottom: 1px solid var(--borda); }
   .cli-doc-ia-linha .meta { display: block; }
   .cli-doc-ia-duvidas { margin: var(--esp-2) 0; padding-left: var(--esp-4); font-size: var(--txt-sm); }
 }
 
-/* Fase 183a: contatos do cliente por papel (js/cliente_contatos.js) */
+
 @layer componentes {
   .cli-ct-aviso { margin: var(--esp-2) 0; }
   .cli-ct-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); margin-bottom: var(--esp-2); }
@@ -4842,13 +4842,13 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .orc-env-sug:empty { display: none; }
 }
 
-/* lote S67-b (#344): ações da lista de OSs na ficha do equipamento */
+
 @layer componentes {
   .eqp-os-acoes { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); }
   .eqp-os-exp-filtro { width: auto; }
 }
 
-/* fase 199a: aba Consumo do relatório de EPI (js/epi.js, prefixo epi-cns-) */
+
 @layer componentes {
   .epi-rel > .serv-filtros[hidden] { display: none; }
   .epi-cns-topo { display: flex; flex-direction: column; gap: var(--esp-2); margin-bottom: var(--esp-3); }
@@ -4873,19 +4873,19 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .epi-cns-grade-btns { display: inline-flex; gap: var(--esp-1); }
 }
 
-/* #365 e #363 (SESMT): o atributo hidden perde para o display do .btn-sec e do .serv-filtros; a regra devolve o sumiço */
+
 @layer componentes {
   .est-ent-card [hidden], #sst-painel .serv-filtros[hidden] { display: none; }
 }
 
-/* Lote S68-f (#366): OS de manutenção aberta no gráfico de Mobilizações (js/mobilizacoes_grafico.js, prefixo mgr-) */
+
 @layer componentes {
   .mgr-legenda i.mgr-leg-manutencao { background: var(--mgr-manutencao); }
   .mgr-svg .mgr-barra.mgr-sem-link { cursor: default; }
   .mgr-svg .mgr-barra.mgr-sem-link:hover rect { stroke: none; }
 }
 
-/* Fase 202b (#196): EPI nas obras na aba SESMT › EPI (js/epi.js, prefixo epi-obr-) */
+
 @layer componentes {
   #epi-obr-card[hidden], #epi-obr-onde[hidden] { display: none; }
   .epi-obr-topo { flex-wrap: wrap; gap: var(--esp-2); }
@@ -4910,14 +4910,14 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .epi-obr-onde-rv { display: flex; flex-wrap: wrap; gap: var(--esp-6); margin-bottom: var(--esp-2); }
 }
 
-/* Lote S69-c (chamado 355): o Salvar da ficha da obra some (atributo hidden) para quem só consulta e anexa; o display do .btn
-   venceria o hidden do navegador */
+
+
 @layer componentes {
   .odoo-actions-header [hidden] { display: none; }
 }
 
-/* Lote S69-g (chamado 337): aba Geral da ficha da obra em três blocos uiSecao (obrMontarAbaGeral em js/obras.js). Cabeçalho e
-   corpo enxutos como o .obf-bloco, para a densidade da antiga aba não cair. */
+
+
 @layer componentes {
   .obr-geral-blocos .ui-secao + .ui-secao { margin-top: var(--esp-3); }
   .obr-geral-blocos .ui-secao-cab { padding-block: var(--esp-2); }
@@ -4925,15 +4925,15 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .obr-geral-blocos .ui-secao { scroll-margin-top: var(--esp-6); }
 }
 
-/* Hotfix 347: aviso "valores ocultos" (uiValoresOcultos) na aba Custos de reparo, OS e OF. Só aparece com o olho do topo
-   fechado (body.valores-ocultos do lote S59); com os valores à mostra, some. */
+
+
 @layer componentes {
   .ui-val-ocultos { display: none; }
   .valores-ocultos .ui-val-ocultos { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); margin: 0 0 var(--esp-3); padding: var(--esp-2) var(--esp-3); border-radius: var(--radius-sm); background: var(--info-bg); color: var(--info-txt); font-size: var(--txt-sm); }
 }
 
-/* Fase 206c: bloco "Endereço de entrega" da janela Emitir NF-e (remessa): as quatro escolhas lado a lado e a lista da
-   busca de obra ou fornecedor */
+
+
 @layer componentes {
   #mov-ent-bloco { margin-bottom: var(--esp-3); }
   .mov-ent-opcoes { display: flex; flex-wrap: wrap; gap: var(--esp-2) var(--esp-4); margin-bottom: var(--esp-3); }
@@ -4941,7 +4941,7 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
   .mov-ent-lista .ui-btn { width: 100%; justify-content: flex-start; text-align: left; white-space: normal; padding-block: var(--esp-1); }
 }
 
-/* lote S71-g (#358): coluna TAG do modal de rateio de Compras (a linha de obra pode levar a TAG) */
+
 @layer componentes {
   .cmp-rd-tagcel .cmp-tag-campo { min-width: 10rem; max-width: 14rem; }
 }

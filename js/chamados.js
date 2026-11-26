@@ -1,24 +1,24 @@
-/* ====================================================================
-   Módulo: Chamados (fase 42 — 10/09/2026)
-   Problemas, dúvidas e pedidos de mudança no sistema, abertos pelos
-   colaboradores. SEM chat ao vivo: o colaborador abre, a triagem diária
-   (18h, rotina /triar-chamados da fase 64, só comenta e classifica) preenche
-   prioridade, esforço e faixa, e a resolução fica registrada no próprio chamado.
 
-   Matriz de triagem (decisão do Bernardo): código/restauração = sem validação
-   prévia; valor/regra/estrutura/exclusão = validação da diretoria antes.
 
-   Tabelas (migration criada pela sessão de gestão — nomes centralizados aqui
-   para alinhar com um único ajuste):
-     chamados(id, numero, titulo, descricao, categoria, status, modulo, obra_id,
-              registro_tipo, registro_id, aberto_por, criado_em, atualizado_em)
-     chamado_comentarios(id, chamado_id, autor, texto, criado_em)
-   Se as tabelas ainda não existirem, o módulo avisa e não quebra o resto do app.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const CHAM_TBL = { chamados: "chamados", comentarios: "chamado_comentarios", anexos: "chamado_anexos" };
-/* Fase 48 (21/09/2026): anexos do chamado — planilha, PDF ou foto do controle que a pessoa usa hoje.
-   Bucket privado; só quem enviou, quem abriu o chamado e a diretoria conseguem baixar. */
+
+
 const CHAM_ANEXO_BUCKET = "chamados-anexos";
 const CHAM_ANEXO_MAX = 5, CHAM_ANEXO_MAX_BYTES = 20 * 1024 * 1024;
 const CHAM_ANEXO_MIME = {
@@ -33,12 +33,12 @@ const CHAM_COL = { criado: "criado_em", atualizado: "atualizado_em", autor: "aut
 const CHAM_STATUS = {
   aberto:               { label: "Aberto",                cor: "vermelho" },
   em_analise:           { label: "Em análise",            cor: "ambar" },
-  aguardando_validacao: { label: "Esperando resposta",    cor: "azul" },   // lote S47: sempre com destinatário e prazo
-  planejado:            { label: "Planejado",             cor: "azul" },   // fase 64: entrou numa fase/lote/hotfix
-  recusado:             { label: "Recusado",              cor: "cinza" },  // fase 64: duplicado ou fora do escopo
+  aguardando_validacao: { label: "Esperando resposta",    cor: "azul" },
+  planejado:            { label: "Planejado",             cor: "azul" },
+  recusado:             { label: "Recusado",              cor: "cinza" },
   resolvido:            { label: "Resolvido",             cor: "verde" }
 };
-/* Fase 64 (05/10/2026): backlog. A triagem (/triar-chamados) preenche; a diretoria ajusta na ficha. */
+
 const CHAM_PRIORIDADE = {
   1: { label: "P1 · bloqueia operação",    cor: "vermelho" },
   2: { label: "P2 · erro com contorno",    cor: "ambar" },
@@ -59,7 +59,7 @@ const CHAM_CATEGORIA = {
   duvida:      { label: "Dúvida / como usar",                   validacao: false, dica: "Dúvida: respondida no próprio chamado." },
   outro:       { label: "Outro",                                validacao: false, dica: "" }
 };
-// registro_tipo → como reabrir a tela do registro a partir do chamado
+
 const CHAM_ABRIR_REGISTRO = {
   obra:    (id) => { irParaSecao("obras"); if(typeof abrirObra === "function") abrirObra(id); },
   rdo:     (id) => { irParaSecao("rdo");   if(typeof abrirRDO  === "function") abrirRDO(id); },
@@ -67,21 +67,21 @@ const CHAM_ABRIR_REGISTRO = {
 };
 
 let _chamados      = [];
-let _chamPerfis    = {};     // profiles.id → nome (quem abriu / comentou)
+let _chamPerfis    = {};
 let _chamCarregado = false;
-let _chamTabelaOk  = true;   // false quando a migration ainda não existe
-let _chamAberto    = null;   // chamado aberto no drawer
+let _chamTabelaOk  = true;
+let _chamAberto    = null;
 let _chamComentarios = [];
-let _chamAnexos = [];        // fase 48: anexos do chamado aberto
-let _chamContexto  = null;   // contexto capturado ao clicar em "Relatar problema ou melhoria"
+let _chamAnexos = [];
+let _chamContexto  = null;
 
 const chamPodeTriar = () => !!(usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo));
 
-/* ---------- Lote S47 (21/10/2026): quem responde, até quando, aprovar e reabrir ----------
-   aguardando_de: 'autor' | 'diretoria' | 'usuario' (+ aguardando_de_id); aguardando_ate (5 dias úteis);
-   aguardando_sugere (status que "Aprovar e enviar" aplica); resolvido_em (o autor reabre por 7 dias).
-   Antes da migration 20261022_loteS47 as colunas não vêm no select("*"): chamTemEspera() devolve false e a
-   ficha segue o fluxo antigo. */
+
+
+
+
+
 const CHAM_REABRIR_DIAS = 7;
 const CHAM_SUGERE = { em_analise: "Em análise", resolvido: "Resolvido", recusado: "Recusado" };
 const chamTemEspera = (c) => !!c && Object.prototype.hasOwnProperty.call(c, "aguardando_de");
@@ -92,7 +92,7 @@ function chamEsperaMinha(c){
   if(c.aguardando_de === "autor") return c[CHAM_COL.abertoPor] === chamEuId();
   return c.aguardando_de === "usuario" && c.aguardando_de_id === chamEuId();
 }
-// "Bernardo", "Diretoria", "você"
+
 function chamEsperaQuem(c){
   if(!c || !c.aguardando_de) return "—";
   if(chamEsperaMinha(c)) return "você";
@@ -104,16 +104,16 @@ const chamPrazoVencido = (c) => !!(c && c.status === "aguardando_validacao" && c
 function chamEsperaTxt(c){
   return `Esperando: ${chamEsperaQuem(c)}${c.aguardando_ate ? " · até " + dataBR(c.aguardando_ate).slice(0, 5) : ""}`;
 }
-// resolvido há menos de 7 dias (o autor ainda pode reabrir)
+
 function chamResolvidoRecente(c){
   if(!c || c.status !== "resolvido" || !c.resolvido_em) return false;
   return Date.now() - new Date(c.resolvido_em).getTime() < CHAM_REABRIR_DIAS * 86400000;
 }
-/* Lote S55 (#185): confirmação da correção pelo autor ("✅ Funcionou", RPC chamado_confirmar, mesma janela de 7 dias).
-   "autor" = confirmou; "prazo" = resolvido há mais de 7 dias sem reabrir (só exibição; a diretoria não confirma em nome
-   do autor); "pendente" = resolvido há menos de 7 dias sem confirmação; null = não está resolvido.
-   Antes da migration do lote S55 a coluna confirmado_em não vem no select("*"): chamTemConfirmacao() devolve false e
-   os botões não aparecem (o bloco "Confira a correção" segue com o "Não resolveu" de sempre). */
+
+
+
+
+
 const chamTemConfirmacao = (c) => !!c && Object.prototype.hasOwnProperty.call(c, "confirmado_em");
 function chamConfirmacao(c){
   if(!c || c.status !== "resolvido") return null;
@@ -122,7 +122,7 @@ function chamConfirmacao(c){
 }
 const CHAM_CONFIRMACAO_TXT = { autor: "confirmado pelo autor", prazo: "confirmado por prazo", pendente: "sem confirmação" };
 const chamSomenteLeitura = () => typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
-// a última pergunta ou resposta sugerida do chamado aberto (o que a pessoa esperada precisa ler)
+
 function chamPerguntaAtual(){
   for(let i = _chamComentarios.length - 1; i >= 0; i--){
     const t = _chamComentarios[i].texto || "";
@@ -148,9 +148,9 @@ function chamTagPrioridade(p, longo){
   if(!o) return '<span class="meta">—</span>';
   return `<span class="tag ${esc(o.cor)}" title="${esc(o.label)}">${esc(longo ? o.label : "P" + p)}</span>`;
 }
-// quem abriu / quem comentou: a rotina de triagem grava sem usuário (origem = 'triagem')
+
 function chamAutor(id, origem){ return !id && origem === "triagem" ? "Triagem automática" : chamNome(id); }
-// só link http(s) vira <a>; o resto aparece como texto
+
 function chamLinkPR(url){
   const u = String(url || "").trim();
   if(!u) return "—";
@@ -161,13 +161,13 @@ function chamModuloLabel(secao){
   const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"] span`);
   return b ? b.textContent.trim() : secao;
 }
-// Tabela ausente (migration ainda não aplicada) — PostgREST responde 404/PGRST205 ou 42P01
+
 function chamErroTabela(err){
   const m = String(err?.message || "") + " " + String(err?.code || "");
   return /PGRST205|42P01|does not exist|Could not find the table|schema cache/i.test(m);
 }
 
-/* ---------- Carga ---------- */
+
 async function carregarChamados(silencioso){
   const cont = $("cham-conteudo");
   const { data, error } = await sb.from(CHAM_TBL.chamados).select("*").order(CHAM_COL.criado, { ascending: false }).limit(500);
@@ -186,8 +186,8 @@ async function carregarChamados(silencioso){
   _chamTabelaOk = true;
   _chamados = data || [];
   _chamCarregado = true;
-  const bSem = $("btn-cham-sem-resposta"); if(bSem) bSem.hidden = !chamLeConversas();   // fase 174a
-  await carregarPerfisChamados(_chamados.flatMap(c => [c[CHAM_COL.abertoPor], c.aguardando_de_id]));   // lote S47: quem responde
+  const bSem = $("btn-cham-sem-resposta"); if(bSem) bSem.hidden = !chamLeConversas();
+  await carregarPerfisChamados(_chamados.flatMap(c => [c[CHAM_COL.abertoPor], c.aguardando_de_id]));
   preencherFiltrosChamados();
   renderChamados();
   atualizarBadgeChamados();
@@ -202,19 +202,19 @@ function atualizarBadgeChamados(){
   const b = $("nav-chamados-badge");
   if(!b) return;
   const meus = usuarioAtual ? usuarioAtual.id : null;
-  // gestão vê tudo que está aberto; os demais veem os próprios que ainda não foram resolvidos
+
   const n = _chamados.filter(c => !chamFechado(c.status) && (chamPodeTriar() || c[CHAM_COL.abertoPor] === meus)).length;
   b.textContent = n ? String(n) : "";
 }
 function preencherFiltrosChamados(){
   const fs = $("cham-f-status");
   if(fs && fs.options.length <= 1){
-    // lote S47: atalhos "esperando a minha resposta", "prazo vencido" e "resolvidos nos últimos 7 dias"
+
     fs.innerHTML = `<option value="">Abertos e em andamento</option><option value="todos">Todos</option>` +
       `<option value="minha_resposta">Esperando minha resposta</option>` +
       (chamPodeTriar() ? `<option value="atrasados">Esperando resposta, prazo vencido</option>` : "") +
       `<option value="resolvidos7">Resolvidos nos últimos 7 dias</option>` +
-      `<option value="resolvidos_sem_confirmacao">Resolvidos sem confirmação</option>` +   // lote S55 (#185)
+      `<option value="resolvidos_sem_confirmacao">Resolvidos sem confirmação</option>` +
       Object.entries(CHAM_STATUS).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
   }
   const fp = $("cham-f-prioridade");
@@ -237,7 +237,7 @@ function preencherFiltrosChamados(){
   }
 }
 
-/* ---------- Lista ---------- */
+
 function chamadosFiltrados(){
   const termo = ($("cham-busca")?.value || "").trim().toLowerCase();
   const fSt   = $("cham-f-status")?.value || "";
@@ -245,14 +245,14 @@ function chamadosFiltrados(){
   const fObra = $("cham-f-obra")?.value || "";
   const fPri  = $("cham-f-prioridade")?.value || "";
   const meus  = $("cham-f-meus")?.checked;
-  const fOri  = $("cham-f-origem")?.value || "";   // fase 174a
+  const fOri  = $("cham-f-origem")?.value || "";
   return _chamados.filter(c => {
     if(fOri && (c.origem || "usuario") !== fOri) return false;
     if(fSt === "") { if(chamFechado(c.status)) return false; }
-    else if(fSt === "minha_resposta"){ if(!chamEsperaMinha(c)) return false; }   // lote S47
+    else if(fSt === "minha_resposta"){ if(!chamEsperaMinha(c)) return false; }
     else if(fSt === "atrasados"){ if(!chamPrazoVencido(c)) return false; }
     else if(fSt === "resolvidos7"){ if(!chamResolvidoRecente(c)) return false; }
-    else if(fSt === "resolvidos_sem_confirmacao"){ if(chamConfirmacao(c) !== "pendente") return false; }   // lote S55
+    else if(fSt === "resolvidos_sem_confirmacao"){ if(chamConfirmacao(c) !== "pendente") return false; }
     else if(fSt !== "todos" && c.status !== fSt) return false;
     if(fPri === "sem" ? c.prioridade != null : (fPri && String(c.prioridade) !== fPri)) return false;
     if(fCat && c.categoria !== fCat) return false;
@@ -263,23 +263,23 @@ function chamadosFiltrados(){
       if(!alvo.includes(termo)) return false;
     }
     return true;
-  // fase 64: prioridade primeiro (sem prioridade por último), depois o mais recente
+
   }).sort((a, b) => (a.prioridade ?? 9) - (b.prioridade ?? 9) || String(b[CHAM_COL.criado] || "").localeCompare(String(a[CHAM_COL.criado] || "")));
 }
-let _chamSel = new Set();   // fase 64: chamados marcados para "Planejar na fase…"
+let _chamSel = new Set();
 function renderChamados(){
   const cont = $("cham-conteudo");
   if(!cont || !_chamTabelaOk) return;
-  // KPIs
+
   const limite30 = Date.now() - 30 * 86400000;
   const cnt = (st) => _chamados.filter(c => c.status === st && (st !== "resolvido" || new Date(c.resolvido_em || c[CHAM_COL.atualizado] || c[CHAM_COL.criado]).getTime() >= limite30)).length;
   const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   kpi("cham-kpi-aberto", cnt("aberto")); kpi("cham-kpi-analise", cnt("em_analise"));
-  // lote S47: conta só o que espera o usuário logado (antes da migration, o total esperando)
+
   kpi("cham-kpi-validacao", _chamados.some(chamTemEspera) ? _chamados.filter(chamEsperaMinha).length : cnt("aguardando_validacao"));
   kpi("cham-kpi-resolvido", cnt("resolvido"));
   kpi("cham-kpi-p1", _chamados.filter(c => c.prioridade === 1 && ["aberto","em_analise"].includes(c.status)).length);
-  // lote S55 (#185): resolvidos há menos de 7 dias ainda sem o "Funcionou" do autor; só a gestão vê o cartão
+
   const kSem = $("cham-kpi-semconf");
   if(kSem){
     kSem.textContent = _chamados.filter(c => chamConfirmacao(c) === "pendente").length;
@@ -314,7 +314,7 @@ function renderChamados(){
     }).join("")}</tbody></table></div>`;
   if(typeof marcarAcionaveis === "function") marcarAcionaveis(cont);
 }
-/* Fase 64: ação em massa "Planejar na fase…" (só gestão; campo inline, sem prompt) */
+
 function chamAtualizarBarraPlanejar(){
   const bar = $("cham-planejar-bar");
   if(!bar) return;
@@ -334,7 +334,7 @@ async function chamPlanejarSelecionados(){
   await carregarChamados(true);
 }
 
-/* ---------- Ficha (drawer) ---------- */
+
 async function abrirChamado(id){
   const c = _chamados.find(x => x.id === id);
   if(!c) return;
@@ -342,7 +342,7 @@ async function abrirChamado(id){
   const { data, error } = await sb.from(CHAM_TBL.comentarios).select("*").eq("chamado_id", id).order(CHAM_COL.criado, { ascending: true });
   _chamComentarios = error ? [] : (data || []);
   const ax = await sb.from(CHAM_TBL.anexos).select("*").eq("chamado_id", id).order("criado_em", { ascending: true });
-  _chamAnexos = ax.error ? [] : (ax.data || []); // RLS: vem vazio para quem não é autor/diretoria
+  _chamAnexos = ax.error ? [] : (ax.data || []);
   await carregarPerfisChamados([c[CHAM_COL.abertoPor], ..._chamComentarios.map(k => k[CHAM_COL.autor]), ..._chamAnexos.map(a => a.enviado_por)]);
   renderFichaChamado(error ? error.message : null);
   $("cham-modal").style.display = "flex";
@@ -356,7 +356,7 @@ function renderFichaChamado(erroComentarios){
   const ehAutor = usuarioAtual && c[CHAM_COL.abertoPor] === usuarioAtual.id;
   const stages = Object.entries(CHAM_STATUS).map(([v, o]) => {
     const atual = v === c.status;
-    // gestão muda qualquer status; quem abriu só pode marcar como resolvido o próprio chamado
+
     const pode = !atual && (podeTriar || (ehAutor && v === "resolvido"));
     return `<div class="stage${atual ? " atual" : ""}" data-status="${esc(v)}" ${pode ? "" : 'aria-disabled="true"'} title="${atual ? "Status atual" : pode ? "Mudar para " + esc(o.label) : "Só a diretoria muda este status"}">${esc(o.label)}</div>`;
   }).join("");
@@ -385,7 +385,7 @@ function renderFichaChamado(erroComentarios){
     <div class="cham-status-bar" id="cham-status-bar">${stages}</div>
     ${chamBlocoEspera(c, ehAutor, podeTriar)}
     ${cat.dica ? `<p class="nota">${esc(cat.dica)}</p>` : ""}
-    <div class="campo largo"><label>Descrição</label><div class="cham-desc" style="font-size:var(--txt-sm);color:var(--txt);">${/* html */ linkificarCodigos(esc(c.descricao || "—"))}</div></div>
+    <div class="campo largo"><label>Descrição</label><div class="cham-desc" style="font-size:var(--txt-sm);color:var(--txt);">${  linkificarCodigos(esc(c.descricao || "—"))}</div></div>
     <h4 class="titulo-bloco" style="margin-top:14px;">📎 Anexos (${_chamAnexos.length})</h4>
     <div id="cham-anexos">${_chamAnexos.length ? _chamAnexos.map(a => `<div class="cham-anexo">
       <button type="button" class="btn-sec btn-sm btn-cham-anexo" data-path="${esc(a.storage_path)}" data-nome="${esc(a.nome)}" title="Baixar">${esc(a.nome)}</button>
@@ -398,19 +398,19 @@ function renderFichaChamado(erroComentarios){
     <div id="cham-comentarios">${_chamComentarios.length ? _chamComentarios.map((k, i) => {
       const txt = k.texto || "";
       const cls = /^\[status\]/i.test(txt) ? " sistema" : /^\[resolu[cç][aã]o\]/i.test(txt) ? " resolucao" : "";
-      // fase 64: prefixos da triagem viram tag; o texto da [resposta sugerida] pode ser aprovado pela gestão
-      // lote S47: [pergunta], [reaberto] e [decisão] também viram tag; "[sugere: x]" vira "ao aprovar: X"
-      // lote S55: [confirmado] (o "Funcionou" do autor) vira tag verde
+
+
+
       const PREF_RE = /^\[(triagem|duplicado de #?\d+|resposta sugerida|pergunta|reaberto|decis[aã]o|confirmado)\]\s*/i;
       const pref = txt.match(PREF_RE);
       const corpo = txt.replace(/^\[(status|resolu[cç][aã]o)\]\s*/i, "").replace(PREF_RE, "");
       const sugerida = chamRespostaSugerida(txt);
-      // lote S63a: PC-AAAA-NNNNN vira link para a ficha do pedido (o texto já sai escapado antes)
+
       const corpoHtml = linkificarCodigos(esc(corpo)).replace(/^\[resposta sugerida\]/im, '<span class="tag verde">resposta sugerida</span>')
         .replace(/\[sugere:\s*([a-z_]+)\]/gi, (_m, st) => `<span class="tag cinza">ao aprovar: ${esc(CHAM_SUGERE[st.toLowerCase()] || st)}</span>`);
       const corPref = (p) => /^(resposta|confirmado)/i.test(p) ? "verde" : /^duplicado/i.test(p) ? "cinza" : /^(pergunta|reaberto)/i.test(p) ? "ambar" : "azul";
-      // o botão antigo "Aprovar resposta" só existe antes da migration do lote S47 (depois, o bloco "Esperando" aprova)
-      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${corPref(pref[1])}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${/* html */ corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) && !chamTemEspera(c) && !chamSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">Aprovar resposta</button>` : ""}</div>`;
+
+      return `<div class="cham-comentario${cls}"><div class="meta">${esc(chamAutor(k[CHAM_COL.autor], k.origem))} · ${esc(chamDataHora(k[CHAM_COL.criado]))}</div>${pref ? `<span class="tag ${corPref(pref[1])}">${esc(pref[1].toLowerCase())}</span> ` : ""}<div style="white-space:pre-wrap;">${  corpoHtml}</div>${sugerida && podeTriar && !chamFechado(c.status) && !chamTemEspera(c) && !chamSomenteLeitura() ? `<button type="button" class="btn-sec btn-sm btn-cham-aprovar" data-idx="${i}" title="Copia a resposta sugerida como comentário seu e resolve o chamado">Aprovar resposta</button>` : ""}</div>`;
     }).join("") : `<p class="vazio">Sem comentários ainda. A triagem diária (18h) registra aqui o andamento.</p>`}</div>
     <div class="campo largo" style="margin-top:10px;"><label>Comentar</label><textarea id="cham-novo-comentario" rows="3" placeholder="${podeTriar ? "Registre a triagem, a decisão ou a resolução. Prefixe com [resolução] para destacar." : "Complemente o chamado (mais detalhes, prints descritos, o que mudou)."}"></textarea></div>
     <div id="cham-ficha-aviso" class="aviso"></div>
@@ -420,14 +420,14 @@ function renderFichaChamado(erroComentarios){
     </div>`;
 
   $("btn-cham-fechar").addEventListener("click", fecharChamado);
-  resolverCodigosDoc(box);   // lote S63a: número sem pedido (ou sem leitura) volta a ser texto; o clique é do core.js
+  resolverCodigosDoc(box);
   box.querySelectorAll(".btn-cham-anexo").forEach(b => b.addEventListener("click", () => chamBaixarAnexo(b.dataset.path, b.dataset.nome)));
   $("btn-cham-anexar")?.addEventListener("click", () => comBotaoTravado("btn-cham-anexar", chamAnexarNaFicha));
   $("btn-cham-comentar").addEventListener("click", () => comentarChamado(false));
   $("btn-cham-resolver")?.addEventListener("click", () => comentarChamado(true));
   $("btn-cham-abrir-registro")?.addEventListener("click", () => { fecharChamado(); CHAM_ABRIR_REGISTRO[c.registro_tipo](c.registro_id); });
-  $("btn-cham-ver-conversa")?.addEventListener("click", () => { if(typeof abrirConversaAssistente === "function") abrirConversaAssistente(c.assistente_conversa_id); });   // fase 174a
-  // fase 64: chips de backlog salvam um a um; "Aprovar resposta" reaproveita o fluxo de resolver
+  $("btn-cham-ver-conversa")?.addEventListener("click", () => { if(typeof abrirConversaAssistente === "function") abrirConversaAssistente(c.assistente_conversa_id); });
+
   box.querySelectorAll("[data-cham-campo]").forEach(el => el.addEventListener("change", () => comBotaoTravado(el, () => chamSalvarCampo(el.dataset.chamCampo, el.value))));
   box.querySelectorAll(".btn-cham-aprovar").forEach(b => b.addEventListener("click", () => {
     const ta = $("cham-novo-comentario");
@@ -437,21 +437,21 @@ function renderFichaChamado(erroComentarios){
   }));
   box.querySelectorAll("#cham-status-bar .stage").forEach(el => {
     if(el.getAttribute("aria-disabled") === "true" || el.classList.contains("atual")) return;
-    // lote S47: "Esperando resposta" exige destinatário e prazo → abre o "Perguntar a…" em vez de mudar direto
+
     if(el.dataset.status === "aguardando_validacao" && chamTemEspera(c)){
       el.addEventListener("click", () => { const d = $("cham-perguntar"); if(d){ d.open = true; $("cham-perg-texto")?.focus(); } });
       return;
     }
     el.addEventListener("click", () => mudarStatusChamado(el.dataset.status));
   });
-  // lote S47: aprovar / editar / responder, reabrir e perguntar
+
   $("btn-cham-aprovar-enviar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, () => chamAprovarEspera(false)));
   $("btn-cham-aprovar-editar")?.addEventListener("click", () => {
     const w = $("cham-aprovar-edicao"); if(!w) return;
     w.style.display = ""; $("cham-aprovar-texto")?.focus();
   });
   $("btn-cham-aprovar-editado")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, () => chamAprovarEspera(true)));
-  // lote S55: "✅ Funcionou" confirma; "↩️ Ainda não" primeiro abre a caixa do motivo, depois reabre
+
   $("btn-cham-confirmar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, chamConfirmarChamado));
   $("btn-cham-reabrir")?.addEventListener("click", (e) => {
     const w = $("cham-reabrir-wrap");
@@ -461,11 +461,11 @@ function renderFichaChamado(erroComentarios){
   $("btn-cham-perguntar")?.addEventListener("click", (e) => comBotaoTravado(e.currentTarget, chamPerguntarChamado));
   $("cham-perg-de")?.addEventListener("change", chamAtualizarPerguntarUsuario);
 }
-/* Lote S47: bloco abaixo da statusbar.
-   - Esperando resposta: quem é, até quando, a pergunta; para quem está esperado, "Aprovar e enviar" / "Editar"
-     (com resposta sugerida) ou "Responder e enviar" (sem resposta sugerida). Ao enviar, aplica o status sugerido.
-   - Resolvido há menos de 7 dias: o autor vê "Não resolveu" (reabre com comentário obrigatório).
-   - Diretoria: "Perguntar a…" (autor, diretoria ou um usuário; texto; status ao aprovar). */
+
+
+
+
+
 function chamBlocoEspera(c, ehAutor, podeTriar){
   if(!chamTemEspera(c)) return "";
   const leitura = chamSomenteLeitura();
@@ -496,16 +496,16 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
   }
   if(ehAutor && !leitura && chamResolvidoRecente(c)){
     const ate = new Date(new Date(c.resolvido_em).getTime() + CHAM_REABRIR_DIAS * 86400000);
-    // lote S55 (#185): com a coluna confirmado_em no banco, "✅ Funcionou" e "↩️ Ainda não" lado a lado; a caixa do motivo
-    // só aparece ao clicar "Ainda não" (segundo clique reabre, texto obrigatório). Antes da migration, o fluxo da S47.
-    // hotfix #372: quem já clicou "Funcionou" (por engano, inclusive) ainda pode reabrir dentro do prazo, só com "Não resolveu".
+
+
+
     const confirmado = !!c.confirmado_em;
     const comConfirmacao = chamTemConfirmacao(c) && !confirmado;
     const aviso = confirmado ? "<strong>Você confirmou que funcionou.</strong> Se não ficou certo, ainda pode reabrir"
       : comConfirmacao ? "<strong>Confira a correção.</strong> Funcionou? Confirme aqui. Se não ficou certo, você pode reabrir"
       : "<strong>Confira a correção.</strong> Se não ficou certo, você pode reabrir";
     html += `<div class="cham-espera">
-      <div>${/* html */ aviso} até ${esc(ate.toLocaleDateString("pt-BR"))}.</div>
+      <div>${  aviso} até ${esc(ate.toLocaleDateString("pt-BR"))}.</div>
       <div id="cham-reabrir-wrap" ${comConfirmacao ? 'style="display:none;"' : ""}>
         <textarea id="cham-reabrir-texto" rows="2" placeholder="O que continua errado? (obrigatório)"></textarea>
       </div>
@@ -537,7 +537,7 @@ function chamBlocoEspera(c, ehAutor, podeTriar){
         <span class="meta">Prazo: 5 dias úteis. Entra na Minha fila de quem responde.</span></div>
     </details>`;
   }
-  return /* html */ html;
+  return   html;
 }
 let _chamUsuariosAtivos = null;
 async function chamAtualizarPerguntarUsuario(){
@@ -566,7 +566,7 @@ async function chamAprovarEspera(editado){
   await chamDepoisDaRpc(c.id);
   aviso("cham-ficha-aviso", `Resposta enviada. Chamado em ${CHAM_STATUS[data]?.label || data}.`, "ok");
 }
-// lote S55 (#185): o autor confirma que a correção funcionou (RPC chamado_confirmar: só o autor, até 7 dias, uma vez)
+
 async function chamConfirmarChamado(){
   const c = _chamAberto;
   if(!c) return;
@@ -593,7 +593,7 @@ async function chamPerguntarChamado(){
   const texto = ($("cham-perg-texto")?.value || "").trim();
   if(de === "usuario" && !deId){ aviso("cham-ficha-aviso", "Escolha a pessoa que responde.", "erro"); return; }
   if(!texto){ aviso("cham-ficha-aviso", "Escreva a pergunta.", "erro"); $("cham-perg-texto")?.focus(); return; }
-  // lote S69-d (#336): o autor pedindo resposta a si mesmo quase sempre queria só comentar; confirma antes
+
   const autorId = c[CHAM_COL.abertoPor], eu = chamEuId();
   if(autorId && eu === autorId && (de === "autor" || (de === "usuario" && deId === autorId))){
     const ok = await uiConfirmar({ titulo: "Pedir resposta a você mesmo",
@@ -612,7 +612,7 @@ function fecharChamado(){
   $("cham-modal").style.display = "none";
   _chamAberto = null; _chamComentarios = []; _chamAnexos = [];
 }
-/* ---------- Backlog (fase 64): prioridade, esforço, faixa, fase e PR ---------- */
+
 function chamChipsBacklog(c, podeTriar){
   if(!podeTriar){
     if(c.prioridade == null && !c.fase && !c.pr_url) return "";
@@ -647,21 +647,21 @@ async function chamSalvarCampo(campo, valor){
   aviso("cham-ficha-aviso", "Salvo.", "ok");
   renderChamados();
 }
-// texto a partir de "[resposta sugerida]" (pode vir no meio do comentário da triagem)
+
 function chamRespostaSugerida(txt){
   const m = String(txt || "").match(/\[resposta sugerida\]\s*([\s\S]+)$/i);
-  return m ? m[1].replace(/\s*\[sugere:[^\]]*\]/gi, "").trim() : "";   // lote S47: "[sugere: x]" não vai na resposta
+  return m ? m[1].replace(/\s*\[sugere:[^\]]*\]/gi, "").trim() : "";
 }
 async function mudarStatusChamado(novo){
   const c = _chamAberto;
   if(!c || !CHAM_STATUS[novo] || novo === c.status) return;
   const anterior = c.status;
-  // lote S39 (#11 #12): update barrado pela policy volta sem erro e sem linha; sem o select o front não percebia
+
   const { data: mudou, error } = await sb.from(CHAM_TBL.chamados).update({ status: novo }).eq("id", c.id).select("id");
   if(error){ aviso("cham-ficha-aviso", "Não foi possível mudar o status: " + error.message, "erro"); return; }
   if(!mudou?.length){ aviso("cham-ficha-aviso", "Sem permissão para mudar o status deste chamado.", "erro"); return; }
   c.status = novo;
-  // trilha: a mudança de status vira um comentário de sistema
+
   await sb.from(CHAM_TBL.comentarios).insert({ chamado_id: c.id, [CHAM_COL.autor]: usuarioAtual?.id || null,
     texto: `[status] ${CHAM_STATUS[anterior]?.label || anterior} → ${CHAM_STATUS[novo].label}` });
   await abrirChamado(c.id);
@@ -686,10 +686,10 @@ async function comentarChamado(resolver){
   renderChamados(); atualizarBadgeChamados();
 }
 
-/* ---------- Anexos (fase 48, 21/09/2026) ----------
-   Caminho no bucket: <usuario>/<chamado>/<timestamp>_<rand>.<ext> — a 1ª pasta é o id de quem enviou
-   (é o que a policy do storage confere). O MIME vai pela extensão: o navegador manda octet-stream
-   ou vazio para .xlsm/.csv em algumas máquinas e o bucket recusaria. */
+
+
+
+
 function chamTamanho(bytes){
   const b = Number(bytes) || 0;
   return b >= 1048576 ? (b / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
@@ -704,20 +704,20 @@ function chamValidarAnexos(arquivos){
   }
   return null;
 }
-/* Envia os arquivos e registra em chamado_anexos. Devolve a lista de falhas (nome: motivo). */
+
 async function chamEnviarAnexos(chamadoId, arquivos){
   const falhas = [];
   for(const f of arquivos){
     const ext = chamExtensao(f.name);
     const caminho = `${usuarioAtual.id}/${chamadoId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const mime = CHAM_ANEXO_MIME[ext];
-    // supabase-js ignora `contentType` quando o corpo é File/Blob (vale o type do próprio arquivo): reembala com o MIME da extensão
+
     const corpo = f.type === mime ? f : new Blob([f], { type: mime });
     const up = await sb.storage.from(CHAM_ANEXO_BUCKET).upload(caminho, corpo, { cacheControl: "3600", contentType: mime, upsert: false });
     if(up.error){ falhas.push(`${f.name}: ${up.error.message}`); continue; }
     const ins = await sb.from(CHAM_TBL.anexos).insert({ chamado_id: chamadoId, nome: f.name, storage_path: caminho, mime_type: mime, tamanho_bytes: f.size, enviado_por: usuarioAtual.id });
     if(ins.error){
-      await sb.storage.from(CHAM_ANEXO_BUCKET).remove([caminho]); // não deixa arquivo órfão
+      await sb.storage.from(CHAM_ANEXO_BUCKET).remove([caminho]);
       falhas.push(`${f.name}: ${ins.error.message}`);
     }
   }
@@ -738,7 +738,7 @@ async function chamAnexarNaFicha(){
   const falhas = await chamEnviarAnexos(c.id, arquivos);
   const enviados = arquivos.length - falhas.length;
   if(enviados){
-    // trilha: o anexo vira um comentário de sistema, para a triagem ver que chegou material novo
+
     await sb.from(CHAM_TBL.comentarios).insert({ chamado_id: c.id, [CHAM_COL.autor]: usuarioAtual.id,
       texto: `[status] anexou ${enviados} arquivo(s): ${arquivos.filter(f => !falhas.some(x => x.startsWith(f.name + ":"))).map(f => f.name).join(", ")}` });
   }
@@ -747,10 +747,10 @@ async function chamAnexarNaFicha(){
   else aviso("cham-ficha-aviso", `${enviados} arquivo(s) anexado(s).`, "ok");
 }
 
-/* ---------- Novo chamado / Relatar problema ou melhoria ----------
-   O contexto vem da tela aberta: módulo (item ativo do menu), obra e registro em edição.
-   Cada módulo guarda o id em edição num global próprio (obraEditId, rdoEditId…); os
-   typeof protegem contra módulo ausente. */
+
+
+
+
 function chamadosContextoAtual(){
   const btn = document.querySelector(".sidebar-nav button.ativo");
   const secao = btn?.dataset.secao || null;
@@ -818,10 +818,10 @@ async function criarChamado(){
   if(!titulo){ aviso("chamn-aviso", "Dê um título ao chamado.", "erro"); return; }
   if(!descricao){ aviso("chamn-aviso", "Descreva o problema: o que fez, o que esperava e o que aconteceu.", "erro"); return; }
   const arquivos = [...($("chamn-anexos")?.files || [])];
-  const erroAnexo = chamValidarAnexos(arquivos); // valida ANTES de criar, para não abrir chamado sem o anexo prometido
+  const erroAnexo = chamValidarAnexos(arquivos);
   if(erroAnexo){ aviso("chamn-aviso", erroAnexo, "erro"); return; }
   const c = _chamContexto || {};
-  // rodapé automático: ajuda a triagem a reproduzir (tela, registro, navegador)
+
   const rodape = [`tela: ${c.modulo_label || "—"}`, c.registro_label ? `registro: ${c.registro_label}` : null,
     `navegador: ${(navigator.userAgent || "").replace(/\).*$/, ")").slice(0, 120)}`].filter(Boolean).join(" · ");
   const reg = {
@@ -836,8 +836,8 @@ async function criarChamado(){
   const btn = $("btn-chamn-criar");
   btn.disabled = true;
   let { data, error } = await sb.from(CHAM_TBL.chamados).insert(reg).select("*").single();
-  // A check constraint de categoria no banco (migration 42c) ainda não conhece 'melhoria':
-  // grava como 'estrutura' com o título prefixado, para o chamado não se perder.
+
+
   if(error && reg.categoria === "melhoria" && /categoria|check constraint/i.test(error.message || "")){
     ({ data, error } = await sb.from(CHAM_TBL.chamados).insert({ ...reg, categoria: "estrutura", titulo: "[Melhoria] " + reg.titulo }).select("*").single());
   }
@@ -860,8 +860,8 @@ async function criarChamado(){
   if(falhasAnexo.length) aviso("app-aviso", `Chamado aberto, mas ${falhasAnexo.length} anexo(s) não subiram: ${falhasAnexo.join(" · ")}. Abra o chamado e anexe de novo.`, "erro");
 }
 
-/* ---------- Fase 174a: perguntas que o assistente não soube responder (fila do futuro manual por tela) ----------
-   Só a diretoria lê a conversa dos outros (has_role('auditor') no banco = diretor ou auditor). */
+
+
 const chamLeConversas = () => !!(usuarioAtual && ["diretor", "auditor"].includes(usuarioAtual.cargo));
 async function alternarPerguntasSemResposta(){
   const box = $("cham-sem-resposta"), lista = $("cham-conteudo");
@@ -884,7 +884,7 @@ async function alternarPerguntasSemResposta(){
   }
   await carregarPerfisChamados(conversas.map(c => c.usuario_id));
   const conv = Object.fromEntries(conversas.map(c => [c.id, c]));
-  // a pergunta é a última mensagem da pessoa antes da resposta marcada
+
   const pergunta = (m) => perguntas.filter(p => p.conversa_id === m.conversa_id && p.criado_em <= m.criado_em).pop();
   const linhas = marcadas.map(m => {
     const c = conv[m.conversa_id] || {}, p = pergunta(m);
@@ -895,15 +895,15 @@ async function alternarPerguntasSemResposta(){
   $("btn-cham-sem-resposta-voltar")?.addEventListener("click", alternarPerguntasSemResposta);
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarChamados(){
-  // Os modais nascem dentro de <section id="sec-chamados">, que fica display:none fora dessa tela.
-  // O botao "Relatar problema" e global (topbar), entao o modal precisa viver fora das secoes
-  // - senao abre invisivel (bug relatado em 14/09/2026).
+
+
+
   ["cham-novo-modal", "cham-modal"].forEach(id => { const m = $(id); if(m && m.closest(".secao")) document.body.appendChild(m); });
   document.querySelector('.sidebar-nav button[data-secao="chamados"]')?.addEventListener("click", () => carregarChamados(true));
   $("btn-cham-atualizar")?.addEventListener("click", () => carregarChamados(false));
-  // fase 174a: "Novo chamado" abre o assistente; o formulário de antes fica em "Preencher sem assistente"
+
   $("btn-cham-novo")?.addEventListener("click", () => typeof abrirAssistente === "function"
     ? abrirAssistente({ modulo: "chamados", modulo_label: "Chamados" }) : abrirNovoChamado({ modulo: "chamados", modulo_label: "Chamados" }));
   $("btn-cham-sem-assistente")?.addEventListener("click", () => abrirNovoChamado({ modulo: "chamados", modulo_label: "Chamados" }));
@@ -920,14 +920,14 @@ function ligarChamados(){
     k.addEventListener("click", () => {
       const f = $("cham-f-status");
       if(!f) return;
-      // lote S47: antes da migration não há destinatário; "esperando minha resposta" cai no status puro
+
       const v = k.dataset.chamStatus;
       f.value = v === "minha_resposta" && !_chamados.some(chamTemEspera) ? "aguardando_validacao" : v;
       renderChamados();
     });
   });
   $("cham-conteudo")?.addEventListener("click", (e) => {
-    // fase 64: marcar para planejar não abre a ficha
+
     const cb = e.target.closest(".cham-sel");
     if(cb){ cb.checked ? _chamSel.add(cb.dataset.id) : _chamSel.delete(cb.dataset.id); chamAtualizarBarraPlanejar(); return; }
     if(e.target.id === "cham-sel-todos"){
@@ -945,7 +945,7 @@ function ligarChamados(){
     if(fp) fp.value = "1"; if(fs) fs.value = "";
     renderChamados();
   });
-  // fechar drawers clicando fora
+
   $("cham-modal")?.addEventListener("click", (e) => { if(e.target.id === "cham-modal") fecharChamado(); });
   $("cham-novo-modal")?.addEventListener("click", (e) => { if(e.target.id === "cham-novo-modal") fecharNovoChamado(); });
 }

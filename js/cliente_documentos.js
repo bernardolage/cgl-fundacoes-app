@@ -1,12 +1,12 @@
-/* ====================================================================
-   Fase 183b: documentos do cliente e quem assina, com conferência (spec docs/specs/fase-183-contatos-signatarios-cliente.md).
-   Aba "Documentos e assinaturas" da ficha do cliente. Prefixo cli-doc- no DOM e cdo nas funções.
-   - Documentos no bucket privado clientes-docs (pasta = cliente_id), com validade; aviso 30 dias antes.
-   - Signatários: nascem "aguardando conferência"; Conferir e Revogar só jurídico, financeiro e diretoria, nunca quem
-     cadastrou (o banco confere de novo nas RPCs). Editar um conferido volta para "aguardando conferência".
-   - CPF e RG: só quem confere, em sessão com MFA, pelas funções auditadas; nunca na lista.
-   Sem a migration a aba diz que chega com a atualização do banco.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
 
 const CDO_BUCKET = "clientes-docs";
 const CDO_TIPOS_DOC = [["contrato_social", "Contrato social"], ["alteracao_contratual", "Alteração contratual"], ["procuracao", "Procuração"],
@@ -26,12 +26,12 @@ function cdoRotulo(lista, v){ const x = lista.find(a => a[0] === v); return x ? 
 function cdoCargo(){ return (typeof usuarioAtual !== "undefined" && usuarioAtual) ? usuarioAtual.cargo : ""; }
 function cdoUid(){ return (typeof usuarioAtual !== "undefined" && usuarioAtual) ? usuarioAtual.id : ""; }
 function cdoSoLeitura(){ return typeof ehSomenteLeitura === "function" && ehSomenteLeitura(); }
-/* D3: quem confere (o banco tem a mesma lista em eh_conferente_signatario) */
+
 function cdoPodeConferir(){ return !cdoSoLeitura() && ["diretor", "juridico", "financeiro"].includes(cdoCargo()); }
-/* anexa e cadastra: quem confere + comercial e admin */
+
 function cdoPodeAnexar(){ return cdoPodeConferir() || (!cdoSoLeitura() && ["admin", "comercial"].includes(cdoCargo())); }
 
-/* dias até a validade (negativo = vencido); null sem validade */
+
 function cdoDiasAte(dataISO, hoje){
   if(!dataISO) return null;
   const h = hoje || (typeof hojeISO === "function" ? hojeISO() : new Date().toISOString().slice(0, 10));
@@ -45,7 +45,7 @@ function cdoTagValidade(dataISO, hoje){
   if(d <= CDO_AVISO_DIAS) return `${esc(txt)} <span class="tag ambar">vence em ${esc(d)} ${d === 1 ? "dia" : "dias"}</span>`;
   return esc(txt);
 }
-/* Conferir: só quem confere, nunca quem cadastrou, só aguardando e dentro da validade */
+
 function cdoPodeConferirSig(s, uid, podeConferir, hoje){
   if(!podeConferir || !s || s.situacao !== "aguardando_conferencia") return false;
   if(s.criado_por && s.criado_por === uid) return false;
@@ -68,7 +68,7 @@ function cdoValidarSig(r){
   return "";
 }
 
-/* ---------------- carga ---------------- */
+
 async function carregarCliDocumentos(clienteId){
   const box = $("cli-doc-conteudo");
   if(!box) return;
@@ -88,7 +88,7 @@ async function carregarCliDocumentos(clienteId){
     return;
   }
   _cdoSigs = s.data || [];
-  _cdoDocs = d.error ? null : (d.data || []);   // documentos: só quem confere, comercial e admin leem (RLS)
+  _cdoDocs = d.error ? null : (d.data || []);
   renderCliDocumentos();
 }
 
@@ -105,7 +105,7 @@ function renderCliDocumentos(){
   if(!box) return;
   cdoBadge();
   const uid = cdoUid(), conf = cdoPodeConferir(), anexa = cdoPodeAnexar();
-  // aviso: procuração ou signatário conferido vencendo em até 30 dias
+
   const vencendo = _cdoSigs.filter(s => s.situacao === "conferido" && s.valido_ate && cdoDiasAte(s.valido_ate) <= CDO_AVISO_DIAS)
     .map(s => `${s.nome}: vence em ${cdoDiasAte(s.valido_ate)} dias`);
   const pend = _cdoSigs.filter(s => s.situacao === "aguardando_conferencia").length;
@@ -127,7 +127,7 @@ function renderCliDocumentos(){
           const [t, cor] = CDO_SITUACAO[s.situacao] || [s.situacao, "cinza"];
           const mot = (s.situacao === "revogado" || s.situacao === "vencido") && s.motivo ? `<div class="meta">${esc(s.motivo)}</div>` : "";
           const porque = cdoMotivoSemConferir(s, uid);
-          return `<span class="tag ${esc(cor)}">${esc(t)}</span>${/* html */ mot}${conf && porque ? `<div class="meta">${esc(porque)}</div>` : ""}`;
+          return `<span class="tag ${esc(cor)}">${esc(t)}</span>${  mot}${conf && porque ? `<div class="meta">${esc(porque)}</div>` : ""}`;
         } },
       { chave: "acoes", rotulo: "", html: s => [
           cdoPodeConferirSig(s, uid, conf) ? `<button type="button" class="ui-btn ui-btn-prim" data-cli-doc-conferir="${esc(s.id)}">Conferir</button>` : "",
@@ -154,32 +154,32 @@ function renderCliDocumentos(){
     linhas: _cdoDocs
   });
 
-  box.innerHTML = `${/* html */ aviso}
+  box.innerHTML = `${  aviso}
     <div class="cli-doc-secao">
       <div class="cli-doc-topo"><h3 class="cli-doc-sub">Quem assina pelo cliente</h3>${anexa ? '<button type="button" class="ui-btn ui-btn-prim" data-cli-doc-novo-sig="1">Novo signatário</button>' : ""}</div>
       <div id="cli-doc-sig-form"></div>
-      ${/* html */ sigs}
+      ${  sigs}
     </div>
     <div class="cli-doc-secao">
       <div class="cli-doc-topo"><h3 class="cli-doc-sub">Documentos</h3>${anexa && _cdoDocs !== null ? '<button type="button" class="ui-btn ui-btn-prim" data-cli-doc-novo-doc="1">Anexar documento</button>' : ""}</div>
       <div id="cli-doc-form"></div>
       <div id="cli-doc-ia"></div>
-      ${/* html */ docs}
+      ${  docs}
     </div>`;
 }
 
-/* ---------------- documento: anexar, abrir, excluir ---------------- */
+
 function abrirCliDocForm(){
   const box = $("cli-doc-form");
   if(!box) return;
   box.innerHTML = `<div class="cli-doc-form">
     <h3 class="cli-doc-form-tit">Anexar documento</h3>
     <div class="grade">
-      ${/* html */ uiCampo({ id: "cli-doc-tipo", rotulo: "Tipo", tipo: "select", opcoes: CDO_TIPOS_DOC, valor: "contrato_social", obrigatorio: true })}
+      ${  uiCampo({ id: "cli-doc-tipo", rotulo: "Tipo", tipo: "select", opcoes: CDO_TIPOS_DOC, valor: "contrato_social", obrigatorio: true })}
       <div class="ui-campo"><label for="cli-doc-arquivo">Arquivo <span class="ui-campo-obrig" aria-hidden="true">*</span></label><input type="file" id="cli-doc-arquivo" accept=".pdf,.jpg,.jpeg,.png"></div>
-      ${/* html */ uiCampo({ id: "cli-doc-nome", rotulo: "Nome", placeholder: "vazio = nome do arquivo" })}
-      ${/* html */ uiCampo({ id: "cli-doc-emitido", rotulo: "Emitido em", tipo: "date" })}
-      ${/* html */ uiCampo({ id: "cli-doc-valido", rotulo: "Válido até", tipo: "date", ajuda: "Procuração e certidão: o aviso sai 30 dias antes." })}
+      ${  uiCampo({ id: "cli-doc-nome", rotulo: "Nome", placeholder: "vazio = nome do arquivo" })}
+      ${  uiCampo({ id: "cli-doc-emitido", rotulo: "Emitido em", tipo: "date" })}
+      ${  uiCampo({ id: "cli-doc-valido", rotulo: "Válido até", tipo: "date", ajuda: "Procuração e certidão: o aviso sai 30 dias antes." })}
     </div>
     <div class="cli-doc-form-acoes"><button type="button" class="ui-btn" data-cli-doc-cancelar="1">Cancelar</button><button type="button" class="ui-btn ui-btn-prim" id="btn-cli-doc-enviar">Anexar</button></div>
     <div id="cli-doc-msg"></div>
@@ -229,7 +229,7 @@ async function excluirCliDocumento(id){
   carregarCliDocumentos(_cdoCliente);
 }
 
-/* ---------------- signatário: incluir e editar (formulário na própria aba) ---------------- */
+
 function cdoSigFormHTML(s){
   const docs = (_cdoDocs || []).map(d => [d.id, `${cdoRotulo(CDO_TIPOS_DOC, d.tipo)} · ${d.nome}`]);
   const sens = s && cdoPodeConferir() ? `<fieldset class="cli-doc-grupo"><legend>CPF e RG <span class="meta">(só jurídico, financeiro e diretoria; exige o segundo fator)</span></legend>
@@ -240,17 +240,17 @@ function cdoSigFormHTML(s){
     <h3 class="cli-doc-form-tit">${s ? "Editar signatário" : "Novo signatário"}</h3>
     ${s && s.situacao === "conferido" ? uiFaixaSituacao(["Signatário conferido", "salvar uma mudança volta para aguardando conferência"], "aviso") : ""}
     <div class="grade">
-      ${/* html */ uiCampo({ id: "cli-doc-sig-nome", rotulo: "Nome", valor: s ? s.nome : "", obrigatorio: true })}
-      ${/* html */ uiCampo({ id: "cli-doc-sig-cargo", rotulo: "Cargo", valor: s ? s.cargo : "", placeholder: "ex.: sócio administrador" })}
-      ${/* html */ uiCampo({ id: "cli-doc-sig-email", rotulo: "E-mail", tipo: "email", valor: s ? s.email : "", ajuda: "Vai para o D4Sign." })}
-      ${/* html */ uiCampo({ id: "cli-doc-sig-tipo", rotulo: "Tipo", tipo: "select", opcoes: CDO_TIPOS_SIG, valor: s ? s.tipo : "representante_legal", obrigatorio: true })}
-      ${/* html */ uiCampo({ id: "cli-doc-sig-doc", rotulo: "Documento que dá o poder", tipo: "select", opcoes: docs, valor: s ? s.documento_id : "", placeholder: "— nenhum —" })}
-      ${/* html */ uiCampo({ id: "cli-doc-sig-forma", rotulo: "Forma", tipo: "select", opcoes: [["isolada", "Isolada (assina sozinho)"], ["conjunta", "Conjunta"]], valor: s ? s.forma : "isolada" })}
-      ${/* html */ uiCampo({ id: "cli-doc-sig-minimo", rotulo: "Mínimo de assinaturas (conjunta)", tipo: "number", valor: s ? s.minimo_assinaturas : "" })}
-      ${/* html */ uiCampo({ id: "cli-doc-sig-valido", rotulo: "Válido até", tipo: "date", valor: s ? s.valido_ate : "", ajuda: "Procuração: obrigatório." })}
+      ${  uiCampo({ id: "cli-doc-sig-nome", rotulo: "Nome", valor: s ? s.nome : "", obrigatorio: true })}
+      ${  uiCampo({ id: "cli-doc-sig-cargo", rotulo: "Cargo", valor: s ? s.cargo : "", placeholder: "ex.: sócio administrador" })}
+      ${  uiCampo({ id: "cli-doc-sig-email", rotulo: "E-mail", tipo: "email", valor: s ? s.email : "", ajuda: "Vai para o D4Sign." })}
+      ${  uiCampo({ id: "cli-doc-sig-tipo", rotulo: "Tipo", tipo: "select", opcoes: CDO_TIPOS_SIG, valor: s ? s.tipo : "representante_legal", obrigatorio: true })}
+      ${  uiCampo({ id: "cli-doc-sig-doc", rotulo: "Documento que dá o poder", tipo: "select", opcoes: docs, valor: s ? s.documento_id : "", placeholder: "— nenhum —" })}
+      ${  uiCampo({ id: "cli-doc-sig-forma", rotulo: "Forma", tipo: "select", opcoes: [["isolada", "Isolada (assina sozinho)"], ["conjunta", "Conjunta"]], valor: s ? s.forma : "isolada" })}
+      ${  uiCampo({ id: "cli-doc-sig-minimo", rotulo: "Mínimo de assinaturas (conjunta)", tipo: "number", valor: s ? s.minimo_assinaturas : "" })}
+      ${  uiCampo({ id: "cli-doc-sig-valido", rotulo: "Válido até", tipo: "date", valor: s ? s.valido_ate : "", ajuda: "Procuração: obrigatório." })}
     </div>
-    ${/* html */ uiCampo({ id: "cli-doc-sig-poderes", rotulo: "Poderes", tipo: "textarea", valor: s ? s.poderes : "", linhas: 2, placeholder: "ex.: assinar contratos de prestação de serviço" })}
-    ${/* html */ sens}
+    ${  uiCampo({ id: "cli-doc-sig-poderes", rotulo: "Poderes", tipo: "textarea", valor: s ? s.poderes : "", linhas: 2, placeholder: "ex.: assinar contratos de prestação de serviço" })}
+    ${  sens}
     <div class="cli-doc-form-acoes"><button type="button" class="ui-btn" data-cli-doc-cancelar="1">Cancelar</button><button type="button" class="ui-btn ui-btn-prim" id="btn-cli-doc-sig-salvar">Salvar signatário</button></div>
     <div id="cli-doc-sig-msg"></div>
   </div>`;
@@ -292,14 +292,14 @@ async function conferirCliSignatario(id){
   carregarCliDocumentos(_cdoCliente);
 }
 
-/* revogar pede o motivo na própria linha (campo + confirmar), sem prompt() */
+
 function abrirRevogarCliSignatario(id){
   const box = $("cli-doc-sig-form");
   const s = _cdoSigs.find(x => x.id === id);
   if(!box || !s) return;
   box.innerHTML = `<div class="cli-doc-form" id="cli-doc-rev" data-id="${esc(id)}">
     <h3 class="cli-doc-form-tit">Revogar ${esc(s.nome)}</h3>
-    ${/* html */ uiCampo({ id: "cli-doc-rev-motivo", rotulo: "Motivo", obrigatorio: true, placeholder: "ex.: saiu da sociedade, procuração revogada" })}
+    ${  uiCampo({ id: "cli-doc-rev-motivo", rotulo: "Motivo", obrigatorio: true, placeholder: "ex.: saiu da sociedade, procuração revogada" })}
     <div class="cli-doc-form-acoes"><button type="button" class="ui-btn" data-cli-doc-cancelar="1">Cancelar</button><button type="button" class="ui-btn ui-btn-perigo" id="btn-cli-doc-rev">Revogar</button></div>
     <div id="cli-doc-rev-msg"></div>
   </div>`;
@@ -314,7 +314,7 @@ async function revogarCliSignatario(){
   carregarCliDocumentos(_cdoCliente);
 }
 
-/* CPF e RG: ler e gravar só pelas funções auditadas */
+
 async function cdoSensivel(acao){
   const id = $("cli-doc-sig")?.dataset.id;
   if(!id) return;
@@ -330,7 +330,7 @@ async function cdoSensivel(acao){
   uiAvisar("CPF e RG gravados.", "ok");
 }
 
-/* ---------------- ligações ---------------- */
+
 function ligarCliDocumentos(){
   const raiz = $("cli-doc-conteudo");
   if(!raiz) return;

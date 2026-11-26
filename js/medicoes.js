@@ -1,36 +1,36 @@
-/* ====================================================================
-   Módulo: Medições
-   Layout: padrão Serviços + Odoo. Ver memória feedback-padrao-ui.
-   Fluxo: rascunho → enviada → aprovada → faturada (rejeitada = lateral).
-   ==================================================================== */
+
+
+
+
+
 
 let _medRegistros = [];
 let _medView      = "lista";
 let medEditId     = null;
-let _medNfseOk    = false;   // fase 105c: a migration da NFS-e (medicoes.nfse_status, ret_*) já está no banco
-let _medAtual     = null;    // fase 105c: linha da medição aberta (estado da NFS-e)
+let _medNfseOk    = false;
+let _medAtual     = null;
 
-const MED_STAGES = ["rascunho","enviada","aprovada","faturada","recebida"];   // fase 91: recebida nasce no banco (recebimentos)
-const MED_RET_FED = ["irrf", "pis", "cofins", "csll", "inss"];                 // fase 105c: retenções federais (ret_*)
+const MED_STAGES = ["rascunho","enviada","aprovada","faturada","recebida"];
+const MED_RET_FED = ["irrf", "pis", "cofins", "csll", "inss"];
 
-/* ---------- Carga ---------- */
+
 async function carregarMedicoes(){
-  if(!_medNfseOk && typeof fiscalColunaExiste === "function") _medNfseOk = await fiscalColunaExiste("medicoes", "nfse_status");   // fase 105c
+  if(!_medNfseOk && typeof fiscalColunaExiste === "function") _medNfseOk = await fiscalColunaExiste("medicoes", "nfse_status");
   const { data, error } = await sb.from("medicoes")
-    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,permuta_percentual,permuta_valor,em_revisao,em_revisao_motivo,obra:obras(codigo,nome,cliente_id)"   // fase 177a: em revisão; fase 91: líquido, recebido e cliente (indicadores e visão por cliente); fase 98: permuta
-      + (_medNfseOk ? ",nfse_status,nfse_ambiente," + MED_RET_FED.map(k => "ret_" + k).join(",") : ""))   // fase 105c: NFS-e e retenções federais
+    .select("id,numero,obra_id,data_medicao,percentual,status,valor_medido,periodo_inicio,periodo_fim,descricao,observacoes,nf_numero,doc_tipo,nf_vencimento,origem,valor_final,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em,permuta_percentual,permuta_valor,em_revisao,em_revisao_motivo,obra:obras(codigo,nome,cliente_id)"
+      + (_medNfseOk ? ",nfse_status,nfse_ambiente," + MED_RET_FED.map(k => "ret_" + k).join(",") : ""))
     .order("data_medicao", { ascending: false });
   _medRegistros = error ? [] : (data || []);
   renderMedicoes();
 }
 
-/* ---------- Filtros ---------- */
+
 function medFiltradas(){
   const termo = ($("med-busca")?.value || "").trim().toLowerCase();
   const fStatus = $("med-f-status")?.value || "";
   const fObra = $("med-f-obra")?.value || "";
-  const fOrigem = $("med-f-origem")?.value || ""; // fase 88: "Importadas" (boletim PDF) × digitadas
-  const fReceb = $("med-f-receb")?.value || "";   // fase 91: situação do recebimento da NF
+  const fOrigem = $("med-f-origem")?.value || "";
+  const fReceb = $("med-f-receb")?.value || "";
   return _medRegistros.filter(m => {
     if(fStatus && m.status !== fStatus) return false;
     if(fReceb && !medRecebSituacaoOk(m, fReceb)) return false;
@@ -51,7 +51,7 @@ function preencherFiltrosMed(){
   }
   const selObra = $("med-f-obra");
   if(selObra){
-    const atual = selObra.value; // preserva a seleção (o render roda a cada tecla)
+    const atual = selObra.value;
     const lista = Object.entries(mapaObras).map(([id, txt]) => ({ id, txt }));
     selObra.innerHTML = `<option value="">Todas as obras</option>` +
       lista.map(o => `<option value="${esc(o.id)}">${esc(o.txt)}</option>`).join("");
@@ -59,27 +59,27 @@ function preencherFiltrosMed(){
   }
 }
 
-/* ---------- Render ---------- */
+
 function renderMedicoes(){
   preencherFiltrosMed();
-  medAplicarVisao();                                        // fase 91: filtros e "+ Nova" conforme a visão
-  if(_medView === "caucao"){ renderMedCaucao(); return; }   // fase 91: visão Caução (retenções por NF)
-  if(_medView === "permutas"){ renderMedPermutas(); return; }   // fase 98: visão Permutas (imóvel, crédito, saldo)
-  if(_medView === "nfse"){ renderMedNfs(); return; }           // lote S66-c (#327): NFS-e emitidas por obra e medição
+  medAplicarVisao();
+  if(_medView === "caucao"){ renderMedCaucao(); return; }
+  if(_medView === "permutas"){ renderMedPermutas(); return; }
+  if(_medView === "nfse"){ renderMedNfs(); return; }
   const dados = medFiltradas();
   const cont = $("med-contador");
   if(cont) cont.textContent = `${dados.length} de ${_medRegistros.length}`;
-  if($("btn-med-xlsx")) $("btn-med-xlsx").hidden = !podeVerValorObra();   // lote S68-g: só quem já vê os valores
+  if($("btn-med-xlsx")) $("btn-med-xlsx").hidden = !podeVerValorObra();
   if(_medView === "kanban") renderMedKanban(dados);
   else                       renderMedLista(dados);
-  medRecebRenderIndicadores();                              // fase 91: A receber / Vencidas / Recebido no mês
+  medRecebRenderIndicadores();
 
-  // compat com tbody antigo
+
   const legacy = $("tab-medicoes");
   if(legacy) legacy.innerHTML = "";
 }
 
-/* Textos da listagem (outra sessão, 02/09/2026): obra pelo join, período como data, NF/RR */
+
 function medObraTxt(m){
   if(m.obra && m.obra.codigo) return `${m.obra.codigo} — ${m.obra.nome||""}`.trim();
   return mapaObras[m.obra_id] || "—";
@@ -93,12 +93,12 @@ function medDocTxt(m){
   if(!m.nf_numero) return "—";
   return `${m.doc_tipo === "rr" ? "RR" : "NF"} ${m.nf_numero}`;
 }
-/* fase 105c: status da NFS-e emitida pelo app (lista, kanban) */
+
 function medNfseMarca(m){
   if(!m || !m.nfse_status) return "";
   return " " + tagStatus("nfse", m.nfse_status) + (m.nfse_ambiente === "homologacao" ? ' <span class="tag ambar" title="Emitida no ambiente de homologação da Focus: nota de teste, sem valor fiscal">homolog.</span>' : "");
 }
-/* fase 177a (D4): medição em revisão fica fora da carteira até o saneamento; o valor não muda */
+
 function medRevisaoMarca(m){
   if(!m || !m.em_revisao) return "";
   return ` <span class="tag ambar" title="${esc(m.em_revisao_motivo || "Em revisão: fora da carteira até a conferência; o valor não foi alterado")}">em revisão</span>`;
@@ -124,14 +124,14 @@ function renderMedLista(dados){
     <thead><tr>
       <th>Nº</th><th>Obra</th><th>Período</th><th>%</th><th>Status</th><th>NF/RR</th><th class="num">Valor medido</th>
     </tr></thead>
-    <tbody>${/* html */ linhas}</tbody></table></div>`;
+    <tbody>${  linhas}</tbody></table></div>`;
 }
 
-/* Lote S68-g (chamado 110, Vitor e Tamires): "Exportar .xlsx" da lista no leiaute das abas mensais da planilha de obras.
-   Uma linha por medição × TAG das medições filtradas na tela (medFiltradas): obra, cliente, medição, período, TAG, valor,
-   NF, emissão, vencimento, pagamento. Valor da TAG = soma dos itens dela; medição sem item sai numa linha só com o valor
-   final. TAG do item (equipamento_tag ou código do equipamento); sem TAG, a da medição; sem nenhuma, "—".
-   Leitura por lerTudo (corte de 1.000 linhas). Só para podeVerValorObra(); no banco a leitura já é por cargo. */
+
+
+
+
+
 async function medExportarXlsx(){
   if(!podeVerValorObra()) return;
   if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
@@ -145,7 +145,7 @@ async function medExportarXlsx(){
   const erro = rm.error || ri.error;
   if(erro){ aviso("app-aviso", "Não foi possível ler as medições para a planilha: " + erro.message, "erro"); return; }
   const extra = new Map(rm.data.map(x => [x.id, x]));
-  const porMed = new Map();   // medicao_id -> Map(tag -> valor)
+  const porMed = new Map();
   ri.data.forEach(it => {
     if(!ids.has(it.medicao_id)) return;
     const ex = extra.get(it.medicao_id) || {};
@@ -202,7 +202,7 @@ function renderMedKanban(dados){
     </div>`;
   }).join("");
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
-  // Habilita drag&drop entre colunas (muda status)
+
   habilitarDragKanban({
     container: "#med-conteudo .serv-kanban",
     tabela: "medicoes",
@@ -210,53 +210,53 @@ function renderMedKanban(dados){
   });
 }
 
-/* ---------- Painel <-> Ficha ---------- */
+
 function mostrarPainelMed(){
   $("med-painel").style.display = "";
   $("med-ficha").style.display = "none";
   medEditId = null;
-  if($("med-pm-ficha")) $("med-pm-ficha").style.display = "none";   // fase 98: ficha da permuta
+  if($("med-pm-ficha")) $("med-pm-ficha").style.display = "none";
 }
 
-/* Cache dos itens da medição aberta (variante_id, descricao, qty, unidade, unitário, total, origem) */
+
 let _medItens = [];
 
-/* Sugere número + tipo da medição baseado na obra selecionada.
-   - Se obra ainda não tem medição → tipo='sinal_contratual' (primeira sempre é o sinal 30%)
-   - Caso contrário → tipo='quinzenal'
-   - Não atropela campos já preenchidos manualmente */
+
+
+
+
 async function sugerirNumeroMedicao(){
-  if(medEditId) return; // só pra nova medição
+  if(medEditId) return;
   const obraId  = $("med-obra")?.value;
   const inputNum = $("med-numero");
   const selTipo  = $("med-tipo");
   if(!obraId || !inputNum) return;
 
-  // Conta medições existentes da obra
+
   const { count } = await sb.from("medicoes")
     .select("id", { count: "exact", head: true })
     .eq("obra_id", obraId);
   const n = count || 0;
 
-  // Só preenche se vazio
+
   if(!inputNum.value.trim()){
     inputNum.value = String(n + 1).padStart(2, "0");
   }
-  // Sugere tipo só na primeira medição da obra (preserva escolha do usuário caso ele já tenha trocado)
+
   if(selTipo && n === 0 && (selTipo.value === "quinzenal" || !selTipo.value)){
     selTipo.value = "sinal_contratual";
     aviso("app-aviso", "1ª medição da obra detectada — tipo definido como Sinal Contratual. Use ✨ Compor sinal contratual na aba Itens.", "ok");
     if(typeof ajustarUISinalContratual === "function") ajustarUISinalContratual();
   } else if(selTipo && n > 0 && selTipo.value === "sinal_contratual"){
-    // Se obra já tem outras medições e o user não mexeu, default volta pra quinzenal
+
     selTipo.value = "quinzenal";
     if(typeof ajustarUISinalContratual === "function") ajustarUISinalContratual();
   }
 }
 
-/* fase 101 (#94): máquina da medição (medicoes.equipamento_id, opcional; vale para os itens sem TAG na receita por
-   máquina, vw_equipamento_receita). As máquinas da obra (vw_obra_equipamentos) vêm primeiro. Sem a migration, a lista
-   mostra só as máquinas ativas e o campo só vai para o banco quando alguém escolhe uma. */
+
+
+
 let _medEquipsCache = null;
 async function medPreencherMaquinas(obraId, selId, valor){
   const sel = $(selId);
@@ -280,7 +280,7 @@ async function medPreencherMaquinas(obraId, selId, valor){
   sel.dataset.nObra = String(l1.length);
   return l1.length;
 }
-// só manda a coluna quando há valor (ou quando havia e foi tirado): o front não quebra antes da migration
+
 function medEquipParaGravar(selId){
   const sel = $(selId);
   if(!sel) return {};
@@ -293,7 +293,7 @@ function novaMedicao(){
   $("med-numero").value = "";
   $("med-obra").value = "";
   if($("med-equip")){ $("med-equip").value = ""; $("med-equip").dataset.orig = ""; $("med-equip").dataset.obra = ""; }
-  if(typeof cctMedPreencher === "function") cctMedPreencher(null, "");   // fase 183a
+  if(typeof cctMedPreencher === "function") cctMedPreencher(null, "");
   if($("med-tipo")) $("med-tipo").value = "quinzenal";
   if($("med-multiplicador")) $("med-multiplicador").value = 100;
   $("med-status").value = "rascunho";
@@ -312,7 +312,7 @@ function novaMedicao(){
   if($("med-iss-pct"))      $("med-iss-pct").value = "";
   if($("med-iss-retido"))   $("med-iss-retido").value = "true";
   if($("med-iss-valor"))  { $("med-iss-valor").value = ""; $("med-iss-valor").dataset.manual = "0"; }
-  MED_RET_FED.forEach(k => { const el = $("med-ret-" + k); if(el) el.value = ""; });   // fase 105c
+  MED_RET_FED.forEach(k => { const el = $("med-ret-" + k); if(el) el.value = ""; });
   _medAtual = null;
   $("med-percentual").value = 0;
   if($("med-subtotal"))      $("med-subtotal").value = 0;
@@ -337,11 +337,11 @@ async function abrirMedicao(id){
     sb.from("medicoes").select("*").eq("id", id).single(),
     lerItens()
   ]);
-  // hotfix 93: banco ainda sem total_travado/valor_total_lido → lê com a lista antiga
+
   if(itensRes.error && medErroSemTrava(itensRes.error)){ _medTemTrava = false; itensRes = await lerItens(); }
   if(medRes.error){ aviso("app-aviso","Erro ao abrir medição: "+medRes.error.message, "erro"); return; }
-  // Itens não carregaram → NÃO abrir: salvarMedicao apaga e reinsere os itens,
-  // e reinseriria uma lista vazia (perda dos itens da medição).
+
+
   if(itensRes.error){
     aviso("app-aviso","Não foi possível carregar os itens da medição ("+itensRes.error.message+"). Tente abrir de novo.","erro");
     return;
@@ -352,8 +352,8 @@ async function abrirMedicao(id){
   if($("med-sinal-hint")){ $("med-sinal-hint").textContent = ""; $("med-sinal-hint").style.color = ""; }
   $("med-numero").value = data.numero || "";
   $("med-obra").value = data.obra_id || "";
-  if($("med-equip")){ $("med-equip").dataset.orig = data.equipamento_id || ""; medPreencherMaquinas(data.obra_id, "med-equip", data.equipamento_id || ""); }   // fase 101
-  if(typeof cctMedPreencher === "function") cctMedPreencher(data.obra_id, data.aprovador_cliente_contato_id || "");   // fase 183a
+  if($("med-equip")){ $("med-equip").dataset.orig = data.equipamento_id || ""; medPreencherMaquinas(data.obra_id, "med-equip", data.equipamento_id || ""); }
+  if(typeof cctMedPreencher === "function") cctMedPreencher(data.obra_id, data.aprovador_cliente_contato_id || "");
   if($("med-tipo")) $("med-tipo").value = data.tipo_medicao || "quinzenal";
   if($("med-multiplicador")) $("med-multiplicador").value = data.multiplicador_pct ?? 100;
   ajustarUISinalContratual();
@@ -373,8 +373,8 @@ async function abrirMedicao(id){
   if($("med-iss-pct"))      $("med-iss-pct").value = data.iss_percentual ?? "";
   if($("med-iss-retido"))   $("med-iss-retido").value = data.iss_retido_fonte === false ? "false" : "true";
   if($("med-iss-valor"))  { $("med-iss-valor").value = data.iss_valor ?? ""; $("med-iss-valor").dataset.manual = (data.iss_valor != null && data.iss_percentual == null) ? "1" : "0"; }
-  if(data.iss_percentual == null) medPreencherIssDaObra(data.obra_id); // medição antiga sem ISS: herda a alíquota da obra
-  // fase 105c: retenções federais e estado da NFS-e (o select("*") já traz as colunas novas depois da migration)
+  if(data.iss_percentual == null) medPreencherIssDaObra(data.obra_id);
+
   _medAtual = data;
   if(Object.prototype.hasOwnProperty.call(data, "nfse_status")) _medNfseOk = true;
   MED_RET_FED.forEach(k => { const el = $("med-ret-" + k); if(el) el.value = Number(data["ret_" + k]) > 0 ? data["ret_" + k] : ""; });
@@ -384,7 +384,7 @@ async function abrirMedicao(id){
   if($("med-desc-sinal-obs"))$("med-desc-sinal-obs").value = data.desconto_descricao || "";
   if($("med-acrescimo"))     $("med-acrescimo").value = data.acrescimo ?? 0;
   if($("med-acrescimo-obs")) $("med-acrescimo-obs").value = data.acrescimo_descricao || "";
-  // valor_final vem da trigger (itens); numa medição sem itens ele é 0 e o valor real está em valor_medido
+
   if($("med-valor-final"))   $("med-valor-final").value = (Number(data.valor_final) || Number(data.valor_medido) || 0).toFixed(2);
   $("med-descricao").value = data.descricao || "";
   $("med-obs").value = data.observacoes || "";
@@ -400,26 +400,26 @@ function abrirFichaMed(med){
   $("med-ficha").style.display = "";
 
   $("med-ficha-numero").textContent = med.numero || "(novo)";
-  $("med-ficha-obra-chip").innerHTML = linkObra(med.obra_id); // chamado #4: clicável
+  $("med-ficha-obra-chip").innerHTML = linkObra(med.obra_id);
   if($("med-ficha-subtotal-chip")) $("med-ficha-subtotal-chip").textContent = brl(med.subtotal||0);
   $("med-ficha-valor-chip").textContent = brl(med.valor_final || med.valor_medido || 0);
   $("med-ficha-titulo").textContent = med.numero ? `Medição ${med.numero}` : "Nova medição";
 
   atualizarStatusbarMed(med.status);
-  medAtualizarOrigemFicha(med); // fase 88: chip "Origem" e botão do PDF do boletim importado
-  if(med.id && typeof montarHistorico === "function") montarHistorico("medicoes", med.id, "med-historico");   // lote S67-e (#352)
+  medAtualizarOrigemFicha(med);
+  if(med.id && typeof montarHistorico === "function") montarHistorico("medicoes", med.id, "med-historico");
   else if($("med-historico")) $("med-historico").innerHTML = '<p class="vazio">Salve a medição para ver o histórico.</p>';
   ativarTabMed("geral");
   medAtualizarProducaoPendente(med.id);
-  medRefPendAtualizar();        // fase 145a: refuros sem decisão no período
-  medRecebCarregarFicha(med);   // fase 91: aba NF/Recebimento
-  medCauCarregarFicha(med);     // fase 91: aba Caução
-  if(typeof medPmCarregarFicha === "function") medPmCarregarFicha(med);   // fase 98: % e crédito de permuta (aba Geral)
-  if(typeof medNfseAtualizar === "function") medNfseAtualizar();          // fase 105c: NFS-e (aba, botões, campos travados)
+  medRefPendAtualizar();
+  medRecebCarregarFicha(med);
+  medCauCarregarFicha(med);
+  if(typeof medPmCarregarFicha === "function") medPmCarregarFicha(med);
+  if(typeof medNfseAtualizar === "function") medNfseAtualizar();
 }
 
-/* Lote S39 (chamado #26): NF cadastrada antes da produção. A pendência é calculada na view
-   vw_medicoes_pendencias e some quando os itens do período batem com a NF. */
+
+
 async function medAtualizarProducaoPendente(medicaoId){
   const chip = $("med-ficha-prodpend");
   if(!chip) return;
@@ -427,21 +427,21 @@ async function medAtualizarProducaoPendente(medicaoId){
   if(!medicaoId) return;
   const { data, error } = await sb.from("vw_medicoes_pendencias")
     .select("detalhe").eq("medicao_id", medicaoId).eq("tipo", "producao_pendente").maybeSingle();
-  if(error || !data || medEditId !== medicaoId) return; // view ausente, sem pendência ou ficha trocada
-  // lote S71-b (#379): medição sem itens não é produção pendente; a view já manda lançar o BM nos itens
+  if(error || !data || medEditId !== medicaoId) return;
+
   const semItens = !_medItens.length;
   const rot = $("med-ficha-prodpend-rot");
   if(rot) rot.textContent = semItens ? "Medição sem itens" : "Produção pendente";
   chip.title = semItens
     ? "A medição tem NF mas nenhum item. Lance o BM nos itens (✨ Sugerir do período) e salve: o aviso some quando os itens baterem com a NF."
     : "A NF não bate com os itens gerados pelos diários do período. Some sozinha quando baterem (lançar os diários e usar ✨ Sugerir do período).";
-  $("med-ficha-prodpend-txt").textContent = data.detalhe || ""; // "NF R$ X × produzido R$ Y" ou "Medição sem itens: …"
+  $("med-ficha-prodpend-txt").textContent = data.detalhe || "";
   chip.style.display = "";
 }
 
-/* ============================================================
-   ITENS DA MEDIÇÃO
-   ============================================================ */
+
+
+
 
 const PRECO_ORIGEM_INFO = {
   orcamento_obra:   { lbl: "Orçamento da obra", ic: "📋", cor: "var(--sucesso)", bg: "var(--sucesso-bg)" },
@@ -450,20 +450,20 @@ const PRECO_ORIGEM_INFO = {
   manual:           { lbl: "Manual",            ic: "✋", cor: "var(--aviso-txt)", bg: "var(--aviso-bg)" }
 };
 
-/* Hotfix 93 (#93): quantidade com até 6 casas (medicao_itens.quantidade numeric(18,6)) e total do boletim travado
-   (medicao_itens.total_travado + valor_total_lido; o banco gera valor_total = total lido quando travado, senão
-   quantidade × unitário). Item travado não recalcula; "usar q × unitário" destrava. Sem a migration do hotfix as duas
-   colunas não existem: a leitura cai na lista antiga e a gravação não as manda (nada fica travado). */
-// fase 157b: mobilizacao_id e perna (a perna vem da variante, por gatilho; a mobilização vem do "Sugerir do período")
+
+
+
+
+
 const MED_ITENS_COLS = "id,ordem,descricao,variante_id,execucao_id,orcamento_item_id,quantidade,unidade,valor_unitario,valor_total,preco_origem,preco_origem_obs,equipamento_id,equipamento_tag,quantidade_lida,valor_unitario_lido,conferido,mobilizacao_id,perna";
-let _medTemTrava = true;   // false quando o banco ainda não tem total_travado/valor_total_lido
+let _medTemTrava = true;
 const medErroSemTrava = (e) => !!e && /total_travado|valor_total_lido/.test(e.message || "");
 const medArred6 = (n) => Math.round((Number(n) || 0) * 1e6) / 1e6;
 const medQtd  = (v) => Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 6 });
 const medQtd6 = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 6, maximumFractionDigits: 6 });
 const medItemTravado = (it) => it.total_travado === true && it.valor_total_lido != null;
-/* Insere itens; se o banco ainda não tem as colunas do hotfix 93, repete sem elas (o salvar da ficha apaga os itens
-   antes de inserir: falhar aqui perderia os itens). semTrava = gravou sem o total travado. */
+
+
 async function medInserirItens(linhas){
   const r = await sb.from("medicao_itens").insert(linhas);
   if(!(r.error && medErroSemTrava(r.error))) return r;
@@ -489,11 +489,11 @@ function renderMedItens(){
   tb.innerHTML = _medItens.map((it, idx) => {
     const oi = PRECO_ORIGEM_INFO[it.preco_origem] || PRECO_ORIGEM_INFO.manual;
     const tituloOrigem = it.preco_origem_obs || oi.lbl;
-    // fase 88: item que veio de boletim importado mostra o que o PDF trazia, para comparar com o que ficou
+
     const lido = (it.quantidade_lida != null || it.valor_unitario_lido != null)
       ? `<div class="meta" title="O que o boletim importado (PDF) trazia">PDF: ${it.quantidade_lida != null ? medQtd(it.quantidade_lida) : "—"} × ${it.valor_unitario_lido != null ? brl(it.valor_unitario_lido) : "—"}${it.valor_total_lido != null ? " = " + brl(it.valor_total_lido) : ""}${it.conferido ? " · ✓ conferido" : ""}${it.equipamento_tag ? " · " + esc(it.equipamento_tag) : ""}</div>`
       : "";
-    // hotfix 93: total do boletim travado (não muda com quantidade nem unitário) e botão para voltar a q × unitário
+
     const trava = medItemTravado(it)
       ? `<div class="meta" title="Total impresso no boletim importado: não muda com a quantidade nem com o unitário">🔒 do boletim</div>
          <button type="button" class="btn-sec btn-sm btn-mi-destravar" data-idx="${idx}" title="Destrava o total e passa a calcular quantidade × unitário">usar q × unitário</button>`
@@ -510,18 +510,18 @@ function renderMedItens(){
     </tr>`;
   }).join("");
 
-  // Listeners
+
   tb.querySelectorAll("tr").forEach(tr => {
     const idx = Number(tr.dataset.idx);
     const sync = () => {
       const it = _medItens[idx];
       it.descricao      = tr.querySelector(".mi-desc")?.value.trim() || null;
-      it.quantidade     = medArred6(parseFloat(tr.querySelector(".mi-qty")?.value) || 0);   // hotfix 93: 6 casas
+      it.quantidade     = medArred6(parseFloat(tr.querySelector(".mi-qty")?.value) || 0);
       it.unidade        = tr.querySelector(".mi-uni")?.value.trim() || null;
       it.valor_unitario = parseFloat(tr.querySelector(".mi-unit")?.value) || 0;
-      // hotfix 93: item travado fica com o total do boletim; os outros recalculam
+
       it.valor_total    = medItemTravado(it) ? Number(it.valor_total_lido) : +(it.quantidade * it.valor_unitario).toFixed(2);
-      // Se editou unitário manualmente, marca como manual
+
       const unitInput = tr.querySelector(".mi-unit");
       if(document.activeElement === unitInput && it.preco_origem !== "manual"){
         it.preco_origem = "manual";
@@ -541,7 +541,7 @@ function renderMedItens(){
       renderMedItens();
     });
   });
-  // hotfix 93: destravar = o total passa a ser quantidade × unitário (o total lido fica guardado para comparar)
+
   tb.querySelectorAll(".btn-mi-destravar").forEach(b => {
     b.addEventListener("click", () => {
       const it = _medItens[Number(b.dataset.idx)]; if(!it) return;
@@ -551,33 +551,33 @@ function renderMedItens(){
     });
   });
   recalcularTotaisMedicao();
-  if(typeof medNfseTravarCampos === "function") medNfseTravarCampos();   // fase 105c: itens da NFS-e emitida não mudam
+  if(typeof medNfseTravarCampos === "function") medNfseTravarCampos();
 }
 
-/* ====================================================================
-   SINAL CONTRATUAL — saldo por obra e abatimento nas medições seguintes
-   (decisão do Bernardo, 14/09/2026)
-   recebido  = Σ valor das medições tipo sinal_contratual (valor_final, ou valor_medido
-               quando a medição não tem itens), status ≠ rejeitada
-   abatido   = Σ desconto_sinal das demais medições
-   saldo     = recebido − abatido  (tem de chegar a zero no fim da obra)
-   Modelo de abatimento (obras.sinal_abatimento_modelo):
-     proporcional (padrão): desconto = subtotal × saldo_sinal ÷ saldo_a_medir
-                            → se o contrato cresce (aditivo) a fração cai, se encolhe sobe;
-                              fecha em zero na última medição sem ajuste manual
-     percentual:            desconto = subtotal × (recebido ÷ valor contratado), com teto no saldo
-     cliente:               o cliente elabora o boletim e já consumiu o sinal no quadro dele
-                            (ex.: Monlevade Mall) → não descontar por medição
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const SINAL_MODELOS = {
   proporcional: "Proporcional ao saldo (padrão)",
   percentual:   "Percentual fixo do sinal em cada medição",
   cliente:      "Boletim do cliente (sinal já consumido no quadro dele; sem desconto)"
 };
 const medValorEfetivo = (m) => Number(m.valor_final) || Number(m.valor_medido) || 0;
-/* lote S56c (#183): medição aprovada, faturada ou recebida com valor efetivo zero não grava. Igual ao gatilho
-   trg_medicoes_zz_valor_zero: só barra a medição nova, a troca de status ou a queda do valor; a medição já gravada assim
-   (8678-2026 nº 1, 7515-2025 BM03) continua editável sem mudar o status (D-183a). Devolve a mensagem ou null. */
+
+
+
 const MED_MSG_VALOR_ZERO = "Medição com valor zero não pode ser aprovada nem faturada. Confira os itens.";
 function medTravaValorZero(status, valorNovo, original){
   if(!["aprovada", "faturada", "recebida"].includes(status) || Number(valorNovo) > 0) return null;
@@ -587,7 +587,7 @@ function medTravaValorZero(status, valorNovo, original){
 async function calcularSaldoSinalObra(obraId, excluirMedId){
   if(!obraId) return null;
   const [obraRes, medsRes] = await Promise.all([
-    sb.from("obras").select("*, financeiro:obras_financeiro(valor_contratado)").eq("id", obraId).single(),   // fase 90
+    sb.from("obras").select("*, financeiro:obras_financeiro(valor_contratado)").eq("id", obraId).single(),
     sb.from("medicoes").select("id,numero,tipo_medicao,status,valor_medido,valor_final,subtotal,desconto_sinal,percentual").eq("obra_id", obraId)
   ]);
   if(obraRes.error || medsRes.error) return null;
@@ -598,7 +598,7 @@ async function calcularSaldoSinalObra(obraId, excluirMedId){
   const recebido = sinais.reduce((s, m) => s + medValorEfetivo(m), 0);
   const abatido  = outras.reduce((s, m) => s + (Number(m.desconto_sinal) || 0), 0);
   const medidoBruto = outras.reduce((s, m) => s + (Number(m.subtotal) || medValorEfetivo(m)), 0);
-  const valorContratado = Number(obra.financeiro?.valor_contratado) || 0;   // obras_financeiro (fase 90): nulo para quem não lê financeiro
+  const valorContratado = Number(obra.financeiro?.valor_contratado) || 0;
   return {
     obra, valorContratado, recebido, abatido, saldoSinal: Math.max(0, recebido - abatido),
     medidoBruto, saldoAMedir: Math.max(0, valorContratado - medidoBruto),
@@ -607,7 +607,7 @@ async function calcularSaldoSinalObra(obraId, excluirMedId){
     qtdSinais: sinais.length
   };
 }
-let _medSaldoSinal = null; // último saldo calculado para a medição aberta (aviso de desconto > saldo)
+let _medSaldoSinal = null;
 async function sugerirAbatimentoSinal(){
   const obraId = $("med-obra")?.value;
   if(!obraId){ aviso("app-aviso","Selecione a obra da medição (aba Geral).","erro"); return; }
@@ -639,7 +639,7 @@ async function sugerirAbatimentoSinal(){
   if(hint) hint.textContent = `Sinal recebido ${brl(r.recebido)} · já abatido ${brl(r.abatido)} · saldo ${brl(r.saldoSinal)} · modelo: ${SINAL_MODELOS[r.modelo]}`;
   aviso("app-aviso", `Abatimento sugerido: ${brl(desconto)}. Confira e salve.`, "ok");
 }
-/* Aviso quando o desconto digitado passa do saldo do sinal (só depois de calcular o saldo) */
+
 function avisarDescontoAcimaDoSaldo(descSinal){
   const hint = $("med-sinal-hint");
   if(!hint || !_medSaldoSinal) return;
@@ -651,12 +651,12 @@ function avisarDescontoAcimaDoSaldo(descSinal){
   }
 }
 
-/* Medição SEM itens (sinal contratual, boletim elaborado pelo cliente): o valor final é
-   informado à mão e preservado. Antes, o recálculo zerava o campo e o Salvar gravava
-   valor_medido = 0 por cima do valor existente (caso BM01 Monlevade Mall, 14/09/2026). */
+
+
+
 function medicaoSemItens(){ return _medItens.length === 0; }
-/* ISS (16/09/2026): toda NF tem ISS e a alíquota varia por município — fica em obras.iss_percentual
-   (Obra › Parâmetros). A medição herda quando não tem ISS próprio (ou quando a obra é trocada). */
+
+
 async function medPreencherIssDaObra(obraId, sobrescrever){
   const el = $("med-iss-pct");
   if(!el || !obraId) return;
@@ -690,12 +690,12 @@ function recalcularTotaisMedicao(){
 
   if($("med-subtotal"))      $("med-subtotal").value = subtotal.toFixed(2);
   avisarDescontoAcimaDoSaldo(descSinal);
-  // retenção: % sobre o valor final, a menos que o valor tenha sido digitado à mão
+
   const retPct = parseFloat($("med-ret-pct")?.value);
   if($("med-ret-valor") && $("med-ret-valor").dataset.manual !== "1"){
     $("med-ret-valor").value = (isFinite(retPct) && retPct > 0) ? (valorFinal * retPct / 100).toFixed(2) : "";
   }
-  // ISS (financeiro, 16/09/2026): por dentro — valor = valor final × %; retido na fonte sai do líquido a receber
+
   const issPct = parseFloat($("med-iss-pct")?.value);
   if($("med-iss-valor") && $("med-iss-valor").dataset.manual !== "1"){
     $("med-iss-valor").value = (isFinite(issPct) && issPct > 0) ? (valorFinal * issPct / 100).toFixed(2) : "";
@@ -703,13 +703,13 @@ function recalcularTotaisMedicao(){
   if($("med-liquido")){
     const retV = parseFloat($("med-ret-valor")?.value) || 0;
     const issV = ($("med-iss-retido")?.value === "false") ? 0 : (parseFloat($("med-iss-valor")?.value) || 0);
-    // fase 105c: retenções federais (IRRF, PIS, COFINS, CSLL, INSS) também saem do líquido, como em medicao_liquido()
+
     const fedV = MED_RET_FED.reduce((s, k) => s + (parseFloat($("med-ret-" + k)?.value) || 0), 0);
     $("med-liquido").value = (valorFinal - retV - issV - fedV).toFixed(2);
   }
   if($("med-ficha-subtotal-chip")) $("med-ficha-subtotal-chip").textContent = brl(subtotal);
   if($("med-ficha-valor-chip"))    $("med-ficha-valor-chip").textContent = brl(valorFinal);
-  if(typeof medPmRecalcular === "function") medPmRecalcular(valorFinal);   // fase 98: crédito de permuta = % × valor final
+  if(typeof medPmRecalcular === "function") medPmRecalcular(valorFinal);
 }
 
 function adicionarItemMedicaoManual(){
@@ -725,7 +725,7 @@ function adicionarItemMedicaoManual(){
   renderMedItens();
 }
 
-/* Carrega e renderiza aba "🔧 Detalhes Execução" — read-only com cada estaca executada no período */
+
 async function carregarDetalhesExecucaoMed(){
   const cont = $("med-detalhes-conteudo");
   const badge = $("med-detalhes-badge");
@@ -740,11 +740,11 @@ async function carregarDetalhesExecucaoMed(){
   }
   cont.innerHTML = `<p class="vazio">Carregando...</p>`;
 
-  // !inner + filtros no join: só as execuções desta obra/período saem do servidor
-  // (antes baixava a tabela inteira e filtrava no navegador a cada medição aberta)
+
+
   const { data: execs, error } = await sb.from("rdo_execucao_estaca")
     .select("id,estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id!inner(obra_id,data)")
-    .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim).is("descartada_em", null)   // fase 184b: descartada fora da medição
+    .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim).is("descartada_em", null)
     .order("perfuracao_inicio");
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
 
@@ -761,11 +761,11 @@ async function carregarDetalhesExecucaoMed(){
 
   const linhas = lista.map((e,i) => {
     const isRef = e.modalidade_execucao === "refuro";
-    const numEstaca = e.estaca_numero || e.estaca?.numero || "—";   // hotfix medicoes-num: "num" sombreava o helper num() do core.js
+    const numEstaca = e.estaca_numero || e.estaca?.numero || "—";
     const diam = e.estaca?.diametro_mm || "—";
     const data = e.rdo?.data ? dataBR(e.rdo.data) : "—";
-    // Horário do RDO é gravado "sem fuso" (naive); fatiar a string mostra o que foi
-    // digitado. toLocaleTimeString convertia de UTC e exibia 3h a menos.
+
+
     const hora = e.perfuracao_inicio ? String(e.perfuracao_inicio).slice(11,16) : "—";
     return `<tr ${isRef ? 'style="background:var(--aviso-bg);"' : ""}>
       <td style="text-align:center;">${i+1}</td>
@@ -795,11 +795,11 @@ async function carregarDetalhesExecucaoMed(){
         <th class="num">Concreto</th>
         <th>Equip.</th>
       </tr></thead>
-      <tbody>${/* html */ linhas}</tbody>
+      <tbody>${  linhas}</tbody>
     </table></div>`;
 }
 
-/* Calcula horas extras dos RDOs do período e preenche o campo acréscimo */
+
 async function calcularHoraExtraMedicao(){
   const obraId = $("med-obra")?.value;
   const pIni   = $("med-inicio")?.value;
@@ -820,7 +820,7 @@ async function calcularHoraExtraMedicao(){
     aviso("app-aviso","Sem horas extras lançadas nos RDOs do período. Preencha em RDO → 👷 Equipe.","erro");
     return;
   }
-  // Acumula no acréscimo (não substitui)
+
   const atual = parseFloat($("med-acrescimo").value) || 0;
   const novo  = atual + Number(r.valor_total);
   $("med-acrescimo").value = novo.toFixed(2);
@@ -831,7 +831,7 @@ async function calcularHoraExtraMedicao(){
   aviso("app-aviso", `✅ +${brl(r.valor_total)} de HE adicionados. ${r.qtd_pessoas} pessoa(s) · ${r.qtd_dias} dia(s).`, "ok");
 }
 
-/* Calcula faturamento mínimo (dias úteis sem produção) e preenche acréscimo */
+
 async function calcularFatMinimoMedicao(){
   const obraId = $("med-obra")?.value;
   const pIni   = $("med-inicio")?.value;
@@ -852,7 +852,7 @@ async function calcularFatMinimoMedicao(){
     aviso("app-aviso","Nenhum dia útil sem produção no período (ou nenhum RDO cadastrado).","ok");
     return;
   }
-  // Pergunta antes de aplicar (faturamento mínimo é mais sensível — operador pode querer revisar)
+
   if(!confirm(`Adicionar Faturamento Mínimo ao acréscimo?\n\n${r.descricao}\n\nValor: ${brl(r.valor_total)}\n\nDias detectados sem produção:\n${(r.datas||[]).map(d => new Date(d+"T00:00:00").toLocaleDateString("pt-BR")).join(", ")}`)) return;
 
   const atual = parseFloat($("med-acrescimo").value) || 0;
@@ -865,7 +865,7 @@ async function calcularFatMinimoMedicao(){
   aviso("app-aviso", `✅ +${brl(r.valor_total)} de Faturamento Mínimo adicionados (${r.dias_sem_producao} dia(s)).`, "ok");
 }
 
-/* Mostra/oculta UI do Sinal Contratual baseado no tipo da medição */
+
 function ajustarUISinalContratual(){
   const tipo = $("med-tipo")?.value;
   const ehSinal = tipo === "sinal_contratual";
@@ -873,7 +873,7 @@ function ajustarUISinalContratual(){
   const campoMult = $("campo-med-multiplicador");
   if(btnComp)   btnComp.style.display = ehSinal ? "" : "none";
   if(campoMult) campoMult.style.display = ehSinal ? "" : "none";
-  // Default do multiplicador
+
   const mult = $("med-multiplicador");
   if(mult && ehSinal && (!mult.value || mult.value === "100")){
     mult.value = 30;
@@ -912,7 +912,7 @@ async function comporMedicaoSinal(){
     orcamento_item_id: d.orcamento_item_id || null
   }));
 
-  // Aplica multiplicador do empresa_config (vem no retorno)
+
   const mult = Number(data[0]?.multiplicador_pct) || 30;
   if($("med-multiplicador")) $("med-multiplicador").value = mult;
 
@@ -933,8 +933,8 @@ async function sugerirItensMedicao(){
   const btn = $("btn-med-sugerir");
   if(btn){ btn.disabled = true; btn.textContent = "Carregando..."; }
 
-  // 1) Itens base: estacas agrupadas por variante
-  // 2) Itens extras: mobilização não-cobrada + refuros
+
+
   const [previewRes, extrasRes] = await Promise.all([
     sb.rpc("montar_medicao_preview", { p_obra_id: obraId, p_inicio: inicio, p_fim: fim }),
     sb.rpc("sugerir_extras_medicao", { p_obra_id: obraId, p_inicio: inicio, p_fim: fim, p_medicao_atual: medEditId || null })
@@ -942,7 +942,7 @@ async function sugerirItensMedicao(){
 
   if(btn){ btn.disabled = false; btn.textContent = "Sugerir do período"; }
   if(previewRes.error){ aviso("app-aviso","Erro ao sugerir: "+previewRes.error.message,"erro"); return; }
-  // Sem o aviso, um erro aqui deixava a medição sem refuro e sem mobilização, calada (o 42702 durou da fase 18b até este hotfix)
+
   const erroExtras = extrasRes.error ? ` ⚠️ Refuro e mobilização não vieram (${extrasRes.error.message}): lance à mão.` : "";
 
   const itensBase = (previewRes.data || []).map(d => ({
@@ -967,7 +967,7 @@ async function sugerirItensMedicao(){
     preco_origem: d.preco_origem || "orcamento_obra",
     preco_origem_obs: d.preco_origem_obs || null,
     orcamento_item_id: d.orcamento_item_id || null,
-    mobilizacao_id: d.mobilizacao_id || null,   // fase 157b: uma linha por mobilização e perna
+    mobilizacao_id: d.mobilizacao_id || null,
     perna: d.perna || null,
     _categoria: d.categoria || null
   }));
@@ -984,14 +984,14 @@ async function sugerirItensMedicao(){
   if(itensBase.length)   partes.push(`${itensBase.length} estaca(s) agrupada(s)`);
   const mob = itensExtras.filter(i => i._categoria === "mobilizacao").length;
   const ref = itensExtras.filter(i => i._categoria === "refuro").length;
-  const limp = itensExtras.filter(i => i._categoria === "limpeza").length;   // fase 145b
+  const limp = itensExtras.filter(i => i._categoria === "limpeza").length;
   if(mob) partes.push(`${mob} mobilização`);
   if(ref) partes.push(`${ref} refuro(s)`);
   if(limp) partes.push(`${limp} limpeza(s)`);
   const semPreco = _medItens.filter(i => !i.valor_unitario).length;
   let msg = `✨ Sugestão: ${partes.join(" + ")}.`;
   if(semPreco) msg += ` ⚠️ ${semPreco} sem preço — ajuste manualmente.`;
-  // fase 145a: o Sugerir só traz o refuro que o engenheiro liberou; o pendente trava a medição
+
   const pend = await medRefPendAtualizar();
   if(ref || limp) msg += " Refuro e limpeza: só entra o que o engenheiro da obra liberou para cobrança.";
   if(pend) msg += ` ⚠️ ${pend} refuro(s) ou limpeza(s) aguardam a decisão do engenheiro da obra: a medição não sai de rascunho antes disso.`;
@@ -999,9 +999,9 @@ async function sugerirItensMedicao(){
   aviso("app-aviso", msg, semPreco || pend || erroExtras ? "erro" : "ok");
 }
 
-/* Fase 145a: refuros sem decisão de cobrança no período da medição (medicao_refuros_pendentes). O banco recusa tirar a
-   medição de rascunho enquanto houver algum (trg_medicoes_refuro_trava); aqui só mostra a lista e o caminho da decisão.
-   Devolve a quantidade (0 sem obra, sem a migration ou fora de rascunho). */
+
+
+
 let _medRefPendSeq = 0;
 async function medRefPendAtualizar(){
   const box = $("med-ref-pend");
@@ -1011,13 +1011,13 @@ async function medRefPendAtualizar(){
   const seq = ++_medRefPendSeq;
   if(!obra || !["rascunho", "rejeitada"].includes(st) || tipo === "sinal_contratual"){ box.style.display = "none"; return 0; }
   const { data, error } = await sb.rpc("medicao_refuros_pendentes", { p_obra: obra, p_inicio: ini, p_fim: fim });
-  if(seq !== _medRefPendSeq) return 0;   // a obra ou o período mudou no meio
+  if(seq !== _medRefPendSeq) return 0;
   const lista = error ? [] : (data || []);
   if(!lista.length){ box.style.display = "none"; box.innerHTML = ""; return 0; }
   const mostra = lista.slice(0, 15).map(r => `${esc(r.estaca_numero || "?")} (${dataBR(r.data)})`).join(", ");
   box.innerHTML = `<div><strong>${esc(lista.length)} refuro(s) ou limpeza(s) do período aguardam a decisão de cobrança do engenheiro da obra.</strong>
       A medição não sai de rascunho até a decisão.
-      <div class="meta">${/* html */ mostra}${lista.length > 15 ? ` e mais ${esc(lista.length - 15)}` : ""}</div></div>
+      <div class="meta">${  mostra}${lista.length > 15 ? ` e mais ${esc(lista.length - 15)}` : ""}</div></div>
     <button type="button" class="btn-sec btn-sm" id="btn-med-ref-pend" title="Abre a Conferência da obra na aba Refuradas">Abrir a decisão</button>`;
   box.style.display = "";
   $("btn-med-ref-pend")?.addEventListener("click", () => { if(typeof confAbrirRefurosDaObra === "function") confAbrirRefurosDaObra(obra); });
@@ -1053,13 +1053,13 @@ function ativarTabMed(nome){
   }
 }
 
-/* ---------- Salvar / excluir ---------- */
+
 async function salvarMedicao(novoStatus){
   const obra_id = $("med-obra").value;
   if(!obra_id){ aviso("app-aviso","Selecione a obra da medição.","erro"); ativarTabMed("geral"); return; }
   if(!$("med-numero").value){ aviso("app-aviso","Informe o número.","erro"); ativarTabMed("geral"); return; }
 
-  // Garante totais atualizados antes do save
+
   recalcularTotaisMedicao();
   const subtotal    = parseFloat($("med-subtotal")?.value)    || 0;
   const descSinal   = parseFloat($("med-desc-sinal")?.value)  || 0;
@@ -1077,7 +1077,7 @@ async function salvarMedicao(novoStatus){
     periodo_inicio: $("med-inicio").value || null,
     periodo_fim: $("med-fim").value || null,
     percentual: Number($("med-percentual").value || 0),
-    valor_medido: valorFinal,          // compat: valor_medido = valor_final
+    valor_medido: valorFinal,
     subtotal,
     desconto_sinal: descSinal,
     desconto_descricao: $("med-desc-sinal-obs")?.value.trim() || null,
@@ -1088,24 +1088,24 @@ async function salvarMedicao(novoStatus){
     nf_data_emissao: $("med-nf-emissao")?.value || null,
     nf_vencimento: $("med-nf-venc")?.value || null,
     nf_valor: $("med-nf-valor")?.value ? Number($("med-nf-valor").value) : null,
-    // Retenção contratual / caução (14/09/2026): valor retido pelo cliente nesta medição, a receber depois
+
     retencao_percentual: $("med-ret-pct")?.value ? Number($("med-ret-pct").value) : null,
     retencao_valor: $("med-ret-valor")?.value ? Number($("med-ret-valor").value) : null,
-    // fase 91: retencao_liberada / retencao_data_liberacao são espelho da caução (gatilho no banco); não vão mais daqui
-    // ISS (financeiro, 16/09/2026)
+
+
     iss_percentual: $("med-iss-pct")?.value ? Number($("med-iss-pct").value) : null,
     iss_valor: $("med-iss-valor")?.value ? Number($("med-iss-valor").value) : null,
     iss_retido_fonte: $("med-iss-retido")?.value !== "false",
     observacoes: $("med-obs").value.trim() || null
-    // valor_final é recalculado por trigger no banco
+
   };
-  // lote S56c (#183): a mesma trava do gatilho trg_medicoes_zz_valor_zero, antes de gravar
+
   const msgZero = medTravaValorZero(reg.status, valorFinal, medEditId ? _medAtual : null);
   if(msgZero){ aviso("app-aviso", msgZero, "erro"); ativarTabMed("geral"); return; }
-  if(typeof medPmLerCampos === "function") Object.assign(reg, medPmLerCampos());   // fase 98: só financeiro/admin/diretor mandam a permuta
-  Object.assign(reg, medEquipParaGravar("med-equip"));   // fase 101 (#94): máquina da medição
-  if(typeof cctMedParaGravar === "function") Object.assign(reg, cctMedParaGravar());   // fase 183a: aprovador pelo cliente
-  // fase 105c: retenções federais (só depois da migration) e medição travada pela NFS-e emitida pelo app
+  if(typeof medPmLerCampos === "function") Object.assign(reg, medPmLerCampos());
+  Object.assign(reg, medEquipParaGravar("med-equip"));
+  if(typeof cctMedParaGravar === "function") Object.assign(reg, cctMedParaGravar());
+
   if(_medNfseOk){
     for(const k of MED_RET_FED){
       const v = parseFloat($("med-ret-" + k)?.value);
@@ -1115,7 +1115,7 @@ async function salvarMedicao(novoStatus){
   }
   const travadaNfse = medNfseTravada();
   if(travadaNfse){
-    // o que está impresso na nota não vai no salvar (o banco recusaria); os itens também não (delete + insert abaixo)
+
     MED_NFSE_CAMPOS_TRAVADOS.forEach(k => delete reg[k]);
     if(medNfseNfDoApp()) ["nf_numero", "nf_data_emissao", "nf_valor", "doc_tipo"].forEach(k => delete reg[k]);
   }
@@ -1127,14 +1127,14 @@ async function salvarMedicao(novoStatus){
   }
   if(result.error){
     aviso("app-aviso","Não foi possível salvar a medição: "+result.error.message,"erro");
-    // fase 145a: refuro sem decisão no período trava a saída de rascunho; a lista fica na aba Itens
+
     if(/Medição travada/.test(result.error.message || "")){ atualizarStatusbarMed($("med-status").value); ativarTabMed("itens"); medRefPendAtualizar(); }
     return;
   }
   medEditId = result.data.id;
 
-  // Substitui itens (delete + insert) — mais simples que reconciliar por id
-  // fase 105c: medição com NFS-e emitida pelo app fica com os itens que foram para a nota (a guarda do banco também barra)
+
+
   if(medEditId && !travadaNfse){
     const { error: errDel } = await sb.from("medicao_itens").delete().eq("medicao_id", medEditId);
     if(errDel){ aviso("app-aviso","Erro ao limpar itens antigos: "+errDel.message,"erro"); return; }
@@ -1148,21 +1148,21 @@ async function salvarMedicao(novoStatus){
           variante_id: it.variante_id || null,
           execucao_id: it.execucao_id || null,
           orcamento_item_id: it.orcamento_item_id || null,
-          // fase 157b: preservada no delete + insert; sem ela o banco liga à primeira mobilização com a perna em aberto
+
           mobilizacao_id: it.mobilizacao_id || null,
-          quantidade: medArred6(it.quantidade),   // hotfix 93: numeric(18,6)
+          quantidade: medArred6(it.quantidade),
           unidade: it.unidade || null,
           valor_unitario: Number(it.valor_unitario) || 0,
-          // valor_total é coluna GENERATED no banco — não enviamos (hotfix 93: = valor_total_lido quando travado)
+
           preco_origem: it.preco_origem || "manual",
           preco_origem_obs: it.preco_origem_obs || null,
-          // TAG do boletim e, na fase 88, o que o PDF importado trazia: preservados no delete + insert
+
           equipamento_id: it.equipamento_id || null,
           equipamento_tag: it.equipamento_tag || null,
           quantidade_lida: it.quantidade_lida ?? null,
           valor_unitario_lido: it.valor_unitario_lido ?? null,
           conferido: it.conferido === true,
-          // hotfix 93: total do boletim e trava preservados no delete + insert (só quando o banco já tem as colunas)
+
           ...(_medTemTrava ? { valor_total_lido: it.valor_total_lido ?? null, total_travado: medItemTravado(it) } : {})
         }));
       if(insertItens.length){
@@ -1177,17 +1177,17 @@ async function salvarMedicao(novoStatus){
   aviso("app-aviso","Medição salva com sucesso.","ok");
   await carregarMedicoes();
   await abrirMedicao(medEditId);
-  // lote S39 (#26): quinzenal sem execução no período não bloqueia, só avisa
+
   if(reg.tipo_medicao === "quinzenal" && !_medItens.length){
     aviso("app-aviso","Medição salva. Nenhuma execução no período: a medição fica com a pendência 'produção pendente' até os diários serem lançados.","aviso");
   }
-  return true;   // fase 105c: a NFS-e salva antes de simular/emitir e precisa saber se deu certo
+  return true;
 }
 
-/* ============================================================
-   GERADOR DE PDF DA MEDIÇÃO (estilo CGL RG 11.4)
-   Usa html2pdf.js (já carregado no index.html)
-   ============================================================ */
+
+
+
+
 async function gerarPDFMedicao(){
   if(!medEditId){ aviso("app-aviso","Salve a medição antes de gerar o PDF.","erro"); return; }
   if(typeof html2pdf === "undefined"){ aviso("app-aviso","Biblioteca html2pdf não carregada.","erro"); return; }
@@ -1196,7 +1196,7 @@ async function gerarPDFMedicao(){
   if(btn){ btn.disabled = true; btn.textContent = "Gerando..."; }
 
   try {
-    // 1) Cabeçalho da medição (com obra/cliente/contrato)
+
     const medRes = await sb.from("medicoes")
       .select(`*, obra:obra_id(id,codigo,nome,cliente_id,cidade,uf,logradouro,numero,contrato_id,
                                 cliente:cliente_id(nome,cpf_cnpj,email,telefone,contato_nome),
@@ -1204,13 +1204,13 @@ async function gerarPDFMedicao(){
       .eq("id", medEditId).single();
     if(medRes.error) throw new Error(medRes.error.message);
     const m = medRes.data;
-    // fase 183a: aprovador pelo cliente no boletim (vazio sem a migration ou sem contato escolhido)
+
     m._aprovadorCliente = typeof cctNomeContato === "function" ? await cctNomeContato(m.aprovador_cliente_contato_id) : "";
     const obraId = m.obra?.id;
     const pIni = m.periodo_inicio;
     const pFim = m.periodo_fim;
 
-    // 2) Itens + 3) Execuções/RDOs/Ocorrências do período (só pra quinzenal/final/avulsa — sinal não usa)
+
     const ehSinal = m.tipo_medicao === "sinal_contratual";
     const [itensRes, execsRes, rdosRes, ocorrRes] = await Promise.all([
       sb.from("medicao_itens")
@@ -1218,7 +1218,7 @@ async function gerarPDFMedicao(){
         .eq("medicao_id", medEditId).order("ordem"),
       (!ehSinal && obraId && pIni && pFim) ? sb.from("rdo_execucao_estaca")
         .select("estaca_numero,perfuracao_inicio,profundidade_executada,volume_concreto_m3,modalidade_execucao,equipamento:equipamento_id(codigo),estaca:estaca_id(numero,diametro_mm),rdo:rdo_id!inner(obra_id,data)")
-        .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim).is("descartada_em", null)   // fase 184b: descartada fora da medição
+        .eq("rdo.obra_id", obraId).gte("rdo.data", pIni).lte("rdo.data", pFim).is("descartada_em", null)
         .order("perfuracao_inicio") : Promise.resolve({ data: [] }),
       (!ehSinal && obraId && pIni && pFim) ? sb.from("rdo")
         .select("id,data,producao_dia_m,observacoes,atividades")
@@ -1239,7 +1239,7 @@ async function gerarPDFMedicao(){
 
     const html = montarHTMLMedicaoPDF(m, itens, execs, rdos, ocorr);
 
-    // Container temporário pro html2pdf renderizar
+
     const container = document.createElement("div");
     container.innerHTML = html;
     container.style.position = "fixed";
@@ -1248,7 +1248,7 @@ async function gerarPDFMedicao(){
 
     const nomeArq = `Medicao_${(m.numero||"S-N").replace(/[\/\\]/g,"-")}_${(m.obra?.codigo||"obra").replace(/[\/\\]/g,"-")}_${(m.data_medicao||"").replace(/-/g,"")}.pdf`;
 
-    // lote S41 (#36): logo no cabeçalho, selo ISO em toda página e linha de tabela sem corte
+
     try {
       await pdfGerar(container.firstElementChild, { filename: nomeArq, largura: 186 });
     } finally {
@@ -1263,16 +1263,16 @@ async function gerarPDFMedicao(){
   }
 }
 
-/* Monta o HTML do PDF estilo CGL RG 11.4 */
+
 function montarHTMLMedicaoPDF(m, itens, execs = [], rdos = [], ocorrencias = []){
   const ehSinal = m.tipo_medicao === "sinal_contratual";
   if(ehSinal) return montarHTMLSinalContratualPDF(m, itens);
   return montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias);
 }
 
-/* ============================================================
-   PDF SINAL CONTRATUAL — estilo Maya/RG 11.4 (1 página simples)
-   ============================================================ */
+
+
+
 function montarHTMLSinalContratualPDF(m, itens){
   const obra = m.obra || {};
   const cli  = obra.cliente || {};
@@ -1345,10 +1345,10 @@ function montarHTMLSinalContratualPDF(m, itens){
 </div>`;
 }
 
-/* ============================================================
-   PDF MEDIÇÃO QUINZENAL/FINAL/AVULSA — layout completo
-   Inspirado no PDF Medição 01 real da CGL
-   ============================================================ */
+
+
+
+
 function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
   const obra = m.obra || {};
   const cli  = obra.cliente || {};
@@ -1364,10 +1364,10 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
   const total    = Number(m.valor_final) || ((subtotal - desc + acresc) * mult / 100);
   const endereco = [obra.logradouro, obra.numero, obra.cidade, obra.uf ? obra.uf.toUpperCase() : ""].filter(Boolean).join(" - ");
 
-  // SEÇÃO 2: Estacas executadas (1 linha por execução)
-  // Preço por metro vem do item de estaca/hélice/trado da medição. Sem item de
-  // referência, NÃO inventar valor (antes caía num R$ 52/m fictício que ia
-  // para o PDF do cliente): mostra "—" nas colunas de valor.
+
+
+
+
   const itemRef = itens.find(i => /estaca|h.lice|trado/i.test(i.descricao||""));
   const valorPorMetro = itemRef && Number(itemRef.valor_unitario) > 0 ? Number(itemRef.valor_unitario) : null;
   const linhasEstacas = execs.length ? execs.map((e, i) => {
@@ -1414,7 +1414,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
       </tfoot>
     </table>` : "";
 
-  // SEÇÃO 3: Resumo por diâmetro
+
   const porDiam = {};
   execs.forEach(e => {
     const d = e.estaca?.diametro_mm || "—";
@@ -1450,7 +1450,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
       </tbody>
     </table>` : "";
 
-  // SEÇÃO 4: Mobilização (procura item de mobilização nos itens da medição)
+
   const itemMob = itens.find(i => /mobiliza/i.test(i.descricao||""));
   const blocoMobilizacao = itemMob ? `
     <div style="font-size:12px;font-weight:700;text-align:center;margin:14px 0 4px;">Mobilização / Desmobilização</div>
@@ -1471,7 +1471,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
       </tbody>
     </table>` : "";
 
-  // SEÇÃO 5: Resumo Diário
+
   const porDia = {};
   execs.forEach(e => {
     const d = e.rdo?.data || "—";
@@ -1507,7 +1507,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
       </tbody>
     </table>` : "";
 
-  // SEÇÃO 6: Horas Paradas / Ocorrências
+
   const blocoOcorrencias = ocorrencias.length ? `
     <div style="font-size:12px;font-weight:700;text-align:center;margin:14px 0 4px;">Horas Paradas / Ocorrências</div>
     <table style="width:100%;border-collapse:collapse;font-size:9px;border:1px solid #000;">
@@ -1531,7 +1531,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
       </tbody>
     </table>` : "";
 
-  // SEÇÃO 7: Totalizadores
+
   const blocoTotal = `
     <table style="width:100%;font-size:11.5px;margin-top:18px;border-collapse:collapse;">
       <tr>
@@ -1604,7 +1604,7 @@ function montarHTMLQuinzenalPDF(m, itens, execs, rdos, ocorrencias){
 </div>`;
 }
 
-/* Cabeçalho SGQ comum (todas medições) */
+
 function headerSGQ(){
   return `
   <table style="width:100%;border-collapse:collapse;border:1px solid #000;font-size:10px;">
@@ -1628,7 +1628,7 @@ function headerSGQ(){
   </table>`;
 }
 
-/* Rodapé sutil (todas medições) */
+
 function rodape(cli){
   return `
   <div style="margin-top:24px;padding-top:6px;border-top:1px solid #999;font-size:9.5px;color:#555;display:flex;justify-content:space-between;">
@@ -1650,21 +1650,21 @@ async function excluirMedicao(){
   mostrarPainelMed();
 }
 
-/* ====================================================================
-   FASE 88 (19/10/2026, chamado #54) — IMPORTAR BOLETIM DE MEDIÇÃO JÁ EMITIDO (PDF)
-   O PDF é o boletim que a CGL calculou e enviou ao cliente (Maya nas obras de hélice e
-   secante; planilha da CGL nas de raiz e trado). A edge function extrair-medicao-pdf lê e
-   devolve JSON; aqui o usuário confere item a item contra a cascata de preço do app
-   (RPC medicao_precos_cascata: orçamento aprovado > preço do cliente > referência), escolhe
-   por item "usar o lido" (padrão: já foi ao cliente) ou "usar o do app", e confirma. A
-   medição nasce rascunho (enviada com prova de envio; fase 177a, depois de passar por js/medicao_regras_carga.js), origem = 'importada_pdf', com o PDF no bucket obras-documentos
-   (medicoes/<obra>/). Vários PDFs entram em fila e são conferidos um a um.
-   Fora: gerar a medição a partir do RDO; boletim do cliente/fiscalização.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
 const MED_IMP_MAX_BYTES   = 2 * 1024 * 1024;
 const MED_IMP_MAX_PAGINAS = 10;
-const MED_IMP_CARGOS      = ["diretor", "admin", "financeiro", "engenheiro", "assistente_engenharia"]; // mesma lista da function
-const MED_IMP_UNIDADES_VALIDAS = (typeof UNIDADES !== "undefined" ? UNIDADES : ["km"]).slice();   // lote S54 (#170): "km" entrou em UNIDADES (core.js); antes era concatenado aqui
+const MED_IMP_CARGOS      = ["diretor", "admin", "financeiro", "engenheiro", "assistente_engenharia"];
+const MED_IMP_UNIDADES_VALIDAS = (typeof UNIDADES !== "undefined" ? UNIDADES : ["km"]).slice();
 const MED_IMP_UNIDADE_MAPA = {
   m:"m", ml:"m", metro:"m", metros:"m", "m.l":"m", "m/l":"m", mts:"m",
   m2:"m2", "m²":"m2", m3:"m3", "m³":"m3",
@@ -1672,10 +1672,10 @@ const MED_IMP_UNIDADE_MAPA = {
   vb:"vb", verba:"vb", gl:"vb", global:"vb", cj:"jg", conj:"jg", jg:"jg",
   kg:"kg", t:"ton", ton:"ton", l:"l", lt:"l", km:"km", sc:"sc", cx:"cx", par:"par", rl:"rl",
   dia:"diária", dias:"diária", diaria:"diária", "diária":"diária", "diárias":"diária", mes:"mês", "mês":"mês", meses:"mês",
-  h:"h", hs:"h", hr:"h", hrs:"h", hora:"h", horas:"h"   // lote S45 (L8): "h" entrou no enum unidade_medida (20261020_loteS45_unidade_h); antes virava "un"
+  h:"h", hs:"h", hr:"h", hrs:"h", hora:"h", horas:"h"
 };
-let _medImp = null;          // estado da importação em curso (modal aberto)
-let _medBoletimPath = null;  // caminho do PDF da medição aberta na ficha
+let _medImp = null;
+let _medBoletimPath = null;
 
 function medImpPodeImportar(){ return !!usuarioAtual && MED_IMP_CARGOS.includes(usuarioAtual.cargo); }
 
@@ -1689,15 +1689,15 @@ function medImpNormalizarUnidade(u){
   return { valor: "un", aviso: `unidade "${raw}" não existe no app: gravada como un` };
 }
 
-/* Texto sem acento, minúsculo, só letras e dígitos; Ø e "diâmetro" viram "d" para casar "Ø 400" com "D400" */
+
 function medImpNormalizarTexto(s){
   return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/ø|diametro|diam\.?|\bdn\b/g, " d ").replace(/[^a-z0-9]+/g, " ").trim();
 }
 const MED_IMP_STOP = new Set(["de","da","do","das","dos","em","mm","com","por","a","e","o","ate","at"]);
 function medImpTokens(s){ return new Set(medImpNormalizarTexto(s).split(" ").filter(t => t.length > 1 && !MED_IMP_STOP.has(t))); }
-/* Casa a descrição lida com a cascata: tokens em comum + números iguais (diâmetro, faixa). A lista já
-   vem na ordem orçamento > cliente > referência, então o empate fica com o primeiro nível. */
+
+
 function medImpCasarCascata(descricao){
   const lista = (_medImp && _medImp.cascata) || [];
   if(!lista.length || !descricao) return null;
@@ -1748,8 +1748,8 @@ async function abrirImportBoletimPDF(obraId){
   if(!medImpPodeImportar()){
     aviso("med-imp-aviso", "Seu cargo não importa boletins (diretor, admin, financeiro, engenheiro ou assistente de engenharia).", "erro");
   } else if(usuarioAtual && ["financeiro", "assistente_engenharia"].includes(usuarioAtual.cargo)){
-    // divergência registrada na fase 88: a function aceita estes cargos, mas medicao_itens_write e o bucket
-    // obras-documentos hoje só aceitam admin, engenheiro e comercial (além do diretor)
+
+
     aviso("med-imp-aviso", "Atenção: seu cargo lê o boletim, mas a gravação dos itens e o anexo do PDF dependem de permissão no banco (hoje: admin, engenheiro e comercial). Se a gravação for recusada, peça ao diretor.", "aviso");
   }
   await medImpCarregarContextoObra();
@@ -1760,7 +1760,7 @@ function fecharImportBoletimPDF(){
   _medImp = null;
 }
 
-/* Obra, medições existentes (não duplicar número), cascata de preço, TAGs e tipo de serviço (pelos RDOs) */
+
 async function medImpCarregarContextoObra(){
   const st = _medImp; if(!st) return;
   const [obraRes, medsRes, casRes, eqRes, rdoRes] = await Promise.all([
@@ -1770,7 +1770,7 @@ async function medImpCarregarContextoObra(){
     sb.from("equipamentos").select("id,codigo").not("codigo", "is", null).limit(500),
     sb.from("rdo").select("tipo_servico").eq("obra_id", st.obraId).not("tipo_servico", "is", null).limit(1)
   ]);
-  if(_medImp !== st) return; // modal fechado no meio
+  if(_medImp !== st) return;
   st.obra = obraRes.data || null;
   st.numerosExistentes = (medsRes.data || []).map(m => String(m.numero || "").trim().toLowerCase());
   st.cascata = casRes.error ? [] : (casRes.data || []);
@@ -1779,7 +1779,7 @@ async function medImpCarregarContextoObra(){
   st.tipoServico = rdoRes.data && rdoRes.data[0] ? rdoRes.data[0].tipo_servico : null;
 }
 
-/* ---- fila de arquivos ---- */
+
 function medImpAdicionarArquivos(files){
   if(!_medImp) return;
   medImpLimparAviso();
@@ -1807,7 +1807,7 @@ function medImpLerArquivo(file, modo){
     if(modo === "base64") fr.readAsDataURL(file); else fr.readAsArrayBuffer(file);
   });
 }
-/* Conta os objetos /Type /Page do PDF (aproximação; PDF com object streams comprimidos devolve 0 e não barra) */
+
 async function medImpContarPaginas(file){
   try {
     const buf = await medImpLerArquivo(file, "buffer");
@@ -1855,7 +1855,7 @@ async function medImpProcessarProximo(){
           const b = await error.context.json();
           if(b){ detalhe = b.error || JSON.stringify(b); if(b.sugestao) detalhe += " 💡 " + b.sugestao; }
         }
-      } catch(_){ /* segue */ }
+      } catch(_){   }
       throw new Error(detalhe || "Falha ao chamar a leitura por IA.");
     }
     if(data && data.error) throw new Error(data.error + (data.sugestao ? " 💡 " + data.sugestao : ""));
@@ -1882,7 +1882,7 @@ function medImpPular(){
   medImpProcessarProximo();
 }
 
-/* ---- conferência ---- */
+
 function medImpMontarConferencia(resp, arq){
   const st = _medImp; if(!st) return;
   const m = resp.medicao || {};
@@ -1890,10 +1890,10 @@ function medImpMontarConferencia(resp, arq){
   st.itens = (resp.itens || []).map((it, i) => {
     const uni = medImpNormalizarUnidade(it.unidade);
     const cas = medImpCasarCascata(it.descricao);
-    const qtd = medArred6(Number(it.quantidade) || 0);   // hotfix 93: 6 casas
+    const qtd = medArred6(Number(it.quantidade) || 0);
     const vuLido = Number(it.valor_unitario) || 0;
-    // hotfix 93 (#93): o total impresso é a verdade quando o boletim o traz. A function v1.4 manda total_divergente e
-    // quantidade_calculada; com a v1.3 ainda no ar, a mesma conta é feita aqui (|q × unitário − total| > R$ 0,01).
+
+
     const vtLido = (it.valor_total != null && isFinite(Number(it.valor_total))) ? Number(it.valor_total) : null;
     const conta = +(qtd * vuLido).toFixed(2);
     const divergente = vtLido != null && (it.total_divergente != null ? it.total_divergente === true : Math.abs(conta - vtLido) > 0.01);
@@ -1902,7 +1902,7 @@ function medImpMontarConferencia(resp, arq){
       ordem: i + 1, descricao: it.descricao || "", unidade: uni.valor, unidade_lida: it.unidade || "", unidade_aviso: uni.aviso,
       quantidade: (divergente && qCalc != null) ? qCalc : qtd, quantidade_lida: qtd, valor_unitario_lido: vuLido,
       valor_total_lido: vtLido != null ? vtLido : conta, total_impresso: vtLido != null && it.total_impresso !== false,
-      total_divergente: divergente, quantidade_calculada: qCalc, caminho: divergente ? "boletim" : "conta",   // o do boletim marcado por padrão
+      total_divergente: divergente, quantidade_calculada: qCalc, caminho: divergente ? "boletim" : "conta",
       tag: it.tag || m.equipamento || null, cascata: cas, usar: "lido", conferido: false, removido: false
     };
   });
@@ -1926,9 +1926,9 @@ function medImpMontarConferencia(resp, arq){
   medImpRenderConferencia(resp, arq);
 }
 
-/* Hotfix 93 (#93): item cujo total impresso não bate com quantidade × unitário mostra os dois caminhos, com o do boletim
-   marcado. Boletim = total travado no impresso e a quantidade que o fecha (6 casas); conta = quantidade lida × unitário.
-   Com o unitário do app ("usar app") vale a conta: o caminho do boletim fica desabilitado. */
+
+
+
 function medImpTravado(it){ return !!it.total_divergente && it.caminho === "boletim" && it.usar !== "app" && it.valor_total_lido != null; }
 function medImpTotalItem(it){ return medImpTravado(it) ? Number(it.valor_total_lido) : +((Number(it.quantidade) || 0) * medImpUnitarioEscolhido(it)).toFixed(2); }
 function medImpQtdBoletim(it){
@@ -2040,7 +2040,7 @@ function medImpRenderConferencia(resp, arq){
   <div class="indicadores med-imp-totais" id="med-imp-totais"></div>`;
   $("med-imp-acoes").style.display = "";
 
-  // fase 101 (#94): máquinas da obra no seletor e aviso (não bloqueio) quando há várias e item sem TAG
+
   medPreencherMaquinas(st.obraId, "med-imp-h-equip", "").then(medImpAvisoMaquinas);
   $("med-imp-h-equip")?.addEventListener("change", medImpAvisoMaquinas);
   cont.querySelectorAll("tbody tr[data-idx]").forEach(tr => {
@@ -2082,12 +2082,12 @@ function medImpLerLinha(tr){
   const it = _medImp?.itens[Number(tr.dataset.idx)]; if(!it) return;
   it.descricao = tr.querySelector('[data-c="descricao"]').value.trim();
   it.unidade = tr.querySelector('[data-c="unidade"]').value;
-  it.quantidade = medArred6(parseFloat(tr.querySelector('[data-c="quantidade"]').value) || 0);   // hotfix 93: 6 casas
+  it.quantidade = medArred6(parseFloat(tr.querySelector('[data-c="quantidade"]').value) || 0);
   it.valor_unitario_lido = parseFloat(tr.querySelector('[data-c="valor_unitario_lido"]').value) || 0;
   const usar = tr.querySelector('[data-c="usar"]:checked'); it.usar = usar ? usar.value : "lido";
   it.tag = tr.querySelector('[data-c="tag"]').value.trim() || null;
   it.conferido = tr.querySelector('[data-c="conferido"]').checked;
-  // hotfix 93: trocar de caminho põe a quantidade dele (lida ou a que fecha o total do boletim)
+
   if(it.total_divergente){
     const cam = tr.querySelector('[data-c="caminho"]:checked');
     const novo = cam ? cam.value : "conta";
@@ -2099,7 +2099,7 @@ function medImpLerLinha(tr){
     medImpSincCaminho(tr, it);
   }
 }
-/* Com o unitário do app vale quantidade × unitário: o caminho do boletim fica desabilitado e volta para a conta */
+
 function medImpSincCaminho(tr, it){
   if(!tr || !it || !it.total_divergente) return;
   const rb = tr.querySelector('[data-c="caminho"][value="boletim"]');
@@ -2129,7 +2129,7 @@ function medImpUsarTodos(modo){
     if(modo === "app" && !it.cascata) return;
     it.usar = modo;
     const r = document.querySelector(`input[name="med-imp-usar-${i}"][value="${modo}"]`); if(r) r.checked = true;
-    medImpSincCaminho(document.querySelector(`#med-imp-conf tbody tr[data-idx="${i}"]`), it);   // hotfix 93
+    medImpSincCaminho(document.querySelector(`#med-imp-conf tbody tr[data-idx="${i}"]`), it);
   });
   medImpAtualizarTotais();
 }
@@ -2145,12 +2145,12 @@ function medImpChecarDuplicado(){
   return dup;
 }
 
-/* Mesma conta de recalcularTotaisMedicao: (subtotal − sinal + acréscimo) × multiplicador; retenção e ISS
-   pelo % a menos que o valor tenha sido digitado; líquido = final − retenção − ISS retido na fonte */
+
+
 function medImpCalcular(){
   const st = _medImp; if(!st || !st.cab) return null;
   const ativos = st.itens.filter(it => !it.removido);
-  // hotfix 93: total por item como o banco gera (2 casas; o do boletim quando travado)
+
   const subtotal = +ativos.reduce((s, it) => s + medImpTotalItem(it), 0).toFixed(2);
   const travados = ativos.filter(medImpTravado).length;
   const tipo = $("med-imp-h-tipo")?.value || "quinzenal";
@@ -2159,8 +2159,8 @@ function medImpCalcular(){
   let mult = 100;
   if(tipo === "sinal_contratual"){
     const vf = Number(st.cab.valor_final_lido);
-    mult = (vf > 0 && subtotal > 0) ? +(vf / subtotal * 100).toFixed(2) : 30; // o boletim do sinal lista os itens cheios e o sinal (30%) no fim
-    if(!(mult > 0 && mult <= 100)) mult = 30; // leitura inconsistente (sinal maior que os itens): volta ao padrão
+    mult = (vf > 0 && subtotal > 0) ? +(vf / subtotal * 100).toFixed(2) : 30;
+    if(!(mult > 0 && mult <= 100)) mult = 30;
   }
   const valorFinal = +((subtotal - descSinal + acresc) * mult / 100).toFixed(2);
   const retPct = parseFloat($("med-imp-h-ret-pct")?.value);
@@ -2192,7 +2192,7 @@ function medImpAtualizarTotais(){
     <div class="ind"><div class="num">${brl(t.liquido)}<small>− retenção ${brl(t.retV)} − ISS ${t.issRetido ? brl(t.issV) : "não retido"}</small></div><div class="rot">Líquido a receber</div></div>`;
 }
 
-/* ---- confirmar: PDF no bucket, medição aprovada e itens; desfaz tudo se os itens falharem ---- */
+
 async function medImpConfirmar(){
   const st = _medImp; if(!st || !st.cab || !st.atual) return;
   const arq = st.atual;
@@ -2201,21 +2201,21 @@ async function medImpConfirmar(){
   if(medImpChecarDuplicado()){ aviso("med-imp-aviso", `Já existe a medição ${numero} nesta obra. Altere o número ou pule o arquivo.`, "erro"); return; }
   const t = medImpCalcular();
   if(!t || !t.itens){ aviso("med-imp-aviso", "Nenhum item para gravar.", "erro"); return; }
-  if(!(t.valorFinal > 0)){ aviso("med-imp-aviso", MED_MSG_VALOR_ZERO, "erro"); return; }   // lote S56c (#183): boletim com valor zero não entra
+  if(!(t.valorFinal > 0)){ aviso("med-imp-aviso", MED_MSG_VALOR_ZERO, "erro"); return; }
   const semDesc = st.itens.filter(it => !it.removido && !it.descricao).length;
   if(semDesc){ aviso("med-imp-aviso", `${semDesc} item(ns) sem descrição.`, "erro"); return; }
   const naoConf = st.itens.filter(it => !it.removido && !it.conferido).length;
   if(naoConf && !confirm(`${naoConf} item(ns) ainda sem o ✓ de conferido. Gravar a medição mesmo assim?`)) return;
   const o = st.obra || {};
-  const valorObra = Number(o.financeiro?.valor_contratado) || 0;   // obras_financeiro (fase 90)
+  const valorObra = Number(o.financeiro?.valor_contratado) || 0;
   const tipo = $("med-imp-h-tipo")?.value || "quinzenal";
   const dataMed = $("med-imp-h-data")?.value || hojeISO();
   const ini = $("med-imp-h-ini")?.value || null, fim = $("med-imp-h-fim")?.value || null;
   if(tipo !== "sinal_contratual" && (!ini || !fim) && !confirm("Medição sem período (início e fim). Gravar assim mesmo?")) return;
 
   medImpLimparAviso();
-  // 0) fase 177a: regras da carga (js/medicao_regras_carga.js → RPC medicao_conferir_carga). Recusa vira pendência
-  //    de revisão em medicao_carga_pendencias, com o motivo, e nada é gravado; sem recusa, a medição nasce rascunho (R7).
+
+
   let conf, sha;
   try {
     sha = await MedRegrasCarga.sha256Hex(arq.file);
@@ -2244,7 +2244,7 @@ async function medImpConfirmar(){
     return;
   }
 
-  // 1) PDF no bucket privado obras-documentos (supabase-js ignora contentType com File: reembala em Blob)
+
   let storagePath = null, avisoAnexo = "";
   const caminho = `medicoes/${st.obraId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`;
   try {
@@ -2256,8 +2256,8 @@ async function medImpConfirmar(){
     avisoAnexo = `PDF não anexado (${e.message || e}). Anexe pela aba Documentos da obra.`;
   }
 
-  // 2) medição (fase 177a: nasce rascunho, ou enviada com prova de envio; nunca aprovada)
-  const duvidas = [...(st.resp?.aviso ? [st.resp.aviso] : []), ...(st.resp?.duvidas || [])];   // lote S46 (#105): aviso da v1.3 vai para as observações
+
+  const duvidas = [...(st.resp?.aviso ? [st.resp.aviso] : []), ...(st.resp?.duvidas || [])];
   const obs = [($("med-imp-h-obs")?.value || "").trim(),
                `Importada do boletim "${arq.nome}" em ${dataBR(hojeISO())}${duvidas.length ? " · pontos conferidos: " + duvidas.join("; ") : ""}`].filter(Boolean);
   const reg = {
@@ -2273,8 +2273,8 @@ async function medImpConfirmar(){
     retencao_percentual: t.retPct, retencao_valor: t.retV || null,
     iss_percentual: t.issPct, iss_valor: t.issV || null, iss_retido_fonte: t.issRetido,
     observacoes: obs.join("\n") || null,
-    ...medEquipParaGravar("med-imp-h-equip")   // fase 101 (#94): máquina da medição (itens sem TAG)
-    // valor_final vem do gatilho trg_medicoes_valor_final
+    ...medEquipParaGravar("med-imp-h-equip")
+
   };
   const ins = await sb.from("medicoes").insert(reg).select("id").single();
   if(ins.error){
@@ -2284,7 +2284,7 @@ async function medImpConfirmar(){
   }
   const medId = ins.data.id;
 
-  // 3) itens: unitário escolhido (lido ou do app) e o que o PDF trazia, para comparar depois
+
   const itens = st.itens.filter(it => !it.removido).map((it, i) => {
     const usaApp = it.usar === "app" && it.cascata;
     const tagNorm = it.tag ? medImpNormalizarTexto(it.tag).replace(/\s+/g, "") : "";
@@ -2300,15 +2300,15 @@ async function medImpConfirmar(){
         : `Lido do boletim importado (PDF)${it.cascata ? "; o app calcularia " + brl(it.cascata.valor_unitario) : ""}`,
       equipamento_id: eq ? eq.id : null, equipamento_tag: it.tag,
       quantidade_lida: medArred6(it.quantidade_lida), valor_unitario_lido: it.valor_unitario_lido, conferido: it.conferido === true,
-      // hotfix 93: total impresso guardado; travado quando o caminho do boletim foi escolhido (o banco gera valor_total = ele)
+
       valor_total_lido: it.total_impresso ? it.valor_total_lido : null, total_travado: medImpTravado(it)
     };
   });
   const insIt = await medInserirItens(itens);
   if(insIt.error || insIt.semTrava){
-    // semTrava: banco sem as colunas do hotfix 93 e item com o total do boletim → não grava um total diferente do escolhido
+
     if(insIt.semTrava) await sb.from("medicao_itens").delete().eq("medicao_id", medId);
-    // fase 142 (EST-04): .select() porque a RLS recusa o delete sem erro, com 0 linhas
+
     const desfez = await sb.from("medicoes").delete().eq("id", medId).select("id");
     if(desfez.error || !desfez.data?.length){
       aviso("med-imp-aviso", "Não foi possível gravar os itens e a medição não foi desfeita: confira antes de importar de novo." + (desfez.error ? " " + desfez.error.message : ""), "erro");
@@ -2321,8 +2321,8 @@ async function medImpConfirmar(){
     return;
   }
 
-  // 4) lote S45 (L8): o mesmo PDF também entra na aba Documentos da obra (categoria boletim_medicao, origem
-  //    medicao_importada; policy obras_doc_boletim_medicao). A medição já está gravada: falha aqui só avisa.
+
+
   if(storagePath){
     const doc = await sb.from("obras_documentos").insert({
       obra_id: st.obraId, categoria: "boletim_medicao", nome: arq.nome, descricao: `Boletim da medição ${numero} importado`,
@@ -2342,7 +2342,7 @@ async function medImpConfirmar(){
   medImpProcessarProximo();
 }
 
-/* ---- ficha: chip de origem e PDF do boletim importado ---- */
+
 function medAtualizarOrigemFicha(med){
   const chip = $("med-ficha-origem"), txt = $("med-ficha-origem-txt"), btn = $("btn-med-boletim");
   _medBoletimPath = (med && med.arquivo_origem_url) ? med.arquivo_origem_url : null;
@@ -2350,7 +2350,7 @@ function medAtualizarOrigemFicha(med){
   if(chip) chip.style.display = importada ? "" : "none";
   if(txt) txt.textContent = importada ? `Boletim importado${med.importada_em ? " em " + dataBR(String(med.importada_em).slice(0, 10)) : ""}` : "—";
   if(btn) btn.style.display = _medBoletimPath ? "" : "none";
-  // lote S67-e (#352): substituir (ou anexar) o boletim; a RPC confere cargo e NFS-e de novo
+
   _medBoletimMed = med && med.id ? med : null;
   const trocar = $("btn-med-boletim-trocar");
   if(trocar){
@@ -2372,7 +2372,7 @@ async function medTrocarBoletimArquivo(file){
     if(!ok) return;
   }
   const caminho = `medicoes/${med.obra_id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`;
-  // supabase-js ignora contentType com File: reembala em Blob com o MIME pela extensão
+
   const blob = new Blob([await file.arrayBuffer()], { type: "application/pdf" });
   const up = await sb.storage.from("obras-documentos").upload(caminho, blob, { contentType: "application/pdf", upsert: false });
   if(up.error){ aviso("app-aviso", "Não foi possível enviar o PDF: " + up.error.message, "erro"); return; }
@@ -2391,9 +2391,9 @@ async function medAbrirBoletimImportado(){
   window.open(data.signedUrl, "_blank");
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarMedicoes(){
-  $("btn-med-xlsx")?.addEventListener("click", () => comBotaoTravado("btn-med-xlsx", medExportarXlsx));   // lote S68-g
+  $("btn-med-xlsx")?.addEventListener("click", () => comBotaoTravado("btn-med-xlsx", medExportarXlsx));
   document.querySelectorAll("#med-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {
       document.querySelectorAll("#med-painel .serv-view-btn").forEach(x => x.classList.remove("ativo"));
@@ -2416,11 +2416,11 @@ function ligarMedicoes(){
   $("btn-salvar-med")?.addEventListener("click", () => comBotaoTravado("btn-salvar-med", () => salvarMedicao()));
   $("btn-gerar-pdf-med")?.addEventListener("click", gerarPDFMedicao);
   $("btn-excluir-med")?.addEventListener("click", excluirMedicao);
-  $("btn-med-boletim")?.addEventListener("click", medAbrirBoletimImportado); // fase 88
-  $("btn-med-boletim-trocar")?.addEventListener("click", () => { const i = $("med-boletim-arquivo"); if(i){ i.value = ""; i.click(); } });   // lote S67-e
+  $("btn-med-boletim")?.addEventListener("click", medAbrirBoletimImportado);
+  $("btn-med-boletim-trocar")?.addEventListener("click", () => { const i = $("med-boletim-arquivo"); if(i){ i.value = ""; i.click(); } });
   $("med-boletim-arquivo")?.addEventListener("change", e => { const f = e.target.files?.[0]; if(f) comBotaoTravado($("btn-med-boletim-trocar"), () => medTrocarBoletimArquivo(f)); });
 
-  // fase 88: modal "Importar boletim (PDF)" — aberto pela aba Medições da obra (obra_abas.js)
+
   $("btn-med-imp-fechar")?.addEventListener("click", fecharImportBoletimPDF);
   $("btn-med-imp-escolher")?.addEventListener("click", () => $("med-imp-arquivo")?.click());
   $("med-imp-arquivo")?.addEventListener("change", (e) => { medImpAdicionarArquivos(e.target.files); e.target.value = ""; });
@@ -2433,36 +2433,36 @@ function ligarMedicoes(){
   $("btn-med-imp-pular")?.addEventListener("click", medImpPular);
   $("btn-med-imp-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-med-imp-confirmar", medImpConfirmar));
 
-  // Aba Itens: sugerir, compor sinal e adicionar manual
+
   $("btn-med-sugerir")?.addEventListener("click", sugerirItensMedicao);
-  // fase 145a: refuros sem decisão acompanham a obra e o período
+
   ["med-obra", "med-inicio", "med-fim", "med-tipo"].forEach(id => $(id)?.addEventListener("change", debounce(medRefPendAtualizar, 300)));
   $("btn-med-compor-sinal")?.addEventListener("click", comporMedicaoSinal);
   $("btn-med-add-item")?.addEventListener("click", adicionarItemMedicaoManual);
 
-  // Tipo da medição → ajusta UI do Sinal Contratual
+
   $("med-tipo")?.addEventListener("change", ajustarUISinalContratual);
 
-  // Obra → sugere número automático (só pra nova medição com número vazio)
+
   $("med-obra")?.addEventListener("change", sugerirNumeroMedicao);
 
-  // Aba Resumo: recalcula valor final quando desc/acresc/multiplicador mudam
+
   ["med-desc-sinal","med-acrescimo","med-multiplicador","med-valor-final"].forEach(id => {
     $(id)?.addEventListener("input", recalcularTotaisMedicao);
   });
-  // Retenção: % recalcula o valor; digitar o valor à mão desliga o automático
+
   $("med-ret-pct")?.addEventListener("input", () => { if($("med-ret-valor")) $("med-ret-valor").dataset.manual = "0"; recalcularTotaisMedicao(); });
   $("med-ret-valor")?.addEventListener("input", () => { $("med-ret-valor").dataset.manual = "1"; recalcularTotaisMedicao(); });
-  // ISS: % recalcula o valor; valor à mão desliga o automático; tudo recalcula o líquido a receber
+
   $("med-iss-pct")?.addEventListener("input", () => { if($("med-iss-valor")) $("med-iss-valor").dataset.manual = "0"; recalcularTotaisMedicao(); });
   $("med-iss-valor")?.addEventListener("input", () => { $("med-iss-valor").dataset.manual = "1"; recalcularTotaisMedicao(); });
   $("med-iss-retido")?.addEventListener("change", recalcularTotaisMedicao);
   $("med-obra")?.addEventListener("change", () => medPreencherIssDaObra($("med-obra").value, true));
-  // fase 101 (#94): máquinas da obra primeiro no seletor (a obra também chega por código, sem evento: o foco confere)
+
   $("med-obra")?.addEventListener("change", () => medPreencherMaquinas($("med-obra").value, "med-equip"));
   $("med-equip")?.addEventListener("focus", () => { const s = $("med-equip"); if(s && s.dataset.obra !== ($("med-obra")?.value || "")) medPreencherMaquinas($("med-obra").value, "med-equip"); });
 
-  // Cálculos automáticos de Hora Extra e Faturamento Mínimo
+
   $("btn-med-calc-he")?.addEventListener("click", calcularHoraExtraMedicao);
   $("btn-med-sugerir-abat")?.addEventListener("click", () => comBotaoTravado("btn-med-sugerir-abat", sugerirAbatimentoSinal));
   $("btn-med-calc-fatmin")?.addEventListener("click", calcularFatMinimoMedicao);
@@ -2473,7 +2473,7 @@ function ligarMedicoes(){
   document.querySelectorAll("#med-statusbar .stage").forEach(el => {
     el.addEventListener("click", async () => {
       const novo = el.dataset.status;
-      if(novo === "recebida"){ medRecebIrParaAba(); return; }   // fase 91: "recebida" nasce dos recebimentos confirmados
+      if(novo === "recebida"){ medRecebIrParaAba(); return; }
       if(!medEditId){
         $("med-status").value = novo;
         atualizarStatusbarMed(novo);
@@ -2491,22 +2491,22 @@ if(document.readyState === "loading"){
   ligarMedicoes();
 }
 
-/* ====================================================================
-   FASE 91 — Caução contratual e recebimentos (20/10/2026)
-   Spec: docs/specs/fase-91-caucao.md. Tudo desta fase fica neste bloco (prefixo med-cau- / med-receb-).
-   - Visão "Caução" no toggle do painel: uma linha por NF com retenção (tabela caucoes, lida pela
-     vw_caucoes), com indicadores, filtros, agrupamento por cliente e exportação para planilha.
-     Inclui o histórico da planilha CAIXA CAUÇÃO (origem planilha): essas linhas abrem numa ficha
-     reduzida (modal), porque não têm medição no app. Caução de medição abre na aba da medição.
-   - Aba "Caução" da ficha da medição: statusbar própria (aberta → parcial → devolvida; baixada),
-     chips e o registro da devolução. O status nasce no gatilho (fn_caucoes_antes); a medição
-     espelha retencao_liberada / retencao_data_liberacao por gatilho.
-   - Aba "NF/Recebimento": lançamentos de medicao_recebimentos; a medição vira "recebida" no banco
-     quando a soma atinge o líquido (valor final − retenção − ISS retido; fase 47).
-   - Indicadores do painel: A receber, Vencidas, Recebido no mês (lista e kanban).
-   - Presets chamados pela Sala de Comando (dashboard.js): medCauAbrirPreset / medRecebAbrirPreset.
-   Quem grava: diretor, admin e financeiro (policies has_role('admin','financeiro')); auditor só lê.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const MED_CAU_STAGES = ["aberta", "parcial", "devolvida"];
 const MED_CAU_STATUS = {
   aberta:    { label: "Aberta",    cor: "ambar" },
@@ -2515,28 +2515,28 @@ const MED_CAU_STATUS = {
   baixada:   { label: "Baixada",   cor: "cinza" }
 };
 const MED_RECEB_FORMAS = { transferencia: "Transferência", boleto: "Boleto", pix: "Pix", outro: "Outro" };
-let _medCauRegistros = null;   // vw_caucoes (carregada na primeira visão Caução; null = recarregar)
-let _medCauAgrupar   = "nf";   // "nf" | "cliente"
-let _medCauPreset    = null;   // filtro de status pedido pela Sala de Comando antes da carga
-let _medCauFicha     = null;   // caução da medição aberta
-let _medRecebLista   = [];     // recebimentos da medição aberta
-let _medRecebMes     = null;   // { ini, total, n } recebido no mês corrente (indicador)
+let _medCauRegistros = null;
+let _medCauAgrupar   = "nf";
+let _medCauPreset    = null;
+let _medCauFicha     = null;
+let _medRecebLista   = [];
+let _medRecebMes     = null;
 
 function medCauPodeOperar(){ return !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
 function medTagCau(st){ const o = MED_CAU_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`; }
-/* Líquido a receber da medição (fase 47): valor final − retenção contratual − ISS retido na fonte − retenções federais
-   (fase 105c: IRRF, PIS, COFINS, CSLL e INSS; ausentes = 0). Igual a medicao_liquido() no banco. */
+
+
 function medLiquido(m){
   const vf = Number(m.valor_final) || Number(m.valor_medido) || 0;
   const iss = (m.iss_retido_fonte === false) ? 0 : (Number(m.iss_valor) || 0);
-  const fed = MED_RET_FED.reduce((s, k) => s + (Number(m["ret_" + k]) || 0), 0);   // fase 105c
+  const fed = MED_RET_FED.reduce((s, k) => s + (Number(m["ret_" + k]) || 0), 0);
   return Math.round((vf - (Number(m.retencao_valor) || 0) - iss - fed) * 100) / 100;
 }
 function medRecebSaldo(m){ return Math.max(0, Math.round((medLiquido(m) - (Number(m.recebido_valor) || 0)) * 100) / 100); }
-/* lote S72-b (#376): baixa do principal de um recebimento = dinheiro que entrou − juros/multa + desconto concedido
-   (a mesma conta do fn_medicao_recebimentos_sync, que grava recebido_valor) */
+
+
 function medRecebBaixa(r){ return Math.round(((Number(r.valor) || 0) - (Number(r.juros) || 0) + (Number(r.desconto) || 0)) * 100) / 100; }
-/* Situação do recebimento: sem_nf | a_receber | parcial | vencida | recebida */
+
 function medRecebSituacao(m){
   if(m.status === "recebida") return "recebida";
   if(!m.nf_numero || ["rascunho", "enviada", "rejeitada"].includes(m.status)) return "sem_nf";
@@ -2552,11 +2552,11 @@ function medRecebMarca(m){
   const s = medRecebSituacao(m);
   if(s === "recebida") return ` <span class="meta" title="Recebimento completo confirmado pelo financeiro">· recebida${m.recebida_em ? " " + dataBR(m.recebida_em) : ""}</span>`;
   if(s === "vencida")  return ` <span class="meta txt-perigo" title="NF vencida sem recebimento completo">· vencida</span>${medRecebParcialEtq(m)}`;
-  if(s === "parcial" || s === "sem_nf") return medRecebParcialEtq(m);   // sem_nf: recebimento lançado antes da NF
+  if(s === "parcial" || s === "sem_nf") return medRecebParcialEtq(m);
   return "";
 }
-/* lote S65-b (#300): recebimento parcial à vista, também na medição vencida (antes a "vencida" escondia a parcial).
-   Vale com recebido > 0, status diferente de recebida e saldo > 0. Os R$ ficam no data-val-sens (Ocultar valores, S59). */
+
+
 function medRecebParcialEtq(m, recebidoVal){
   const rec = recebidoVal != null ? Number(recebidoVal) || 0 : Number(m.recebido_valor) || 0;
   if(rec <= 0 || m.status === "recebida") return "";
@@ -2565,7 +2565,7 @@ function medRecebParcialEtq(m, recebidoVal){
   return ` <span class="tag ambar" title="Parte da NF já foi recebida; o saldo continua em aberto">Recebida parcialmente · <span data-val-sens>${brl(rec)} de ${brl(liq)}</span></span>`;
 }
 
-/* ---------- visão: filtros e botão "+ Nova" conforme a visão ---------- */
+
 function medAplicarVisao(){
   const cau = _medView === "caucao";
   document.querySelectorAll("#med-painel .serv-filtros").forEach(f => { if(f.id !== "med-cau-filtros") f.style.display = cau ? "none" : ""; });
@@ -2573,7 +2573,7 @@ function medAplicarVisao(){
   if($("btn-nova-medicao")) $("btn-nova-medicao").style.display = cau ? "none" : "";
   const h3 = document.querySelector("#med-painel .lista-topo h3");
   if(h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = cau ? "Caução contratual por NF " : "Medições cadastradas ";
-  // fase 98: visão Permutas esconde os filtros das medições e da caução e mostra os seus
+
   const pm = _medView === "permutas";
   const btnPm = document.querySelector('#med-painel .serv-view-btn[data-view="permutas"]');
   if(btnPm) btnPm.style.display = (typeof podeVerPermutas === "function" && podeVerPermutas()) ? "" : "none";
@@ -2581,7 +2581,7 @@ function medAplicarVisao(){
   if($("med-pm-filtros")) $("med-pm-filtros").style.display = pm ? "" : "none";
   if(pm && $("btn-nova-medicao")) $("btn-nova-medicao").style.display = "none";
   if(pm && h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = "Permutas: obras pagas em imóvel ";
-  // lote S66-c (#327): visão NFS-e emitidas, só com os seus filtros
+
   const nfs = _medView === "nfse";
   if(nfs) document.querySelectorAll("#med-painel .serv-filtros").forEach(f => { if(f.id !== "med-nfs-filtros") f.style.display = "none"; });
   if($("med-nfs-filtros")) $("med-nfs-filtros").style.display = nfs ? "" : "none";
@@ -2594,14 +2594,14 @@ function medAtivarView(view){
   _medView = view;
   renderMedicoes();
 }
-/* Sala de Comando → visão Caução já filtrada ("vencidas" | "vence30" | "em_aberto") */
+
 function medCauAbrirPreset(preset){
   mostrarPainelMed();
   _medCauPreset = preset || "";
   if($("med-cau-f-status")) $("med-cau-f-status").value = _medCauPreset;
   medAtivarView("caucao");
 }
-/* Sala de Comando → lista filtrada pela situação do recebimento ("vencida" | "a_receber") */
+
 function medRecebAbrirPreset(sit){
   mostrarPainelMed();
   if($("med-f-receb")) $("med-f-receb").value = sit || "";
@@ -2613,12 +2613,12 @@ function medRecebIrParaAba(){
   aviso("app-aviso", "\"Recebida\" nasce dos recebimentos confirmados: lance-os nesta aba e a medição muda sozinha quando a soma atingir o líquido.", "aviso");
 }
 
-/* ---------- indicadores: A receber / Vencidas / Recebido no mês (lista e kanban) ---------- */
+
 async function medRecebRenderIndicadores(){
   const cont = $("med-indicadores");
   if(!cont) return;
-  // fase 99b (decisão 4): somatórios financeiros só para quem vê KPI (diretor, admin, financeiro, auditor); o engenheiro
-  // e o comercial seguem vendo o valor de cada medição na lista e na ficha
+
+
   if(typeof podeVerKpiFinanceiro === "function" && !podeVerKpiFinanceiro(() => true)){ cont.style.display = "none"; cont.innerHTML = ""; return; }
   const base = _medRegistros;
   const aRec = base.filter(m => ["a_receber", "parcial", "vencida"].includes(medRecebSituacao(m)));
@@ -2626,7 +2626,7 @@ async function medRecebRenderIndicadores(){
   const iniMes = hojeISO().slice(0, 7) + "-01";
   if(!_medRecebMes || _medRecebMes.ini !== iniMes){
     const { data } = await sb.from("medicao_recebimentos").select("valor").gte("data", iniMes);
-    if(_medView === "caucao" || _medView === "permutas") return;   // trocou de visão enquanto carregava
+    if(_medView === "caucao" || _medView === "permutas") return;
     _medRecebMes = { ini: iniMes, total: (data || []).reduce((s, r) => s + (Number(r.valor) || 0), 0), n: (data || []).length };
   }
   const soma = (lst) => lst.reduce((s, m) => s + medRecebSaldo(m), 0);
@@ -2638,7 +2638,7 @@ async function medRecebRenderIndicadores(){
     <div class="ind" title="Recebimentos confirmados pelo financeiro no mês corrente (aba NF/Recebimento das medições)"><div class="num" style="color:var(--sucesso-txt);">${brl(_medRecebMes.total)}</div><div class="rot">Recebido no mês · ${esc(_medRecebMes.n)} lançamento(s)</div></div>`;
 }
 
-/* ---------- visão Caução ---------- */
+
 async function medCauCarregar(forcar){
   if(_medCauRegistros && !forcar) return _medCauRegistros;
   const { data, error } = await sb.from("vw_caucoes").select("*").order("nf_data", { ascending: false, nullsFirst: false }).limit(5000);
@@ -2713,7 +2713,7 @@ async function renderMedCaucao(){
 function medCauRenderIndicadores(){
   const cont = $("med-indicadores");
   if(!cont) return;
-  // fase 99b (decisão 4): totais da caução só para quem vê KPI financeiro
+
   if(typeof podeVerKpiFinanceiro === "function" && !podeVerKpiFinanceiro(() => true)){ cont.style.display = "none"; cont.innerHTML = ""; return; }
   const regs = _medCauRegistros || [];
   const anoSel = $("med-cau-f-ano")?.value || String(new Date().getFullYear());
@@ -2752,11 +2752,11 @@ function renderMedCauLista(dados){
       <th class="num">Retido</th><th class="num" title="devolvido + juros − descontos">Devolvido</th><th class="num">Saldo</th>
       <th title="NF + prazo da obra (ou 90 dias da empresa)">Previsão</th><th class="num" title="dias de atraso (ou em aberto)">Atraso</th><th>Status</th>
     </tr></thead>
-    <tbody>${/* html */ linhas}</tbody>
+    <tbody>${  linhas}</tbody>
     <tfoot><tr><th colspan="5">${dados.length} NF(s)</th><th class="num">${brl(tot(c => c.valor_retido))}</th><th class="num">${brl(tot(c => c.credito))}</th><th class="num">${brl(tot(c => c.saldo))}</th><th colspan="3"></th></tr></tfoot>
   </table></div>`;
 }
-/* Saldo por cliente (como a tabela de maiores saldos da spec), com o a receber das NFs ao lado */
+
 function renderMedCauPorCliente(dados){
   const cont = $("med-conteudo");
   if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhuma caução com esses filtros.</p>`; return; }
@@ -2769,7 +2769,7 @@ function renderMedCauPorCliente(dados){
     if(c.vencida) g.vencidas++;
     grupos.set(k, g);
   });
-  // a receber e vencido das NFs (medições com NF não recebidas), pelo cliente da obra
+
   _medRegistros.forEach(m => {
     const cid = m.obra && m.obra.cliente_id; if(!cid) return;
     const s = medRecebSituacao(m); if(!["a_receber", "parcial", "vencida"].includes(s)) return;
@@ -2793,7 +2793,7 @@ function renderMedCauPorCliente(dados){
       <th>Cliente</th><th class="num">NFs</th><th class="num">Retido</th><th class="num">Devolvido</th><th class="num" title="saldo das cauções abertas e parciais">Saldo caução</th><th class="num" title="cauções com previsão vencida">Vencidas</th>
       <th class="num" title="NFs das medições deste cliente ainda não recebidas (líquido − recebido)">A receber (NF)</th><th class="num" title="NFs vencidas sem recebimento completo">Vencido (NF)</th>
     </tr></thead>
-    <tbody>${/* html */ linhas}</tbody>
+    <tbody>${  linhas}</tbody>
     <tfoot><tr><th>${lista.length} cliente(s)</th><th class="num">${tot(g => g.nfs)}</th><th class="num">${brl(tot(g => g.retido))}</th><th class="num">${brl(tot(g => g.credito))}</th><th class="num">${brl(tot(g => g.saldo))}</th><th class="num">${tot(g => g.vencidas) || "—"}</th><th class="num">${brl(tot(g => g.aRec))}</th><th class="num">${brl(tot(g => g.venc))}</th></tr></tfoot>
   </table></div>`;
 }
@@ -2811,7 +2811,7 @@ function medCauExportar(){
   XLSX.utils.book_append_sheet(wb, ws, "CAUÇÃO");
   XLSX.writeFile(wb, `caucao-${hojeISO()}.xlsx`);
 }
-/* Abre uma caução: de medição → ficha da medição na aba Caução; da planilha → modal com a ficha reduzida */
+
 async function medCauAbrir(id){
   const c = (_medCauRegistros || []).find(x => x.id === id);
   if(!c) return;
@@ -2819,7 +2819,7 @@ async function medCauAbrir(id){
   medCauAbrirModal(c);
 }
 
-/* ---------- ficha da caução (aba da medição e modal) ---------- */
+
 function medCauFormHTML(c, pref){
   const podeOp = medCauPodeOperar();
   const idxAtual = MED_CAU_STAGES.indexOf(c.status);
@@ -2830,7 +2830,7 @@ function medCauFormHTML(c, pref){
     else if(i < idxAtual) cls = "passada";
     return `<div class="stage ${esc(cls)}" title="Status calculado no banco a partir dos valores">${s === "devolvida" && c.status === "baixada" ? "Baixada" : esc(MED_CAU_STATUS[s].label)}</div>`;
   }).join("");
-  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${  val}</strong></div>`;
   return `
     <div class="odoo-statusbar" style="border:1px solid var(--border-color);border-radius:var(--radius-md);overflow:hidden;">${stages}</div>
     <div class="odoo-contexto" style="padding:12px 0;">
@@ -2876,7 +2876,7 @@ async function medCauSalvar(c, pref, extra){
   const { error } = await sb.from("caucoes").update(reg).eq("id", c.id);
   if(error){ aviso("app-aviso", "Não foi possível gravar a caução: " + error.message, "erro"); return false; }
   aviso("app-aviso", extra && extra.motivo_baixa ? "Caução baixada." : (extra && "motivo_baixa" in extra ? "Caução reaberta." : "Devolução registrada. O status e a medição foram atualizados no banco."), "ok");
-  _medCauRegistros = null;   // a visão Caução relê na próxima vez
+  _medCauRegistros = null;
   return true;
 }
 function medCauLigarForm(c, pref, depois){
@@ -2888,7 +2888,7 @@ function medCauLigarForm(c, pref, depois){
   }));
   $(pref + "-reabrir")?.addEventListener("click", () => comBotaoTravado(pref + "-reabrir", async () => { if(await medCauSalvar(c, pref, { motivo_baixa: null })) await depois(); }));
 }
-/* Aba Caução da ficha da medição */
+
 async function medCauCarregarFicha(med){
   const cont = $("med-cau-conteudo"), badge = $("med-cau-badge");
   if(!cont) return;
@@ -2907,7 +2907,7 @@ async function medCauCarregarFicha(med){
   medCauLigarForm(data, "med-cau", async () => { await carregarMedicoes(); await abrirMedicao(med.id); ativarTabMed("caucao"); });
   if(typeof montarHistorico === "function") montarHistorico("caucoes", data.id, "med-cau-chatter");
 }
-/* Ficha reduzida (modal) para o histórico da planilha, sem medição no app */
+
 function medCauAbrirModal(c){
   const modal = $("med-cau-modal"), cont = $("med-cau-modal-conteudo");
   if(!modal || !cont) return;
@@ -2928,7 +2928,7 @@ function medCauFecharModal(){
   if(m) m.style.display = "none";
   if(typeof ocultarHistorico === "function") ocultarHistorico("med-caum-chatter");
 }
-/* Medição nova: sugere o % de retenção negociado na obra (obras_financeiro.caucao_percentual) quando o campo está vazio */
+
 async function medCauSugerirPctDaObra(obraId){
   const el = $("med-ret-pct");
   if(!el || !obraId || medEditId || el.value !== "") return;
@@ -2940,7 +2940,7 @@ async function medCauSugerirPctDaObra(obraId){
   }
 }
 
-/* ---------- aba NF/Recebimento ---------- */
+
 async function medRecebCarregarFicha(med){
   const cont = $("med-receb-conteudo"), badge = $("med-receb-badge");
   if(!cont) return;
@@ -2962,12 +2962,12 @@ function renderMedRecebFicha(med){
   if(!cont) return;
   const podeOp = medCauPodeOperar();
   const somaCampo = (f) => Math.round(_medRecebLista.reduce((s, r) => s + f(r), 0) * 100) / 100;
-  const liq = medLiquido(med), recebido = somaCampo(medRecebBaixa);   // lote S72-b: principal baixado
+  const liq = medLiquido(med), recebido = somaCampo(medRecebBaixa);
   const entrou = somaCampo(r => Number(r.valor) || 0), totDesc = somaCampo(r => Number(r.desconto) || 0), totJuros = somaCampo(r => Number(r.juros) || 0);
   const saldo = Math.max(0, Math.round((liq - recebido) * 100) / 100);
   const sit = medRecebSituacao({ ...med, recebido_valor: recebido });
   const SIT = { sem_nf: ["Sem documento fiscal", "cinza"], a_receber: ["A receber", "ambar"], parcial: ["Recebida em parte", "azul"], vencida: ["Vencida", "vermelho"], recebida: ["Recebida", "verde"] };
-  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${  val}</strong></div>`;
   const temNf = !!med.nf_numero;
   const linhas = _medRecebLista.map(r => `<tr>
       <td>${dataBR(r.data)}</td>
@@ -2998,7 +2998,7 @@ function renderMedRecebFicha(med){
     <h4 class="titulo-bloco">Recebimentos confirmados <small class="meta">(a medição fica "recebida" sozinha quando a soma atinge o líquido)</small></h4>
     ${_medRecebLista.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Data</th><th class="num" title="Dinheiro que entrou na conta">Valor</th><th class="num" title="Desconto concedido ao cliente: baixa o principal sem entrar dinheiro">Desconto</th><th class="num" title="Juros/multa por atraso contidos no valor: não baixam o principal">Juros/multa</th><th>Forma</th><th>Banco</th><th>Observações</th><th>Confirmado por</th><th class="col-acao"></th></tr></thead>
-      <tbody>${/* html */ linhas}</tbody>
+      <tbody>${  linhas}</tbody>
       <tfoot><tr><th>Total</th><th class="num">${brl(entrou)}</th><th class="num">${brl(totDesc)}</th><th class="num">${brl(totJuros)}</th><th colspan="5" class="meta" title="Principal baixado = valor − juros/multa + desconto">Principal baixado: ${brl(recebido)}</th></tr></tfoot>
     </table></div>` : `<p class="vazio">Nenhum recebimento confirmado ainda.</p>`}
     ${podeOp && temNf && !["rascunho", "enviada", "rejeitada"].includes(med.status) ? `
@@ -3021,7 +3021,7 @@ function renderMedRecebFicha(med){
   cont.querySelectorAll("[data-receb-del]").forEach(b => b.addEventListener("click", () => medRecebApagar(med, b.dataset.recebDel)));
   cont.querySelectorAll("[data-receb-edit]").forEach(b => b.addEventListener("click", () => medRecebEditar(med, b.dataset.recebEdit)));
 }
-/* lote S72-b: confere valor, desconto e juros/multa; devolve mensagem de erro ou "" */
+
 function medRecebValidar(valor, desconto, juros){
   if(!(valor > 0)) return "Informe o valor recebido.";
   if(!(desconto >= 0)) return "O desconto não pode ser negativo.";
@@ -3029,7 +3029,7 @@ function medRecebValidar(valor, desconto, juros){
   if(juros > valor) return "Os juros/multa não podem passar do valor recebido.";
   return "";
 }
-/* Baixa acima do saldo pede confirmação (uiConfirmar); saldo = líquido − baixa dos outros lançamentos */
+
 async function medRecebConfereSaldo(med, baixa, ignorarId){
   const outros = _medRecebLista.filter(r => r.id !== ignorarId).reduce((s, r) => s + medRecebBaixa(r), 0);
   const saldo = Math.max(0, Math.round((medLiquido(med) - outros) * 100) / 100);
@@ -3057,8 +3057,8 @@ async function medRecebConfirmar(med){
   await abrirMedicao(med.id);
   ativarTabMed("recebimento");
 }
-/* lote S72-b: corrigir um lançamento (ex.: lançar o desconto de R$ 0,01 num recebimento já confirmado).
-   Permuta não se edita aqui: vem do % de permuta da medição. A soma e o status são refeitos no banco. */
+
+
 async function medRecebEditar(med, id){
   const r = _medRecebLista.find(x => x.id === id);
   if(!r || r.forma === "permuta") return;
@@ -3105,7 +3105,7 @@ async function medRecebApagar(med, id){
   ativarTabMed("recebimento");
 }
 
-/* ---------- ligações da fase 91 ---------- */
+
 function ligarMedCaucao(){
   ["med-cau-busca", "med-cau-f-ano", "med-cau-f-status", "med-cau-f-cliente", "med-cau-f-obra", "med-cau-f-banco", "med-cau-agrupar"].forEach(id => {
     const el = $(id);
@@ -3115,7 +3115,7 @@ function ligarMedCaucao(){
   });
   $("btn-med-cau-exportar")?.addEventListener("click", medCauExportar);
   $("btn-med-cau-atualizar")?.addEventListener("click", () => comBotaoTravado("btn-med-cau-atualizar", async () => { await medCauCarregar(true); renderMedicoes(); }));
-  // linhas da visão Caução (data-cau) e do agrupamento por cliente (data-cau-cli); o handler antigo só reage a data-id
+
   $("med-conteudo")?.addEventListener("click", (e) => {
     const r = e.target.closest("[data-cau]");
     if(r){ medCauAbrir(r.dataset.cau); return; }
@@ -3126,7 +3126,7 @@ function ligarMedCaucao(){
       renderMedicoes();
     }
   });
-  // indicadores clicáveis filtram (clicar de novo limpa)
+
   $("med-indicadores")?.addEventListener("click", (e) => {
     const r = e.target.closest("[data-receb]");
     if(r){ const f = $("med-f-receb"); if(f){ f.value = f.value === r.dataset.receb ? "" : r.dataset.receb; renderMedicoes(); } return; }
@@ -3143,21 +3143,21 @@ if(document.readyState === "loading"){
   ligarMedCaucao();
 }
 
-/* ====================================================================
-   FASE 98 — Permutas: obras pagas em imóvel (21/10/2026)
-   Spec: docs/specs/fase-98-permutas.md. Tudo desta fase fica neste bloco (prefixo med-pm- / pm-).
-   - Visão "Permutas" no toggle do painel (irmã da Caução): uma linha por permuta (vw_permutas) com
-     cliente, imóvel, teto, crédito (medições do app + histórico da planilha), saldo, %, prazo e pendências.
-   - Ficha da permuta no padrão Odoo (statusbar pelo status do dia, chips, smart-buttons, abas Geral,
-     Lançamentos, Contratos, Documentos e Pendências) em #med-pm-ficha.
-   - Medição: "% permuta" e "crédito de permuta" ao lado do líquido (aba Geral). O crédito vira um
-     recebimento forma = 'permuta' no banco quando a medição é aprovada/faturada (gatilho); a parte em
-     dinheiro segue a aba NF/Recebimento (fase 91). Chip "permuta NN%" na lista.
-   - Funções usadas por outros módulos (só se existirem): medPmAbrirPreset (Sala de Comando),
-     medPmAbrirPorId (aba Contrato da obra), pmPatCarregar / pmPatChip (Patrimônio).
-   Quem lê: podeVerPermutas() (diretor, admin, financeiro, auditor; = pode_ler_permutas() no banco).
-   Quem grava: diretor, admin e financeiro; auditor só lê.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const MED_PM_STATUS = {
   a_formalizar: { label: "A formalizar", cor: "cinza"    },
   em_execucao:  { label: "Em execução",  cor: "azul"     },
@@ -3174,14 +3174,14 @@ const MED_PM_PEND_ROT = {
 };
 const MED_PM_BUCKET = "permutas";
 const MED_PM_MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" };
-let _medPmRegistros = null;   // vw_permutas (null = recarregar)
-let _medPmPend      = [];     // vw_permuta_pendencias
-let _medPmSemPermuta = [];    // histórico sem permuta definida (Marca Brasil)
-let _medPmFicha     = null;   // permuta aberta (linha da vw_permutas)
-let _medPmLanc      = [];     // lançamentos da permuta aberta
-let _medPmContratos = [];     // permuta_contratos da permuta aberta
-let _medPmPreset    = null;   // { id, filtro } pedido pela Sala de Comando antes da carga
-let _medPmPatMapa   = null;   // patrimonio_bem_id → permuta (Patrimônio)
+let _medPmRegistros = null;
+let _medPmPend      = [];
+let _medPmSemPermuta = [];
+let _medPmFicha     = null;
+let _medPmLanc      = [];
+let _medPmContratos = [];
+let _medPmPreset    = null;
+let _medPmPatMapa   = null;
 
 function medPmPodeVer(){ return typeof podeVerPermutas === "function" ? podeVerPermutas() : (!!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo)); }
 function medPmPodeOperar(){ return !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
@@ -3191,10 +3191,10 @@ function medPmPrazoTxt(p){
   if(!p.executar_ate) return "—";
   const d = Number(p.dias_prazo);
   const extra = !isFinite(d) ? "" : (d < 0 ? ` <span class="txt-perigo">(${-d} d atrás)</span>` : (d <= 90 ? ` <span class="txt-aviso" title="prazo em até 90 dias">(${esc(d)} d)</span>` : ` <span class="meta">(${esc(d)} d)</span>`));
-  return dataBR(p.executar_ate) + /* html */ extra;
+  return dataBR(p.executar_ate) +   extra;
 }
 
-/* ---------- carga ---------- */
+
 async function medPmCarregar(forcar){
   if(_medPmRegistros && !forcar) return _medPmRegistros;
   const [rp, rpe, rsp] = await Promise.all([
@@ -3211,7 +3211,7 @@ async function medPmCarregar(forcar){
 }
 function medPmPendDe(id){ return _medPmPend.filter(x => x.permuta_id === id); }
 
-/* ---------- visão Permutas ---------- */
+
 function medPmFiltradas(){
   const termo = ($("med-pm-busca")?.value || "").trim().toLowerCase();
   const st = $("med-pm-f-status")?.value || "";
@@ -3265,7 +3265,7 @@ async function renderMedPermutas(){
     </tr>`;
   }).join("");
   const tot = (f) => dados.reduce((s, p) => s + (Number(f(p)) || 0), 0);
-  // histórico executado em permuta sem imóvel definido (Marca Brasil): fica visível para não sumir do saldo
+
   const semG = new Map();
   _medPmSemPermuta.forEach(l => { const k = l.cliente || "(sem cliente)"; const g = semG.get(k) || { n: 0, cred: 0, contratos: new Set() }; g.n++; g.cred += Number(l.credito) || 0; if(l.contrato_numero) g.contratos.add(l.contrato_numero); semG.set(k, g); });
   const semLinhas = [...semG.entries()].map(([cli, g]) => `<tr>
@@ -3278,7 +3278,7 @@ async function renderMedPermutas(){
       <th class="num" title="Valor do imóvel (teto da permuta)">Teto</th><th class="num" title="Medições do app (aprovadas, faturadas, recebidas) + histórico da planilha">Crédito</th>
       <th class="num" title="Teto − crédito (negativo = crédito acima do imóvel)">Saldo</th><th class="num">%&nbsp;concl.</th><th>Prazo</th><th>Status</th><th>Pendências</th>
     </tr></thead>
-    <tbody>${/* html */ linhas}${/* html */ semLinhas}</tbody>
+    <tbody>${  linhas}${  semLinhas}</tbody>
     <tfoot><tr><th colspan="4">${dados.length} permuta(s)</th><th class="num">${brl(tot(p => p.valor_imovel))}</th><th class="num">${brl(tot(p => p.credito))}</th><th class="num">${brl(tot(p => p.saldo))}</th><th colspan="4"></th></tr></tfoot>
   </table></div>`;
 }
@@ -3316,7 +3316,7 @@ function medPmExportar(){
   XLSX.writeFile(wb, `permutas-${hojeISO()}.xlsx`);
 }
 
-/* ---------- ficha da permuta ---------- */
+
 function medPmMostrarFicha(){
   if($("med-painel")) $("med-painel").style.display = "none";
   if($("med-ficha")) $("med-ficha").style.display = "none";
@@ -3348,7 +3348,7 @@ async function medPmAbrir(id, aba){
   _medPmContratos = rc.error ? [] : (rc.data || []);
   medPmRenderFicha(aba || "geral");
 }
-/* Atalho para outros módulos (aba Contrato da obra): vai para Medições › Permutas e abre a ficha */
+
 async function medPmAbrirPorId(id){
   if(typeof irParaSecao === "function" && !irParaSecao("medicoes")) return;
   mostrarPainelMed();
@@ -3356,7 +3356,7 @@ async function medPmAbrirPorId(id){
   _medView = "permutas";
   await medPmAbrir(id);
 }
-/* Sala de Comando → visão Permutas (registro_id = uma permuta abre a ficha; filtro = pendência) */
+
 function medPmAbrirPreset(id, filtro){
   mostrarPainelMed();
   const MAP = { permuta_termo: "termo_nao_assinado", permuta_imovel: "imovel_nao_identificado", permuta_nf: "nf_a_emitir" };
@@ -3379,7 +3379,7 @@ function medPmRenderFicha(aba){
     else if(i < idx) cls = "passada";
     return `<div class="stage ${esc(cls)}" title="Status calculado no banco: crédito × teto, prazo, assinatura e imóvel">${esc(MED_PM_STATUS[s].label)}</div>`;
   }).join("") + (lateral ? `<div class="stage atual cancelada" title="${p.status === "excedida" ? "Crédito acima do valor do imóvel" : "Prazo para executar passou com saldo"}">${esc(MED_PM_STATUS[p.status].label)}</div>` : "");
-  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${  val}</strong></div>`;
   const nMed = _medPmLanc.filter(l => l.origem === "medicao").length, nHist = _medPmLanc.filter(l => l.origem === "historico").length;
   const sb_ = (id, n, lbl, tab) => `<button type="button" class="sb-btn" data-pm-tab="${esc(tab)}" id="${esc(id)}"><span class="sb-num">${esc(n)}</span><span class="sb-lbl">${esc(lbl)}</span></button>`;
   const abas = [["geral", "Geral"], ["lancamentos", `Lançamentos <span class="conf-badge">${_medPmLanc.length || ""}</span>`], ["contratos", `Contratos <span class="conf-badge">${_medPmContratos.length || ""}</span>`],
@@ -3412,7 +3412,7 @@ function medPmRenderFicha(aba){
       ${sb_("sb-med-pm-historico", nHist, "histórico", "lancamentos")}
       ${sb_("sb-med-pm-pend", pend.length, "pendências", "pendencias")}
     </div>
-    <div class="odoo-notebook" id="med-pm-notebook">${abas.map(([t, l]) => `<button type="button" data-tab="${esc(t)}">${/* html */ l}</button>`).join("")}</div>
+    <div class="odoo-notebook" id="med-pm-notebook">${abas.map(([t, l]) => `<button type="button" data-tab="${esc(t)}">${  l}</button>`).join("")}</div>
     <div class="odoo-body">
       <div class="odoo-tab" data-tab="geral">${medPmGeralHTML(p, podeOp)}</div>
       <div class="odoo-tab" data-tab="lancamentos">${medPmLancHTML(p, podeOp)}</div>
@@ -3471,7 +3471,7 @@ function medPmLancHTML(p, podeOp){
   const tot = (f, lst) => lst.reduce((s, l) => s + (Number(f(l)) || 0), 0);
   return `${_medPmLanc.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Origem</th><th>Contrato</th><th>Obra</th><th>Medição</th><th>Período</th><th class="num">Valor</th><th class="num">%</th><th class="num">Crédito</th><th>NF</th><th>Status / termo</th><th class="col-acao"></th></tr></thead>
-      <tbody>${/* html */ linhas}</tbody>
+      <tbody>${  linhas}</tbody>
       <tfoot><tr><th colspan="5">${_medPmLanc.length} lançamento(s) · ${conta.length} no crédito</th><th class="num">${brl(tot(l => l.valor_medicao, conta))}</th><th></th><th class="num">${brl(tot(l => l.credito, conta))}</th><th colspan="3"></th></tr></tfoot>
     </table></div>` : `<p class="vazio">Nenhum lançamento. As medições das obras ligadas (aba Contratos) entram aqui sozinhas.</p>`}
     ${podeOp ? `<h4 class="titulo-bloco" style="margin-top:14px;">Lançamento histórico <small class="meta">(medição sem obra no app; as do app nascem da medição)</small></h4>
@@ -3498,7 +3498,7 @@ function medPmContratosHTML(p, podeOp){
   const obrasLivres = Object.entries(mapaObras || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR", { numeric: true }));
   return `${_medPmContratos.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Contrato</th><th>Obra</th><th class="num">% em permuta</th><th>Observações</th><th class="col-acao"></th></tr></thead>
-      <tbody>${/* html */ linhas}</tbody></table></div>` : `<p class="vazio">Nenhum contrato ligado.</p>`}
+      <tbody>${  linhas}</tbody></table></div>` : `<p class="vazio">Nenhum contrato ligado.</p>`}
     ${podeOp ? `<h4 class="titulo-bloco" style="margin-top:14px;">Ligar contrato</h4>
     <div class="grade">
       <div class="campo largo"><label>Obra do app</label><select id="med-pm-c-obra"><option value="">— contrato antigo, sem obra no app —</option>${obrasLivres.map(([id, t]) => `<option value="${esc(id)}">${esc(t)}</option>`).join("")}</select></div>
@@ -3540,7 +3540,7 @@ function medPmLigarFicha(p, podeOp){
 }
 async function medPmRecarregar(p, aba){ _medPmRegistros = null; await medPmCarregar(true); await medPmAbrir(p.id, aba); }
 
-/* Nova permuta: grava o mínimo e abre a ficha para completar */
+
 async function medPmNova(){
   if(!medPmPodeOperar()) return;
   const nome = prompt("Cliente da permuta (como o financeiro chama, ex.: SAGA):");
@@ -3621,7 +3621,7 @@ async function medPmLigarContrato(p){
   aviso("app-aviso", "Contrato ligado.", "ok");
   await medPmRecarregar(p, "contratos");
 }
-/* Medições já lançadas da obra, sem %: recebem o % (o gatilho calcula o crédito e grava o recebimento em permuta) */
+
 async function medPmAplicarPctNasMedicoes(obraId, pct){
   if(!obraId || pct == null) return;
   const { data } = await sb.from("medicoes").select("id").eq("obra_id", obraId).is("permuta_percentual", null);
@@ -3649,7 +3649,7 @@ async function medPmPctContrato(p, id){
   await medPmRecarregar(p, "contratos");
 }
 
-/* ---------- documentos (bucket privado permutas: <permuta_id>/<carimbo>-<nome>) ---------- */
+
 async function medPmCarregarDocs(p, podeOp){
   const box = $("med-pm-docs");
   if(!box) return;
@@ -3665,7 +3665,7 @@ async function medPmCarregarDocs(p, podeOp){
     </tr>`;
   }).join("");
   box.innerHTML = `${error ? `<p class="vazio">Não foi possível listar os documentos (${esc(error.message)}).</p>` : (arqs.length ? `<div class="tabela-rola"><table>
-      <thead><tr><th>Arquivo</th><th>Enviado em</th><th class="col-acao"></th></tr></thead><tbody>${/* html */ linhas}</tbody></table></div>` : `<p class="vazio">Nenhum documento. Anexe o instrumento (contrato de adesão, SCP, CPCV, termo) em PDF.</p>`)}
+      <thead><tr><th>Arquivo</th><th>Enviado em</th><th class="col-acao"></th></tr></thead><tbody>${  linhas}</tbody></table></div>` : `<p class="vazio">Nenhum documento. Anexe o instrumento (contrato de adesão, SCP, CPCV, termo) em PDF.</p>`)}
     ${podeOp ? `<div class="form-acoes compacta" style="justify-content:flex-start;margin-top:10px;">
       <input type="file" id="med-pm-doc-arquivo" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" />
       <button type="button" class="btn-sec" id="btn-med-pm-doc-enviar">Anexar documento</button>
@@ -3690,7 +3690,7 @@ async function medPmCarregarDocs(p, podeOp){
     catch(err){ aviso("app-aviso", "Não foi possível anexar: " + (err.message || err), "erro"); }
   });
 }
-/* supabase-js ignora contentType quando o corpo é File: o MIME vem da extensão e o arquivo é reembalado em Blob */
+
 async function medPmEnviarDoc(p, file){
   const ext = String(file.name || "").split(".").pop().toLowerCase();
   const mime = MED_PM_MIME[ext];
@@ -3706,7 +3706,7 @@ async function medPmEnviarDoc(p, file){
   }
 }
 
-/* ---------- medição: % e crédito de permuta (aba Geral, ao lado do líquido) ---------- */
+
 function medPmMarca(m){
   const pct = Number(m.permuta_percentual) || 0, val = Number(m.permuta_valor) || 0;
   if(!(pct > 0 || val > 0)) return "";
@@ -3734,7 +3734,7 @@ function medPmRecalcular(valorFinal){
   const pct = parseFloat(iP.value);
   iV.value = (isFinite(pct) && pct > 0) ? (Number(valorFinal || 0) * pct / 100).toFixed(2) : "";
 }
-/* Campos que vão no salvarMedicao: só para quem pode (o banco recusa os outros) */
+
 function medPmLerCampos(){
   if(!medPmPodeVer() || !medPmPodeOperar()) return {};
   const iP = $("med-pm-pct"), iV = $("med-pm-valor");
@@ -3742,12 +3742,12 @@ function medPmLerCampos(){
   const pct = iP.value === "" ? null : Number(iP.value);
   const manual = iV.dataset.manual === "1" && iV.value !== "";
   const out = {};
-  if(medEditId || pct != null) out.permuta_percentual = pct;   // medição nova sem %: o banco herda o da obra
+  if(medEditId || pct != null) out.permuta_percentual = pct;
   out.permuta_valor_manual = manual;
   if(manual) out.permuta_valor = Number(iV.value);
   return out;
 }
-/* Medição nova: sugere o % da permuta da obra (permuta_contratos) quando o campo está vazio */
+
 async function medPmSugerirPctDaObra(obraId){
   const iP = $("med-pm-pct");
   if(!iP || !obraId || medEditId || iP.value !== "" || !medPmPodeVer()) return;
@@ -3762,7 +3762,7 @@ async function medPmSugerirPctDaObra(obraId){
   }
 }
 
-/* ---------- Patrimônio (fase 97): saldo a executar do imóvel em permuta ---------- */
+
 async function pmPatCarregar(){
   _medPmPatMapa = new Map();
   if(!medPmPodeVer()) return;
@@ -3778,7 +3778,7 @@ function pmPatChip(bemId){
   return `<div class="meta" title="Permuta ${esc(p.numero)}: teto ${brl(p.valor_imovel)}, crédito ${brl(p.credito)}">${esc(p.numero)} · saldo a executar ${brl(p.saldo)}</div>`;
 }
 
-/* ---------- ligações da fase 98 ---------- */
+
 function ligarMedPermutas(){
   const btnV = document.querySelector('#med-painel .serv-view-btn[data-view="permutas"]');
   const mostrarBotao = () => { if(btnV) btnV.style.display = medPmPodeVer() ? "" : "none"; };
@@ -3807,7 +3807,7 @@ function ligarMedPermutas(){
     const f = $("med-pm-f-pend");
     if(f){ f.value = f.value === c.dataset.pmPend ? "" : c.dataset.pmPend; renderMedicoes(); }
   });
-  // medição: % recalcula o crédito; digitar o crédito fixa à mão; apagar volta ao automático
+
   $("med-pm-pct")?.addEventListener("input", () => { if($("med-pm-valor")) $("med-pm-valor").dataset.manual = "0"; recalcularTotaisMedicao(); });
   $("med-pm-valor")?.addEventListener("input", () => { const v = $("med-pm-valor"); v.dataset.manual = v.value === "" ? "0" : "1"; if(v.value === "") recalcularTotaisMedicao(); });
   $("med-obra")?.addEventListener("change", () => medPmSugerirPctDaObra($("med-obra").value));
@@ -3818,30 +3818,30 @@ if(document.readyState === "loading"){
   ligarMedPermutas();
 }
 
-/* ====================================================================
-   FASE 105c — NFS-e da medição pelo app (Focus NFe; function focus-nfe, status pelo focus-nfe-webhook)
-   Spec: docs/specs/fase-105-emissao-fiscal-focus-nfe.md (parte 105c). Prefixo med-nfse-.
-   - Aba "NFS-e" da ficha: statusbar informativa (rascunho → processando → autorizada | rejeitada → cancelada/substituída),
-     chip do ambiente, bloco Rejeição com a mensagem da prefeitura, dados da nota e eventos fiscais (registros_log,
-     entidade medicoes, tipo 'fiscal'; gravados pela function e pelo webhook).
-   - Topo da ficha: Emitir NFS-e (medição aprovada; confirmação com tomador, município, valor, ISS retido ou não e o
-     ambiente), Simular (pendências + JSON), Consultar, PDF, XML, Substituir (só no Ambiente Nacional) e Cancelar (motivo
-     com 15 a 255 caracteres).
-   - Medição com NFS-e processando, autorizada, cancelada ou substituída fica travada: valor, itens, ISS, retenções e obra
-     não mudam (gatilhos trg_medicoes_nfse_guarda e trg_medicao_itens_nfse_guarda no banco) e o salvar não manda esses
-     campos nem os itens; NF nº/emissão/valor ficam só leitura enquanto a nota do app vale.
-   - Retenções federais (IRRF, PIS, COFINS, CSLL, INSS) na aba Geral: vão na nota e saem do líquido a receber.
-   - Quem emite: podeEmitirFiscal() (decisão 6) e que leia a medição; a function confere de novo.
-   Sem a migration da 105c (_medNfseOk falso) nada disso aparece e o salvar não manda as colunas novas.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const MED_NFSE_STAGES = ["rascunho", "processando", "autorizada", "cancelada"];
-// colunas que estão impressas na nota: saem do salvar enquanto a medição estiver travada (a guarda do banco recusaria)
+
 const MED_NFSE_CAMPOS_TRAVADOS = ["obra_id", "subtotal", "desconto_sinal", "acrescimo", "multiplicador_pct", "valor_medido",
   "iss_percentual", "iss_valor", "iss_retido_fonte", "ret_irrf", "ret_pis", "ret_cofins", "ret_csll", "ret_inss"];
 const MED_NFSE_TRAVA_IDS = ["med-obra", "med-tipo", "med-multiplicador", "med-desc-sinal", "med-acrescimo", "med-valor-final",
   "med-iss-pct", "med-iss-retido", "med-iss-valor", "med-ret-irrf", "med-ret-pis", "med-ret-cofins", "med-ret-csll", "med-ret-inss"];
 const MED_NFSE_NF_IDS = ["med-doc-tipo", "med-nf-numero", "med-nf-emissao", "med-nf-valor"];
-let _medNfseCfg = null;       // { modelo, ambNacional } dos dados fiscais da empresa (botão Substituir)
+let _medNfseCfg = null;
 let _medNfseModalOk = null;
 
 function medNfseTravada(m){
@@ -3867,11 +3867,11 @@ async function medNfseCarregarCfg(){
   return _medNfseCfg;
 }
 
-/* campos de valor, ISS, retenções, obra e itens travados enquanto a nota do app vale (reaplicado a cada render dos itens) */
+
 function medNfseTravarCampos(){
   const trava = medNfseTravada();
   const nfApp = medNfseNfDoApp();
-  // devolve true quando o campo acabou de ser destravado
+
   const aplicar = (id, travar) => {
     const el = $(id);
     if(!el) return false;
@@ -3887,7 +3887,7 @@ function medNfseTravarCampos(){
   };
   const destravou = MED_NFSE_TRAVA_IDS.map(id => aplicar(id, trava)).some(Boolean);
   MED_NFSE_NF_IDS.forEach(id => aplicar(id, nfApp));
-  if(destravou) recalcularTotaisMedicao();   // o valor final volta à regra dos itens (só leitura com itens)
+  if(destravou) recalcularTotaisMedicao();
   document.querySelectorAll("#med-itens-tbody input").forEach(el => { el.readOnly = trava; });
   document.querySelectorAll("#med-itens-tbody .btn-mi-rem").forEach(b => { b.style.display = trava ? "none" : ""; });
   ["btn-med-add-item", "btn-med-sugerir"].forEach(id => { const b = $(id); if(b) b.style.display = trava ? "none" : ""; });
@@ -3895,7 +3895,7 @@ function medNfseTravarCampos(){
   ["btn-med-sugerir-abat", "btn-med-calc-he", "btn-med-calc-fatmin"].forEach(id => { const b = $(id); if(b) b.disabled = trava; });
 }
 
-/* ---------- ficha: aba NFS-e, chip, rejeição, dados da nota, botões ---------- */
+
 function medNfseAtualizar(){
   const m = _medAtual;
   document.querySelectorAll("#med-ficha .med-ret-fed").forEach(el => { el.style.display = _medNfseOk ? "" : "none"; });
@@ -3988,7 +3988,7 @@ async function medNfseBotoes(){
     if(_medAtual === m) mostra("btn-med-nfse-substituir", !!cfg && cfg.ambNacional && cfg.modelo === "nfsen" && temOutra);
   }
 }
-/* eventos fiscais da medição (registros_log, tipo 'fiscal') */
+
 async function medNfseEventos(){
   const box = $("med-nfse-eventos");
   const m = _medAtual;
@@ -4007,7 +4007,7 @@ async function medNfseEventos(){
   </table></div>`;
 }
 
-/* ---------- diálogo único das ações da NFS-e ---------- */
+
 function medNfseModal({ titulo, corpo, texto, rotulo, min, max, botao, perigo, subst, onOk }){
   $("med-nfse-modal-titulo").textContent = titulo || "NFS-e";
   $("med-nfse-modal-corpo").innerHTML = corpo || "";
@@ -4061,11 +4061,11 @@ function medNfseResumoHtml(d){
     ${r.discriminacao ? `<p class="nota"><strong>Discriminação:</strong> ${esc(r.discriminacao)}</p>` : ""}`;
 }
 
-/* ---------- ações ---------- */
+
 async function medNfseSalvarAntes(){
   if(!medEditId){ aviso("app-aviso", "Salve a medição antes.", "erro"); return false; }
   if(medNfseTravada()) return true;
-  return !!(await salvarMedicao());   // a function lê o banco: o que está na tela precisa estar salvo
+  return !!(await salvarMedicao());
 }
 async function medNfseRecarregar(){
   const id = medEditId;
@@ -4153,7 +4153,7 @@ async function medNfseArquivo(tipo){
   if(!m) return;
   const col = tipo === "pdf" ? "nfse_pdf_url" : "nfse_xml_url";
   const nome = tipo === "pdf" ? "PDF da NFS-e" : "XML da NFS-e";
-  // o XML baixa como arquivo; só o PDF abre numa aba (aberta no clique, antes do await, pelo bloqueador de pop-up)
+
   const janela = tipo === "pdf" ? window.open("", "_blank") : null;
   let url = null, erro = null;
   if(m[col] && String(m[col]).startsWith("nfse/")){
@@ -4195,7 +4195,7 @@ function medNfseCancelar(){
   });
 }
 
-/* ---------- ligações da fase 105c ---------- */
+
 function ligarMedNfse(){
   $("btn-med-nfse-emitir")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-emitir", medNfseEmitir));
   $("btn-med-nfse-simular")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-simular", medNfseSimularMostrar));
@@ -4206,7 +4206,7 @@ function ligarMedNfse(){
   $("btn-med-nfse-cancelar")?.addEventListener("click", medNfseCancelar);
   $("btn-med-nfse-modal-fechar")?.addEventListener("click", medNfseModalFechar);
   $("btn-med-nfse-modal-ok")?.addEventListener("click", () => comBotaoTravado("btn-med-nfse-modal-ok", () => _medNfseModalOk ? _medNfseModalOk() : null));
-  // retenções federais recalculam o líquido a receber
+
   MED_RET_FED.forEach(k => $("med-ret-" + k)?.addEventListener("input", recalcularTotaisMedicao));
 }
 if(document.readyState === "loading"){
@@ -4215,15 +4215,15 @@ if(document.readyState === "loading"){
   ligarMedNfse();
 }
 
-/* ====================================================================
-   LOTE S66-c (#327, Tamires) — NFS-e emitidas por obra e medição
-   Uma linha por medição com nota (nf_numero ou nfse_numero), lida do banco por lerTudo (a policy de medicoes já é
-   pode_ler_financeiro()). Divergência: valor da nota diferente do valor final, ou emissão fora da competência
-   (antes do início do período medido ou mais de MED_NFS_DIAS_MAX dias depois do fim; a nota sai, em regra, até 60 dias
-   depois do fim do período). Competência = mês do fim do período (sem período, a data da medição).
-   ==================================================================== */
+
+
+
+
+
+
+
 const MED_NFS_DIAS_MAX = 90;
-let _medNfs = null;   // linhas lidas; null = ler de novo
+let _medNfs = null;
 const MED_NFS_SELECT = "id,numero,obra_id,status,data_medicao,periodo_inicio,periodo_fim,doc_tipo,nf_numero,nf_data_emissao,nf_valor,valor_final,valor_medido,"
   + "retencao_valor,iss_valor,iss_retido_fonte,nfse_status,nfse_numero,nfse_emitida_em,ret_irrf,ret_pis,ret_cofins,ret_csll,ret_inss,obra:obras(codigo,nome)";
 function medNfsCompetencia(m){ const d = m.periodo_fim || m.data_medicao; return d ? d.slice(5, 7) + "/" + d.slice(0, 4) : "—"; }
@@ -4294,7 +4294,7 @@ async function renderMedNfs(){
   cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">${nDiv} de ${lista.length} com divergência (valor da nota diferente do valor final, ou emissão antes do período medido ou mais de ${MED_NFS_DIAS_MAX} dias depois dele). Clique na linha para abrir a medição.</p>
   <div class="tabela-rola"><table>
     <thead><tr><th>Obra</th><th>Medição</th><th>Competência</th><th>NFS-e</th><th>Emissão</th><th class="num">Valor final</th><th class="num">Valor da nota</th><th class="num">Líquido</th><th class="num">Retenções</th><th>Status da NFS-e</th><th>Divergência</th></tr></thead>
-    <tbody>${/* html */ linhas || '<tr><td colspan="11" class="vazio">Nenhuma nota nesse filtro.</td></tr>'}</tbody>
+    <tbody>${  linhas || '<tr><td colspan="11" class="vazio">Nenhuma nota nesse filtro.</td></tr>'}</tbody>
     <tfoot><tr><td colspan="5">${lista.length} nota(s)</td><td class="num">${brl(soma(medNfsValorFinal))}</td><td class="num">${brl(soma(m => m.nf_valor))}</td><td class="num">${brl(soma(medLiquido))}</td><td class="num">${brl(soma(medNfsRetencoes))}</td><td colspan="2"></td></tr></tfoot>
   </table></div>`;
   cont.querySelectorAll(".med-nfs-linha").forEach(tr => tr.addEventListener("click", () => abrirMedicao(tr.dataset.id)));

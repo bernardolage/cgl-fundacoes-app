@@ -1,8 +1,8 @@
-/* ====================================================================
-   App do operador (fase 129b) — op_foto.js
-   Tela 8: fotos do dia. A câmera do celular, redução no aparelho (lado maior = campo_fotos_max_px, JPEG),
-   registro pela fila (rdo_campo_foto_registrar) e o arquivo sobe depois dos dados, com teto diário de MB.
-   ==================================================================== */
+
+
+
+
+
 
 const VINCULOS_FOTO = [
   ["diario", "Do dia (geral)"], ["boletim_assinado", "Boletim assinado"], ["estaca", "Estaca"],
@@ -10,7 +10,7 @@ const VINCULOS_FOTO = [
 ];
 const ROTULO_VINCULO = Object.fromEntries(VINCULOS_FOTO);
 let _fotoTipo = "diario";
-const _miniaturas = new Map();   // foto_id -> URL de objeto do Blob ainda no aparelho
+const _miniaturas = new Map();
 
 function reduzirImagem(arquivo, ladoMax){
   return new Promise((ok, falha) => {
@@ -42,7 +42,7 @@ OP.telas.foto = async function(){
     }
   }
   const execs = s.execucoes || [], pars = s.paradas || [], abs = s.abastecimentos || [];
-  // o registro da foto só entra com o dia aberto (campo_exigir); o arquivo já registrado sobe mesmo depois do envio
+
   const podeFotografar = ed;
   box.innerHTML = `
     ${podeFotografar ? `<section class="op-bloco">

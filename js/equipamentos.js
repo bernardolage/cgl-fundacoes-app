@@ -1,12 +1,12 @@
-/* ====================================================================
-   Módulo: Equipamentos (fase 50 — plano de acessórios §4.1)
-   Máquinas de produção: tipo not in (caminhao, veiculo) — esses são da Frota.
-   Painel (kanban por status / lista / Vendas) + ficha Odoo (Geral · Ficha técnica ·
-   Acessórios por Ø · Mobilizações · Movimentações · Reparos & manutenções · Custos · Venda · Timeline).
-   Localização vem do trigger de movimentação; aqui só se corrige o cadastro.
-   Fase 96: venda do bem (botão "Registrar venda", etapa Vendido, aba Venda, visão Vendas) em js/vendas_bens.js;
-   bem vendido sai do kanban/lista e a ficha fica só para consulta.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
 
 let _eqpView = "kanban";
 let _eqpKpi = "";
@@ -14,21 +14,21 @@ let _eqpRegistros = [];
 let _eqpObras = [];
 let _eqpObraMap = {};
 let _eqpCarregado = false;
-let _eqpAtual = null;          // registro aberto
-let _eqpEditId = null;         // null = novo
-let _eqpAceModo = "";          // filtro da aba Acessórios
+let _eqpAtual = null;
+let _eqpEditId = null;
+let _eqpAceModo = "";
 let _eqpAceCache = { id: null, na: [], pertence: [], compat: [] };
-// valor e data de aquisição: moram em equipamentos_financeiro (leem diretoria, financeiro e auditor; gravam diretoria e financeiro)
-let _eqpValorBem = null;             // da ficha aberta: { equipId, disponivel, valor, data }
-let _eqpValorBemSemTabela = false;   // o banco ainda não tem a tabela: não pergunta de novo nesta página
+
+let _eqpValorBem = null;
+let _eqpValorBemSemTabela = false;
 
 const EQP_TIPOS = ["perfuratriz","bate_estaca","escavadeira","retroescavadeira","guindaste","compressor","gerador","bomba","ferramenta","outro"];
 const EQP_TIPO_LBL = { perfuratriz: "Perfuratriz", bate_estaca: "Bate-estaca", escavadeira: "Escavadeira", retroescavadeira: "Retroescavadeira", guindaste: "Guindaste", compressor: "Compressor", gerador: "Gerador", bomba: "Bomba", ferramenta: "Ferramenta", outro: "Outro" };
 const EQP_LOCAL_LBL = { base: "Base", obra: "Obra", em_transito: "Em trânsito", fornecedor_manutencao: "Fornecedor / manutenção", cliente: "Cliente", vendido: "Vendido" };
 const EQP_LOCAL_COR = { base: "verde", obra: "azul", em_transito: "ambar", fornecedor_manutencao: "ambar", cliente: "azul", vendido: "cinza" };
-/* fase 96: bem vendido (status e localização "vendido", nascidos do registro da venda) sai das visões operacionais
-   (kanban, lista, filtros, KPIs) e fica só na visão Vendas e na própria ficha, para consulta */
-const EQP_FORA_OPERACAO = EQP_STATUS_VENDIDO;   // fase 180c: vendido, vendido_reserva e liberado_retirada (core.js)
+
+
+const EQP_FORA_OPERACAO = EQP_STATUS_VENDIDO;
 const EQP_MOB_ATIVA = ["em_preparacao","em_transito","em_obra"];
 
 function eqpPodeEditar(){
@@ -43,7 +43,7 @@ function eqpOnde(e){
     case "em_transito": return "Em trânsito" + (e.localizacao_obra_id ? " → " + eqpObra(e.localizacao_obra_id) : "") + d;
     case "fornecedor_manutencao": return "Fornecedor / manutenção" + d;
     case "cliente":     return "Cliente" + d;
-    case "vendido":     return e.status && e.status !== "vendido" ? eqpLbl(e.status) : "Vendido" + (e.baixa_em ? " em " + dataBR(e.baixa_em) : "");   // fase 96; 180c: reserva de domínio
+    case "vendido":     return e.status && e.status !== "vendido" ? eqpLbl(e.status) : "Vendido" + (e.baixa_em ? " em " + dataBR(e.baixa_em) : "");
     default:            return "Base" + d;
   }
 }
@@ -58,22 +58,22 @@ function eqpTag(e){ return `${e.codigo}${e.nome ? " · " + e.nome : ""}`; }
 function eqpOrd(a, b){ return String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }); }
 function eqpNumAce(e){ return Number(e._ace) || 0; }
 
-/* ---------- carga ---------- */
-/* ---------- visão Horímetro semanal (lote S58, #232) ----------
-   Grava em equipamento_leituras com origem "semanal", que só sobe (fn_equipamento_leitura_aplicar): valor menor fica marcado e
-   não é gravado; a correção para baixo segue pelo Ajustar, com motivo. Inclui caminhões e veículos, que o resto do painel não lista. */
+
+
+
+
 let _eqpSem = [], _eqpSemOk = false, _eqpSemUltima = {}, _eqpSemOperador = {}, _eqpSemValores = {};
 function eqpSemUsaKm(e){ return ["caminhao", "veiculo"].includes(e.tipo) || (e.km != null && e.horimetro == null); }
 function eqpSemPode(){ return eqpPodeManutencao() && !ehSomenteLeitura(); }
 function eqpSemAtual(e){ return eqpSemUsaKm(e) ? e.km : e.horimetro; }
 
-/* lote S63-f (#283): partes puras da visão, testadas em scripts/testar-loteS63f.mjs (o teste lê o bloco entre os marcadores). */
-// S63F-INICIO
+
+
 function eqpSemTxtNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); }
-// mais recente primeiro: data do registro e, no mesmo dia, o que foi lançado por último
+
 function eqpSemMaisRecente(a, b){ return String(b.data || "").localeCompare(String(a.data || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")); }
-/* Último lançamento de cada máquina em equipamento_leituras: a leitura mais recente que tem o campo da máquina (horímetro ou km,
-   campoDe(equipamento_id) diz qual). Devolve { equipamento_id: { data, valor } }. */
+
+
 function eqpSemUltimaLeitura(leituras, campoDe){
   const out = {};
   [...(leituras || [])].sort(eqpSemMaisRecente).forEach(l => {
@@ -84,12 +84,12 @@ function eqpSemUltimaLeitura(leituras, campoDe){
   });
   return out;
 }
-/* Operador pela função do RH (funcionarios.funcao), como o funcaoRdoDoCargo do RDO: "Operador de Caminhão" é motorista. */
+
 function eqpSemEhOperador(funcao){ const f = eqpSemTxtNorm(funcao); return f.includes("OPERADOR") && !f.includes("CAMINHAO"); }
 function eqpSemOperaMaquina(funcao){ const f = eqpSemTxtNorm(funcao); return f.includes("MAQUINA") || f.includes("PERFURATRIZ"); }
-/* Operador do último RDO de cada máquina (rdo.equipamento_id) que tem operador na equipe (rdo_equipe → funcionarios). RDO sem
-   operador na equipe é pulado e vale o anterior da mesma máquina. Com operador de máquinas e outro operador (betoneira, bomba),
-   fica o de máquinas; dois de máquinas no mesmo RDO saem os dois. Devolve { equipamento_id: { nomes: [...], data } }. */
+
+
+
 function eqpSemUltimoOperador(rdos){
   const out = {};
   [...(rdos || [])].sort(eqpSemMaisRecente).forEach(r => {
@@ -102,27 +102,27 @@ function eqpSemUltimoOperador(rdos){
   });
   return out;
 }
-// S63F-FIM
 
-/* lote S63-g (#284): equipamento vinculado (munck no caminhão) logo abaixo do principal. As linhas vêm da
-   vw_equipamentos_horimetro_semanal: grupo_codigo = TAG do principal (ou a própria) e nivel = 0 principal, 1 vinculado.
-   Testado em scripts/testar-loteS63g.mjs (o teste lê o bloco entre os marcadores). */
-// S63G-INICIO
+
+
+
+
+
 function eqpSemOrdenar(lista){
   const cmp = (a, b) => String(a || "").localeCompare(String(b || ""), "pt-BR", { numeric: true });
   return [...(lista || [])].sort((a, b) => cmp(a.grupo_codigo || a.codigo, b.grupo_codigo || b.codigo) || ((Number(a.nivel) || 0) - (Number(b.nivel) || 0)) || cmp(a.codigo, b.codigo));
 }
-// S63G-FIM
+
 
 async function eqpSemCarregar(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando leituras…</p>`;
-  // lote S63-g (#284): a view traz o principal de cada vinculado (munck no caminhão), que sai logo abaixo dele
+
   const { data, error } = await sb.from("vw_equipamentos_horimetro_semanal").select("id,codigo,nome,tipo,horimetro,km,status,equipamento_principal_id,principal_codigo,principal_tipo,grupo_codigo,nivel").eq("ativo", true);
-  if(_eqpView !== "semanal") return;   // trocou de visão enquanto carregava
+  if(_eqpView !== "semanal") return;
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
   _eqpSem = eqpSemOrdenar((data || []).filter(e => !EQP_FORA_OPERACAO.includes(e.status)));
-  // lote S63-f (#283): último lançamento (data e valor) e operador do último RDO, uma leitura de cada tabela; as duas passam de 1.000 linhas
+
   const porId = Object.fromEntries(_eqpSem.map(e => [e.id, e]));
   const [lei, rdos] = await Promise.all([
     lerTudo(() => sb.from("equipamento_leituras").select("id,equipamento_id,data,horimetro,km,created_at")),
@@ -140,7 +140,7 @@ function eqpSemMarcar(linha, e){
   const menor = v !== undefined && v !== "" && atual != null && Number(v) < Number(atual);
   const msg = linha.querySelector(".eqp-sem-msg"); if(msg) msg.textContent = menor ? "menor que a atual: não será gravada; use Ajustar" : "";
 }
-// lote S63-f (#283): o botão Salvar, fixo acima da lista, mostra quantas leituras estão preenchidas
+
 function eqpSemContarPreenchidas(){
   const b = $("btn-eqp-sem-salvar"); if(!b) return;
   const n = Object.values(_eqpSemValores).filter(v => v !== undefined && v !== "").length;
@@ -149,7 +149,7 @@ function eqpSemContarPreenchidas(){
 function eqpSemRender(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   const q = ($("eqp-sem-busca")?.value || "").trim().toLowerCase(), grupo = $("eqp-sem-grupo")?.value || "";
-  // lote S63-g (#284): o vinculado segue o grupo e a busca do principal (filtrar "47" traz o caminhão e o munck)
+
   const veic = e => ["caminhao", "veiculo"].includes(e.principal_tipo || e.tipo);
   const linhas = _eqpSem.filter(e => (!grupo || (grupo === "veiculos") === veic(e)) && (!q || `${e.codigo} ${e.nome || ""} ${e.principal_codigo || ""}`.toLowerCase().includes(q)));
   $("eqp-contador").textContent = `${linhas.length} de ${_eqpSem.length}`;
@@ -158,7 +158,7 @@ function eqpSemRender(){
   eqpSemContarPreenchidas();
   if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma máquina com esses filtros.</p>`; return; }
   const tipoTxt = t => ({ caminhao: "Caminhão", veiculo: "Veículo" })[t] || EQP_TIPO_LBL[t] || t || "";
-  /* lote S63-f (#283): a lista rola dentro da caixa (.eqp-sem-rola), então o cabeçalho e o botão Salvar, logo acima, ficam à vista */
+
   cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">Preencha só as máquinas lidas na semana. A leitura só sobe; valor menor que o atual não é gravado e a correção é pelo Ajustar, com motivo.</p>
     <div class="tabela-rola eqp-sem-rola"><table><thead><tr><th>TAG</th><th>Equipamento</th><th title="Operador do último RDO desta máquina que tem operador na equipe">Operador</th><th class="num" title="Valor atual da máquina; a leitura nova não pode ser menor">Atual</th><th title="Data e valor do último registro de horímetro ou km desta máquina (RDO, OS, checklist, viagem ou semanal)">Último lançamento</th><th>Leitura nova</th><th class="col-acao"></th></tr></thead>
     <tbody>${linhas.map(e => { const km = eqpSemUsaKm(e), un = km ? "km" : "h", atual = eqpSemAtual(e), ult = _eqpSemUltima[e.id], op = _eqpSemOperador[e.id]; return `<tr data-eq="${esc(e.id)}">
@@ -195,11 +195,11 @@ async function eqpSemSalvar(){
   await carregarEquipamentos(true);
 }
 
-/* ---------- visão Valor para remessa (hotfix 11/11/2026) ----------
-   A diretoria e o financeiro definem uma vez o valor declarado na NF-e de remessa de cada máquina: o valor contábil (da
-   contabilidade), digitado aqui ou importado da planilha da contabilidade; sem valor contábil, o valor que eles digitarem. Primeiro as máquinas em obra ou em trânsito, depois as que já foram mobilizadas. Como referência,
-   a aquisição (quem lê o valor do bem) e a avaliação de mercado (quem lê o Patrimônio); nunca para outros. Grava pela RPC
-   equipamentos_definir_valor_remessa, que o banco só aceita da diretoria e do financeiro. */
+
+
+
+
+
 let _eqpVrm = { ok: false, mobilizadas: new Set(), aquisicao: {}, avaliacao: {}, valores: {} };
 const EQP_VRM_SIT = { 1: { txt: "Em obra", cor: "azul" }, 2: { txt: "Em mobilização", cor: "ambar" }, 3: { txt: "Já mobilizada", cor: "verde" }, 4: { txt: "Nunca mobilizada", cor: "cinza" } };
 function eqpVrmPode(){ return typeof podeGravarValorBem === "function" && podeGravarValorBem(); }
@@ -214,12 +214,12 @@ async function eqpVrmCarregar(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   if(!eqpVrmPode()){ cont.innerHTML = uiVazio("Só a diretoria e o financeiro definem o valor para remessa."); return; }
   cont.innerHTML = `<p class="vazio">Carregando valores para remessa…</p>`;
-  if(!_eqpCarregado){ carregarEquipamentos(false); return; }   // carregarEquipamentos volta para esta visão ao terminar
+  if(!_eqpCarregado){ carregarEquipamentos(false); return; }
   const mob = await lerTudo(() => sb.from("mobilizacoes").select("id,equipamento_id,equipamentos_apoio"));
   const aq = podeVerValorBem() ? await lerTudo(() => sb.from("equipamentos_financeiro").select("equipamento_id,valor_aquisicao"), "equipamento_id") : { data: [] };
   const av = (typeof podeVerPatrimonio === "function" && podeVerPatrimonio())
     ? await lerTudo(() => sb.from("patrimonio_avaliacoes").select("id,bem_id,valor,ano_referencia").eq("bem_tipo", "equipamento")) : { data: [] };
-  if(_eqpView !== "remessa") return;   // trocou de visão enquanto carregava
+  if(_eqpView !== "remessa") return;
   if(mob.error){ cont.innerHTML = `<p class="vazio">Erro ao carregar as mobilizações: ${esc(mob.error.message || mob.error)}</p>`; return; }
   const mobilizadas = new Set();
   (mob.data || []).forEach(m => [m.equipamento_id, ...(m.equipamentos_apoio || [])].filter(Boolean).forEach(id => mobilizadas.add(id)));
@@ -244,7 +244,7 @@ function eqpVrmRender(){
     })
     .sort((a, b) => a.sit - b.sit || eqpOrd(a.e, b.e));
   $("eqp-contador").textContent = `${comValor} de ${todas.length} máquinas com valor para remessa`;
-  // durante a prévia da planilha, os filtros e os botões da lista saem de cena (não valem para a prévia)
+
   ["btn-eqp-vrm-salvar", "eqp-vrm-imp-rotulo", "eqp-vrm-busca", "eqp-vrm-f-situacao", "eqp-vrm-f-valor"].forEach(id => { const el = $(id); if(el) el.style.display = _eqpVrm.imp ? "none" : ""; });
   if(_eqpVrm.imp){ eqpVrmImpRender(cont); return; }
   if(!linhas.length){ cont.innerHTML = uiVazio("Nenhuma máquina com esses filtros."); return; }
@@ -267,7 +267,7 @@ function eqpVrmRender(){
     inp?.addEventListener("input", () => { _eqpVrm.valores[e.id] = inp.value; eqpVrmMarcar(tr, e); });
   });
 }
-/* a linha mostra se o valor digitado difere do gravado (e se é válido) */
+
 function eqpVrmMarcar(tr, e){
   const msg = tr.querySelector(".eqp-vrm-msg"), v = _eqpVrm.valores[e.id];
   if(!msg) return;
@@ -295,13 +295,13 @@ async function eqpVrmSalvar(){
   eqpVrmRender();
 }
 
-/* ---------- importação da planilha da contabilidade (decisão de 11/11/2026: valor para remessa = valor contábil) ----------
-   A planilha (relação de bens do imobilizado, .xlsx ou .csv) é lida no navegador; cada linha casa com UMA máquina ativa pela
-   TAG, código externo, número de série ou placa (sem acento, espaço nem pontuação). A prévia separa casadas, divergentes (a
-   máquina já tem outro valor: só troca se marcar) e não casadas; nada vai ao banco antes de "Confirmar e gravar". A origem
-   ("planilha da contabilidade: <arquivo>") fica no log junto de cada mudança. */
+
+
+
+
+
 function eqpVrmNorm(s){ return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
-/* número da planilha: 1234.5 | "1.234,56" | "1234,56" | "R$ 1.234" | "1,234.56"; vazio = null; ilegível = NaN */
+
 function eqpVrmNumero(v){
   if(v == null) return null;
   if(typeof v === "number") return Number.isFinite(v) ? v : NaN;
@@ -316,7 +316,7 @@ function eqpVrmNumero(v){
   const n = Number(t);
   return neg ? -n : n;
 }
-/* matriz da 1ª aba: acha o cabeçalho (1ª linha, entre as 15 primeiras, com 2+ textos) e devolve { cab, dados, linhaCab } */
+
 function eqpVrmLerMatriz(matriz){
   const linhas = (matriz || []).map(l => (l || []).map(c => c == null ? "" : c));
   let iCab = linhas.slice(0, 15).findIndex(l => l.filter(c => typeof c === "string" && c.trim() !== "" && Number.isNaN(Number(c))).length >= 2);
@@ -325,7 +325,7 @@ function eqpVrmLerMatriz(matriz){
   const dados = linhas.slice(iCab + 1).filter(l => l.some(c => String(c).trim() !== ""));
   return { cab, dados, linhaCab: iCab + 1 };
 }
-/* colunas sugeridas: identificação (TAG, patrimônio, código, placa, série) e valor contábil (contábil > residual > líquido > valor) */
+
 function eqpVrmSugerirColunas(cab){
   const n = cab.map(c => String(c).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase());
   const achar = res => { for(const re of res){ const i = n.findIndex(c => re.test(c)); if(i >= 0) return i; } return -1; };
@@ -334,7 +334,7 @@ function eqpVrmSugerirColunas(cab){
     valor: achar([/contab/, /residual/, /liquid/, /\bvalor\b|\bvlr\b/])
   };
 }
-/* índice: chave normalizada -> ids das máquinas que a usam (TAG, código externo, número de série, placa) */
+
 function eqpVrmIndice(maquinas){
   const idx = new Map();
   maquinas.forEach(e => [e.codigo, e.codigo_externo, e.numero_serie, e.placa].forEach(v => {
@@ -344,14 +344,14 @@ function eqpVrmIndice(maquinas){
   }));
   return idx;
 }
-/* casa as linhas: status casada (máquina sem valor), igual, divergente, sem_maquina, ambigua, valor_invalido, repetida */
+
 function eqpVrmCasar(dados, colId, colValor, maquinas, linhaCab){
   const idx = eqpVrmIndice(maquinas), porId = new Map(maquinas.map(e => [e.id, e]));
   const res = dados.map((l, i) => {
     const ident = String(l[colId] ?? "").trim(), valor = eqpVrmNumero(l[colValor]);
     const r = { linha: (linhaCab || 1) + i + 1, ident, valor, eq: null, status: "" };
     let ids = idx.get(eqpVrmNorm(ident));
-    if(!ids){   // a célula pode trazer mais de um código ("HC-07 / série 123"): vale o pedaço que casar
+    if(!ids){
       const achados = new Set();
       ident.split(/[\s/;|]+/).map(eqpVrmNorm).filter(k => k.length >= 2).forEach(k => (idx.get(k) || []).forEach(id => achados.add(id)));
       ids = achados.size ? achados : null;
@@ -375,7 +375,7 @@ async function eqpVrmImportarArquivo(file){
   let matriz;
   try {
     const csv = /\.csv$/i.test(file.name);
-    const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, raw: csv });   // csv: texto cru ("1.234,56" não vira outro número)
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, raw: csv });
     matriz = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
   } catch(e){ aviso("app-aviso", "Não consegui ler a planilha: " + (e.message || e), "erro"); return; }
   const { cab, dados, linhaCab } = eqpVrmLerMatriz(matriz);
@@ -386,7 +386,7 @@ async function eqpVrmImportarArquivo(file){
   eqpVrmRender();
 }
 function eqpVrmImpCasar(){ const imp = _eqpVrm.imp; if(imp){ imp.res = eqpVrmCasar(imp.dados, imp.colId, imp.colValor, eqpVrmMaquinas(), imp.linhaCab); imp.trocar = new Set(); } }
-/* o que a confirmação grava: casadas novas + divergentes marcadas */
+
 function eqpVrmImpAGravar(imp){
   return (imp?.res || []).filter(r => r.status === "casada" || (r.status === "divergente" && imp.trocar.has(r.eq.id))).map(r => ({ id: r.eq.id, valor: r.valor }));
 }
@@ -399,7 +399,7 @@ function eqpVrmImpRender(cont){
   const nGravar = eqpVrmImpAGravar(imp).length;
   const opc = sel => imp.cab.map((c, i) => `<option value="${i}"${i === sel ? " selected" : ""}>${esc(c)}</option>`).join("");
   const maq = e => `${uiCodigo(e.codigo)} <span class="meta">${esc(e.nome || "")}</span>`;
-  const tab = (cols, linhas) => `<div class="tabela-rola"><table class="eqp-vrm-imp-tabela"><thead><tr>${cols.map(c => `<th${c.num ? ' class="num"' : ""}>${esc(c.t)}</th>`).join("")}</tr></thead><tbody>${/* html */ linhas}</tbody></table></div>`;
+  const tab = (cols, linhas) => `<div class="tabela-rola"><table class="eqp-vrm-imp-tabela"><thead><tr>${cols.map(c => `<th${c.num ? ' class="num"' : ""}>${esc(c.t)}</th>`).join("")}</tr></thead><tbody>${  linhas}</tbody></table></div>`;
   const tabCasadas = casadas.length ? tab([{ t: "Linha" }, { t: "Na planilha" }, { t: "Máquina" }, { t: "Valor contábil", num: true }, { t: "" }],
     casadas.map(r => `<tr><td>${esc(r.linha)}</td><td>${esc(r.ident)}</td><td>${maq(r.eq)}</td><td class="num" data-val-sens>${esc(brl(r.valor))}</td><td class="meta">${r.status === "igual" ? "já igual" : "a gravar"}</td></tr>`).join("")) : uiVazio("Nenhuma linha casou com uma máquina.");
   const tabDiverg = diverg.length ? `<p class="meta" style="margin:0 0 6px;">A máquina já tem outro valor para remessa. Marque as que devem receber o valor da planilha.</p>` + tab([{ t: "Trocar" }, { t: "Linha" }, { t: "Máquina" }, { t: "Hoje", num: true }, { t: "Planilha", num: true }],
@@ -454,14 +454,14 @@ async function carregarEquipamentos(force){
         sb.from("mobilizacoes").select("id,obra_id,equipamento_id,equipamentos_apoio,status").in("status", EQP_MOB_ATIVA)
       ]);
       if(eq.error) throw eq.error;
-      _eqpRegistros = (eq.data || []).map(semValorBem).sort(eqpOrd);   // valor e data de aquisição não ficam na lista
+      _eqpRegistros = (eq.data || []).map(semValorBem).sort(eqpOrd);
       _eqpObras = ob.data || [];
       _eqpObraMap = {}; _eqpObras.forEach(o => _eqpObraMap[o.id] = o);
-      // mobilização ativa por equipamento (principal ou apoio)
+
       const mobPor = {};
       (mob.data || []).forEach(m => { [m.equipamento_id, ...(m.equipamentos_apoio || [])].filter(Boolean).forEach(id => { if(!mobPor[id]) mobPor[id] = m; }); });
       _eqpRegistros.forEach(e => e._mob = mobPor[e.id] || null);
-      // contagem de acessórios por máquina (catálogo do módulo Acessórios; falha não derruba a tela)
+
       try {
         const cat = typeof aceCatalogo === "function" ? await aceCatalogo() : [];
         const na = {};
@@ -499,13 +499,13 @@ function eqpPreencherFiltros(){
   keep($("eqp-f-obra"), obras.map(id => ({ v: id, t: eqpObra(id) || id })).sort((a, b) => a.t.localeCompare(b.t)), "Obra");
 }
 
-/* ---------- filtros + render ---------- */
+
 function eqpFiltradas(){
   const q = ($("eqp-busca")?.value || "").trim().toLowerCase();
   const fTipo = $("eqp-f-tipo")?.value || "", fSt = $("eqp-f-status")?.value || "", fLoc = $("eqp-f-local")?.value || "", fObra = $("eqp-f-obra")?.value || "";
   const inativos = !!$("eqp-f-inativos")?.checked;
   return _eqpRegistros.filter(e => {
-    if(EQP_FORA_OPERACAO.includes(e.status)) return false;   // fase 96: vendidos só na visão Vendas
+    if(EQP_FORA_OPERACAO.includes(e.status)) return false;
     if(!inativos && e.ativo === false) return false;
     if(fTipo && e.tipo !== fTipo) return false;
     if(fSt && e.status !== fSt) return false;
@@ -518,7 +518,7 @@ function eqpFiltradas(){
       case "manutencao": if(e.status !== "em_manutencao" && e.localizacao_tipo !== "fornecedor_manutencao") return false; break;
       case "acessorios": if(!eqpNumAce(e)) return false; break;
       case "sem_cod_ext": if(!eqpSemCodExt(e)) return false; break;
-      case "sem_ncm":    if(!eqpSemNcm(e)) return false; break;   // fase 105a
+      case "sem_ncm":    if(!eqpSemNcm(e)) return false; break;
     }
     if(q){
       const alvo = [e.codigo, e.nome, e.marca, e.modelo, e.numero_serie, e.codigo_externo, EQP_TIPO_LBL[e.tipo], eqpOnde(e)].filter(Boolean).join(" ").toLowerCase();
@@ -529,11 +529,11 @@ function eqpFiltradas(){
 }
 function renderEquipamentos(){
   const cont = $("eqp-conteudo"); if(!cont) return;
-  // fase 96: visão Vendas (js/vendas_bens.js) troca indicadores, filtros e título do painel
-  const ehSem = _eqpView === "semanal";   // lote S58 (#232)
+
+  const ehSem = _eqpView === "semanal";
   if(_eqpView === "vendas" && typeof vbRenderPainel !== "function") _eqpView = "kanban";
-  if(_eqpView === "cpb" && typeof cpbRenderPainel !== "function") _eqpView = "kanban";   // fase 107a: js/computadores_bordo.js
-  // valor para remessa: a visão só existe para quem grava (diretoria e financeiro)
+  if(_eqpView === "cpb" && typeof cpbRenderPainel !== "function") _eqpView = "kanban";
+
   const bVrm = $("eqp-view-remessa"); if(bVrm) bVrm.style.display = eqpVrmPode() ? "" : "none";
   if(_eqpView === "remessa" && !eqpVrmPode()) _eqpView = "kanban";
   const ehVendas = _eqpView === "vendas", ehCpb = _eqpView === "cpb", ehVrm = _eqpView === "remessa";
@@ -563,15 +563,15 @@ function eqpRenderKpis(){
   set("eqp-kpi-manut", at.filter(e => e.status === "em_manutencao" || e.localizacao_tipo === "fornecedor_manutencao").length);
   set("eqp-kpi-ace", at.reduce((s, e) => s + eqpNumAce(e), 0));
   set("eqp-kpi-semext", at.filter(eqpSemCodExt).length);
-  // fase 105a: o indicador só aparece com a coluna ncm no banco (select("*") traz a chave)
+
   const temNcm = _eqpRegistros.length > 0 && Object.prototype.hasOwnProperty.call(_eqpRegistros[0], "ncm");
   const box = $("eqp-kpi-semncm-box"); if(box) box.style.display = temNcm ? "" : "none";
   if(temNcm) set("eqp-kpi-semncm", _eqpRegistros.filter(eqpSemNcm).length);
-  if(typeof cpbAtualizarKpi === "function") cpbAtualizarKpi();   // fase 107a: CPU com calibração vencida
+  if(typeof cpbAtualizarKpi === "function") cpbAtualizarKpi();
 }
-/* fase 75: perfuratriz ou bate-estaca sem o código do Geodigitus/Maya ("Para regularizar") */
+
 function eqpSemCodExt(e){ return ["perfuratriz", "bate_estaca"].includes(e.tipo) && !String(e.codigo_externo || "").trim(); }
-/* fase 105a: máquina em mobilização ativa sem NCM (a NF-e de remessa exige; mesma regra do "Para regularizar") */
+
 function eqpSemNcm(e){ return !!e._mob && Object.prototype.hasOwnProperty.call(e, "ncm") && !String(e.ncm || "").trim(); }
 function eqpCardHTML(e){
   const mob = e._mob;
@@ -612,10 +612,10 @@ function renderEquipamentosLista(dados){
     </tr>`).join("")}</tbody></table></div>`;
 }
 
-/* ---------- ficha ---------- */
+
 function mostrarPainelEquipamentos(){
   $("eqp-ficha").style.display = "none";
-  if($("cpb-ficha")) $("cpb-ficha").style.display = "none";   // fase 107a
+  if($("cpb-ficha")) $("cpb-ficha").style.display = "none";
   $("eqp-painel").style.display = "";
   _eqpAtual = null; _eqpEditId = null; _eqpValorBem = null;
   if(typeof ocultarHistorico === "function") ocultarHistorico("eqp-chatter");
@@ -635,16 +635,16 @@ async function abrirEquipamento(id){
   }
   abrirFichaEquipamento(e);
 }
-/* ---------- valor e data de aquisição (equipamentos_financeiro) ----------
-   Decisão da diretoria (11/11/2026): leem diretoria, financeiro e auditor; gravam diretoria e financeiro. O valor saiu do
-   registro de equipamentos: a ficha lê e grava à parte, e o que vai para a tabela equipamentos nunca leva esses dois campos
-   (quem salva a ficha sem ver o valor não escreve vazio por cima dele). */
-/* disponivel = false quando o banco não tem a tabela ou a leitura falhou: a ficha esconde os campos e não grava nada */
+
+
+
+
+
 async function eqpValorBemLer(equipId){
   const vazio = { disponivel: false, valor: null, data: null, alteradoEm: null };
   if(typeof podeVerValorBem !== "function" || !podeVerValorBem() || _eqpValorBemSemTabela) return vazio;
   const q = sb.from("equipamentos_financeiro").select("equipamento_id,valor_aquisicao,data_aquisicao,alterado_em");
-  const { data, error } = await (equipId ? q.eq("equipamento_id", equipId).maybeSingle() : q.limit(1));   // sem id (equipamento novo): só confere que a tabela existe
+  const { data, error } = await (equipId ? q.eq("equipamento_id", equipId).maybeSingle() : q.limit(1));
   if(error){
     if(error.code === "PGRST205" || error.code === "42P01" || /equipamentos_financeiro/.test(error.message || "")) _eqpValorBemSemTabela = true;
     else console.warn("valor de aquisição:", error.message || error);
@@ -656,7 +656,7 @@ async function eqpValorBemLer(equipId){
 function eqpValorBemEditavel(){
   return !!_eqpValorBem && _eqpValorBem.disponivel === true && typeof podeGravarValorBem === "function" && podeGravarValorBem();
 }
-/* os dois campos nascem ocultos e vazios; aparecem só depois de lidos, e ficam editáveis só para quem grava */
+
 async function eqpValorBemPreencher(e){
   const est = _eqpValorBem = { equipId: (e && e.id) || null, disponivel: false, valor: null, data: null };
   const cv = $("eqp-valor-campo"), cd = $("eqp-aquisicao-campo"), iv = $("eqp-valor"), idt = $("eqp-aquisicao");
@@ -665,7 +665,7 @@ async function eqpValorBemPreencher(e){
   if(cd) cd.style.display = "none";
   iv.value = ""; idt.value = ""; iv.disabled = true; idt.disabled = true; iv.title = ""; idt.title = "";
   const lido = await eqpValorBemLer(est.equipId);
-  if(_eqpValorBem !== est) return;   // a ficha mudou enquanto lia
+  if(_eqpValorBem !== est) return;
   est.disponivel = lido.disponivel; est.valor = lido.valor; est.data = lido.data;
   if(!est.disponivel) return;
   iv.value = est.valor ?? ""; idt.value = est.data || "";
@@ -675,8 +675,8 @@ async function eqpValorBemPreencher(e){
   iv.title = idt.title = (edita ? "Só a diretoria e o financeiro alteram; cada alteração fica registrada." : "Só a diretoria e o financeiro alteram.") + (dia ? ` Última alteração em ${dia}.` : "");
   if(cv) cv.style.display = "";
   if(cd) cd.style.display = "";
-  if(edita && $("btn-eqp-salvar")) $("btn-eqp-salvar").style.display = "";   // o financeiro grava o valor sem gravar o cadastro
-  // bem vendido: o aviso diz que o cadastro é só para consulta, e o botão Salvar aparece por causa destes dois campos
+  if(edita && $("btn-eqp-salvar")) $("btn-eqp-salvar").style.display = "";
+
   const notaV = $("eqp-nota-vendido");
   if(edita && notaV && notaV.style.display !== "none" && notaV.textContent && !/aquisição/.test(notaV.textContent))
     notaV.textContent += " O valor e a data de aquisição continuam editáveis pela diretoria e pelo financeiro, na aba Geral.";
@@ -685,14 +685,14 @@ function eqpValorBemCampos(){
   const v = $("eqp-valor").value, d = $("eqp-aquisicao").value;
   return { valor: v === "" || v == null ? null : Number(v), data: d || null };
 }
-/* só quem grava, só com a tabela lida, e só se o que está nos campos difere do que foi lido */
+
 function eqpValorBemMudou(){
   if(!eqpValorBemEditavel()) return false;
   const c = eqpValorBemCampos();
   const igual = (a, b) => (a == null && b == null) || (a != null && b != null && Math.abs(Number(a) - Number(b)) < 0.005);
   return !igual(c.valor, _eqpValorBem.valor) || (c.data || null) !== (_eqpValorBem.data || null);
 }
-/* a linha nasce por gatilho junto com o equipamento; upsert cobre a que faltar. Devolve o erro, ou null. */
+
 async function eqpValorBemGravar(equipId){
   const c = eqpValorBemCampos();
   if(c.valor != null && !(c.valor >= 0)) return { message: "informe um valor maior ou igual a zero" };
@@ -705,9 +705,9 @@ function eqpToggleLocalObra(){
   const t = $("eqp-local-tipo").value;
   $("eqp-local-obra-campo").style.display = (t === "obra" || t === "em_transito" || t === "cliente") ? "" : "none";
 }
-/* lote S63-g (#284): campo "Equipamento principal" da ficha. O vínculo é de um nível só: a lista não traz quem já está
-   vinculado a outro, e quem já é principal de algum fica travado com a lista dos seus vinculados. Só aparece com a coluna no
-   banco (equipamentos.equipamento_principal_id). Caminhões e veículos entram na lista, embora o painel não os mostre. */
+
+
+
 let _eqpPrincipalSeq = 0;
 async function eqpPrincipalPreencher(e, pode){
   const campo = $("eqp-principal-campo"), sel = $("eqp-principal"), info = $("eqp-principal-info");
@@ -720,7 +720,7 @@ async function eqpPrincipalPreencher(e, pode){
   sel.innerHTML = `<option value="">Carregando…</option>`; sel.disabled = true;
   if(info) info.textContent = "";
   const { data, error } = await sb.from("equipamentos").select("id,codigo,nome,ativo,equipamento_principal_id");
-  if(seq !== _eqpPrincipalSeq) return;   // abriu outra ficha enquanto carregava
+  if(seq !== _eqpPrincipalSeq) return;
   if(error){ sel.innerHTML = `<option value="">—</option>`; if(info) info.textContent = "Lista não carregou: " + error.message; return; }
   const todos = (data || []).sort(eqpOrd);
   const vinculados = e.id ? todos.filter(x => x.equipamento_principal_id === e.id) : [];
@@ -738,10 +738,10 @@ function abrirFichaEquipamento(e){
   _eqpAtual = e; _eqpEditId = e.id || null;
   const novo = !e.id;
   $("eqp-painel").style.display = "none";
-  if($("cpb-ficha")) $("cpb-ficha").style.display = "none";   // fase 107a
+  if($("cpb-ficha")) $("cpb-ficha").style.display = "none";
   $("eqp-ficha").style.display = "";
   $("eqp-ficha-titulo").textContent = novo ? "Novo equipamento" : eqpTag(e);
-  // fase 96: bem vendido fica só para consulta (o estado volta só cancelando a venda, na aba Venda)
+
   const vendido = bemVendido(e);
   document.querySelectorAll("#eqp-ficha .eqp-so-existente").forEach(b => b.style.display = (novo || vendido) ? "none" : "");
   const pode = eqpPodeEditar() && !vendido;
@@ -762,7 +762,7 @@ function abrirFichaEquipamento(e){
   $("eqp-marca").value = e.marca || ""; $("eqp-modelo").value = e.modelo || "";
   $("eqp-ano").value = e.ano_fabricacao ?? ""; $("eqp-serie").value = e.numero_serie || "";
   $("eqp-horimetro").value = e.horimetro ?? ""; $("eqp-cod-ext").value = e.codigo_externo || "";
-  eqpValorBemPreencher(e);   // valor e data de aquisição: lidos à parte, só para quem pode ver
+  eqpValorBemPreencher(e);
   $("eqp-ativo").checked = e.ativo !== false;
   $("eqp-local-tipo").value = e.localizacao_tipo || "base";
   $("eqp-local-obra").value = e.localizacao_obra_id || "";
@@ -772,24 +772,24 @@ function abrirFichaEquipamento(e){
   $("eqp-encaixe").value = e.encaixe_trado || ""; $("eqp-acopl").value = e.acoplamento_trado || "";
   $("eqp-diam-max").value = e.diametro_max_mm ?? ""; $("eqp-prof-max").value = e.profundidade_max_m ?? "";
   $("eqp-pino").value = e.pino_trado_mm ?? ""; $("eqp-obs-ace").value = e.obs_acessorios || "";
-  if($("eqp-grupo-crono")) $("eqp-grupo-crono").value = e.grupo_cronograma || "";   // fase 189a
-  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("eqp", "equipamento", e, pode);   // fase 105a: aba Fiscal (NCM)
-  // fase 107a: tipo de serviço do diário (equipamentos.tipo_servico_padrao; o campo só aparece com a coluna no banco)
+  if($("eqp-grupo-crono")) $("eqp-grupo-crono").value = e.grupo_cronograma || "";
+  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("eqp", "equipamento", e, pode);
+
   const temTipoServ = Object.prototype.hasOwnProperty.call(e, "tipo_servico_padrao") || (_eqpRegistros[0] && Object.prototype.hasOwnProperty.call(_eqpRegistros[0], "tipo_servico_padrao"));
   if($("eqp-tipo-servico-campo")) $("eqp-tipo-servico-campo").style.display = temTipoServ ? "" : "none";
   if(temTipoServ && $("eqp-tipo-servico") && typeof TIPO_SERVICO === "object"){
     $("eqp-tipo-servico").innerHTML = `<option value="">— sem tipo (não recebe estacas do Geodigitus) —</option>` + Object.entries(TIPO_SERVICO).map(([v, o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
     $("eqp-tipo-servico").value = e.tipo_servico_padrao || "";
-    // lote S66-f (#320): máquina já salva grava o tipo pela RPC (só esse campo, com histórico); a engenharia edita sem gravar o cadastro
+
     const rpcTipo = !novo && !vendido && eqpPodeDefinirTipoServico();
     $("eqp-tipo-servico").disabled = novo ? !pode : !rpcTipo;
     $("eqp-tipo-servico").dataset.rpc = rpcTipo ? "1" : "";
-    eqpTiposServicoPreencher(e, novo ? pode : rpcTipo, rpcTipo);   // hotfix 320: máquina de mais de um serviço
+    eqpTiposServicoPreencher(e, novo ? pode : rpcTipo, rpcTipo);
   }
-  if(typeof cpbPreencherMaquina === "function") cpbPreencherMaquina(e);   // fase 107a: chip CPU e bloco Computador de bordo
-  eqpPrincipalPreencher(e, pode);   // lote S63-g (#284): equipamento principal (munck no caminhão)
+  if(typeof cpbPreencherMaquina === "function") cpbPreencherMaquina(e);
+  eqpPrincipalPreencher(e, pode);
 
-  // chips
+
   $("eqp-chip-tag").textContent = e.codigo || "—";
   $("eqp-chip-tipo").textContent = EQP_TIPO_LBL[e.tipo] || e.tipo || "—";
   $("eqp-chip-onde").textContent = novo ? "—" : eqpOnde(e);
@@ -799,16 +799,16 @@ function abrirFichaEquipamento(e){
   $("eqp-chip-tec").textContent = tec || "—";
   atualizarStatusbarEquipamento(e.status || "disponivel");
 
-  // smart-buttons zerados até carregar
+
   ["sb-eqp-ace","sb-eqp-mob","sb-eqp-rdo","sb-eqp-mov","sb-eqp-rep","sb-eqp-man"].forEach(id => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = "0"; b.classList.add("zero"); } });
   $("eqp-ace-lista").innerHTML = `<p class="vazio">${novo ? "Salve o equipamento para ver os acessórios." : "Carregando…"}</p>`;
   ["eqp-mob-lista","eqp-rdo-lista","eqp-mov-lista","eqp-rep-lista"].forEach(id => { const el = $(id); if(el) el.innerHTML = `<p class="vazio">${novo ? "—" : "Carregando…"}</p>`; });
-  if($("eqp-chip-trab-box")) $("eqp-chip-trab-box").style.display = "none";   // fase 101: preenchido em eqpCarregarTrabalho
+  if($("eqp-chip-trab-box")) $("eqp-chip-trab-box").style.display = "none";
   $("eqp-man-lista").innerHTML = "";
 
-  if(!novo){ eqpCarregarFilhas(e); eqpCarregarRdos(e); eqpCarregarTrabalho(e); }   // fase 101: RDOs da máquina; obra e condutor do vínculo
-  if(typeof frmKitEquipamento === "function") frmKitEquipamento(novo ? null : e);   // fase 191b: kit de ferramentas
-  // fase 96: aba Venda (js/vendas_bens.js)
+  if(!novo){ eqpCarregarFilhas(e); eqpCarregarRdos(e); eqpCarregarTrabalho(e); }
+  if(typeof frmKitEquipamento === "function") frmKitEquipamento(novo ? null : e);
+
   const vCont = $("eqp-venda");
   if(vCont){ if(novo || typeof vbRenderAba !== "function") vCont.innerHTML = `<p class="vazio">—</p>`; else vbRenderAba(e, "eqp-venda"); }
   if(!novo && typeof montarHistorico === "function") montarHistorico("equipamentos", e.id, "eqp-chatter");
@@ -831,20 +831,20 @@ async function eqpCarregarFilhas(e){
   const id = e.id;
   const [mob, mov, rep, man, comp, cat, vgs] = await Promise.all([
     sb.from("mobilizacoes").select("id,obra_id,status,data_mobilizacao_prev,data_saida_real,data_chegada_real,data_desmob_real,equipamento_id,equipamentos_apoio").or(`equipamento_id.eq.${id},equipamentos_apoio.cs.{${id}}`).order("data_mobilizacao_prev", { ascending: false }),
-    // fase 89: a nota traz a viagem que a levou; a TAG também aparece como caminhão ou equipamento atendido da viagem (consulta abaixo)
+
     sb.from("movimentacao_itens").select("movimentacao_id,movimentacao:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_recebimento,origem_tipo,origem_descricao,destino_tipo,destino_descricao,destino_obra_id,nf_numero,interna,viagem_id,viagem:viagens(id,numero,data,status,finalidade,caminhao_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)))").eq("equipamento_id", id),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_conclusao,custo_estimado,acessorio_id").eq("equipamento_id", id).order("data_abertura", { ascending: false }).limit(200),
-    // lote S67-b (#344): todas as OSs da TAG (antes .limit(200) cortava as mais antigas sem aviso)
+
     lerTudo(() => sb.from("manutencoes").select("id,numero,tipo,status,descricao,data_prevista,data_inicio,data_conclusao,custo,horimetro_km,fornecedor_id,responsavel_id,observacoes,pedido_id,codigo_externo").eq("equipamento_id", id), "id"),
     sb.from("acessorio_equipamentos").select("acessorio_id").eq("equipamento_id", id),
     (typeof aceCatalogo === "function" ? aceCatalogo() : Promise.resolve([])).catch(() => []),
     sb.from("viagens").select("id,numero,data,status,finalidade,caminhao_id,equipamento_atendido_id,km_total,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,caminhao:equipamentos!caminhao_id(codigo)").or(`caminhao_id.eq.${id},equipamento_atendido_id.eq.${id}`).order("data", { ascending: false }).limit(300)
   ]);
-  await Promise.all([anexarCustoMO("reparo", rep.data), anexarCustoMO("os", man.data)]);   // lote S67-h
+  await Promise.all([anexarCustoMO("reparo", rep.data), anexarCustoMO("os", man.data)]);
   if(_eqpAtual?.id !== id) return;
   const setSb = (bid, n) => { const b = $(bid); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
 
-  // acessórios
+
   const compIds = new Set((comp.data || []).map(c => c.acessorio_id));
   const vivos = cat.filter(a => a.ativo !== false);
   _eqpAceCache = {
@@ -858,7 +858,7 @@ async function eqpCarregarFilhas(e){
   setSb("sb-eqp-ace", todos.length);
   eqpRenderAcessorios();
 
-  // mobilizações
+
   const mobs = mob.data || [];
   setSb("sb-eqp-mob", mobs.length);
   $("eqp-mob-lista").innerHTML = mob.error ? `<p class="vazio">Erro: ${esc(mob.error.message)}</p>` : !mobs.length ? `<p class="vazio">Nenhuma mobilização com esta TAG.</p>` :
@@ -868,8 +868,8 @@ async function eqpCarregarFilhas(e){
       <td><span class="tag ${EQP_MOB_ATIVA.includes(m.status) ? "azul" : m.status === "cancelada" ? "cinza" : "verde"}">${esc(MOB_LBL_SAFE(m.status))}</span></td>
       <td>${dataBR(m.data_mobilizacao_prev)}</td><td>${dataBR(m.data_saida_real)}</td><td>${dataBR(m.data_chegada_real)}</td><td>${dataBR(m.data_desmob_real)}</td></tr>`).join("")}</tbody></table></div>`;
 
-  // viagens (fase 89): a TAG como caminhão ou equipamento atendido da viagem, ou como item de uma nota levada por
-  // uma viagem; a nota aparece ao lado. Nota sem viagem (antes da fase 89) continua listada embaixo.
+
+
   const movs = (mov.data || []).map(i => i.movimentacao).filter(Boolean);
   const viagens = new Map();
   (vgs.data || []).forEach(v => viagens.set(v.id, { ...v, papel: v.caminhao_id === id ? "caminhão" : "equipamento atendido", notas: [] }));
@@ -901,13 +901,13 @@ async function eqpCarregarFilhas(e){
       <td>${m.destino_obra_id ? linkObra(m.destino_obra_id, m.destino_descricao || eqpObra(m.destino_obra_id)) : esc(m.destino_descricao || locLbl(m.destino_tipo))}</td>
       <td>${dataBR(m.data_recebimento)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
 
-  // custos (view unificada, módulo Compras)
+
   if(typeof custosRender === "function") custosRender("eqp-custos", { equipamento_id: id }, (total) => { const b = $("sb-eqp-custos"); if(b){ b.querySelector(".sb-num").textContent = brl(total).replace(",00", ""); b.classList.toggle("zero", !total); } });
 
-  // reparos e manutenções
+
   const reps = rep.data || [];
-  const mans = (man.data || []).sort((a, b) => String(b.data_prevista || "9999-12-31").localeCompare(String(a.data_prevista || "9999-12-31")));   // prevista desc, sem data primeiro (como o order do banco)
-  _eqpMans = mans; // fase 59: OS abre pela linha
+  const mans = (man.data || []).sort((a, b) => String(b.data_prevista || "9999-12-31").localeCompare(String(a.data_prevista || "9999-12-31")));
+  _eqpMans = mans;
   setSb("sb-eqp-rep", reps.length); setSb("sb-eqp-man", mans.length);
   const repSt = { aberto: "ambar", em_execucao: "ambar", concluido: "verde", cancelado: "cinza" };
   const repLbl = (typeof ACE_REPARO_STATUS === "object" && ACE_REPARO_STATUS) || {};
@@ -918,7 +918,7 @@ async function eqpCarregarFilhas(e){
       <td class="num">${r.custo_real != null ? brl(r.custo_real) : !podeVerCustoMO() ? "—" : r.custo_estimado != null ? brl(r.custo_estimado) + " (est.)" : "—"}</td></tr>`).join("")}</tbody></table></div>`);
   const manTipo = EQP_MAN_TIPO, manSt = EQP_MAN_ST;
   const podeOs = eqpPodeManutencao();
-  // fase 92: a OS tem ficha própria no módulo Manutenção (atividades, mão de obra, peças, checklist); aqui fica a lista com link
+
   $("eqp-man-lista").innerHTML = `<div class="lista-topo compacta"><h3 class="titulo-bloco" style="margin:0;">Ordens de serviço (manutenção)</h3><span class="eqp-os-acoes">${mans.length ? `<select id="eqp-os-exp-filtro" class="eqp-os-exp-filtro" aria-label="OSs que vão para a planilha" title="Quais OSs vão para a planilha"><option value="concluida">Concluídas</option><option value="">Todas</option></select><button type="button" class="btn btn-sm btn-sec" id="btn-eqp-os-exportar" title="Baixa em .xlsx as OSs desta TAG">Exportar planilha</button>` : ""}${podeOs ? `<button type="button" class="btn btn-sm" id="btn-eqp-os-nova">+ Nova OS</button>` : ""}</span></div>
     <p class="meta">Preventiva, corretiva ou preditiva, com atividades, mão de obra e peças (baixa no estoque) na ficha da OS em Manutenção. OS concluída com horímetro/km atualiza a máquina.</p>` + (man.error ? `<p class="vazio">Erro: ${esc(man.error.message)}</p>` : !mans.length ? `<p class="vazio">Nenhuma OS registrada para esta TAG.</p>` :
     `<div class="tabela-rola"><table><thead><tr><th>OS</th><th>Prevista</th><th>Tipo</th><th>Status</th><th>Descrição</th><th>Início</th><th>Conclusão</th><th class="num">Horímetro</th><th class="num">Custo</th></tr></thead>
@@ -931,18 +931,18 @@ async function eqpCarregarFilhas(e){
     if(typeof manNovaOS === "function" && irParaSecao("manutencao")) manNovaOS({ equipamento_id: e.id });
     else abrirOsManutencao(null);
   });
-  // fase 92: plano preventivo (semáforo) e leituras de horímetro/km da TAG
+
   if(typeof manRenderResumoEquipamento === "function") manRenderResumoEquipamento(e, "eqp-man-plano");
 }
 
-/* ---------- fase 101 (#85): histórico de RDOs da máquina (diário com a máquina no cabeçalho ou execução dela) ---------- */
+
 const EQP_RDO_TIPO = { helice_continua: "Hélice contínua", trado_mecanizado: "Trado mecanizado", estaca_raiz: "Estaca raiz", helice_secante: "Hélice secante" };
 async function eqpCarregarRdos(e){
   const id = e.id, cont = $("eqp-rdo-lista");
   if(!cont) return;
   const [cab, ex] = await Promise.all([
     sb.from("vw_rdo_resumo").select("id,obra_id,data,tipo_servico,status,qtd_estacas_executadas,metragem_total,concreto_total_m3").eq("equipamento_id", id).order("data", { ascending: false }).limit(500),
-    // execuções desta máquina em diário de outra máquina ou sem máquina (antes da fase 94 o diário era por obra)
+
     sb.from("rdo_execucao_estaca").select("rdo_id,profundidade_executada,rdo:rdo_id!inner(id,obra_id,data,tipo_servico,status,equipamento_id)").eq("equipamento_id", id).limit(3000)
   ]);
   if(_eqpAtual?.id !== id) return;
@@ -973,7 +973,7 @@ async function eqpCarregarRdos(e){
     if(irParaSecao("rdo") && typeof abrirRDO === "function") abrirRDO(tr.dataset.rdo);
   }));
 }
-/* fase 101 (#109): obra e condutor atuais do vínculo de trabalho (obra_equipamentos, aba Máquinas da obra) */
+
 async function eqpCarregarTrabalho(e){
   const box = $("eqp-chip-trab-box");
   if(!box) return;
@@ -985,11 +985,11 @@ async function eqpCarregarTrabalho(e){
   box.style.display = "";
 }
 
-/* ---------- Fase 59: OS de manutenção (tabela manutencoes, sem tela até aqui) ---------- */
+
 let _eqpMans = [];
 const EQP_MAN_TIPO = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
 const EQP_MAN_ST = { agendada: ["Aberta","azul"], em_andamento: ["Em execução","ambar"], concluida: ["Concluída","verde"], cancelada: ["Cancelada","cinza"] };
-/* lote S67-b (#344): as OSs da TAG em .xlsx (concluídas ou todas). O custo sai como na lista (o "ocultar valores" é só da tela). */
+
 function eqpExportarOS(){
   const e = _eqpAtual; if(!e) return;
   const filtro = $("eqp-os-exp-filtro")?.value || "";
@@ -1007,7 +1007,7 @@ function eqpExportarOS(){
 let _eqpOsId = null;
 const EQP_OS_TIPO = { preventiva: "Preventiva", corretiva: "Corretiva", preditiva: "Preditiva" };
 const EQP_OS_STATUS = { agendada: "Agendada", em_andamento: "Em andamento", concluida: "Concluída", cancelada: "Cancelada" };
-/* fase 92: espelha manutencao_pode_operar() (admin, engenheiro, mecânico, gestor_frota, logística, gestor_manutencao; diretor por has_role) */
+
 function eqpPodeManutencao(){
   return !!usuarioAtual && ["admin","diretor","mecanico","engenheiro","gestor_frota","logistica","gestor_manutencao"].includes(usuarioAtual.cargo);
 }
@@ -1036,7 +1036,7 @@ async function salvarOsManutencao(){
     custo: $("eqp-os-custo").value === "" ? null : Number($("eqp-os-custo").value), observacoes: $("eqp-os-obs").value.trim() || null };
   if(!reg.descricao){ aviso("app-aviso", "Descreva o serviço da OS.", "erro"); return; }
   if(reg.status === "concluida" && reg.fornecedor_id && (reg.custo == null) && !confirm("OS concluída com fornecedor e sem custo: o serviço não vai aparecer no custo da máquina. Salvar assim mesmo?")) return;
-  const q = _eqpOsId ? sb.from("manutencoes").update(reg).eq("id", _eqpOsId) : sb.from("manutencoes").insert(reg) // aberto_por = auth.uid() no banco (responsavel_id é funcionário, não usuário);
+  const q = _eqpOsId ? sb.from("manutencoes").update(reg).eq("id", _eqpOsId) : sb.from("manutencoes").insert(reg)
   const { error } = await q;
   if(error){ aviso("app-aviso", "Não foi possível salvar a OS: " + error.message, "erro"); return; }
   aviso("app-aviso", _eqpOsId ? "OS atualizada." : "OS aberta.", "ok");
@@ -1046,7 +1046,7 @@ async function salvarOsManutencao(){
   eqpCarregarFilhas(e);
 }
 
-/* ---------- aba Acessórios (a GERAL da planilha de hélice) ---------- */
+
 function eqpAceTodos(){
   const m = new Map();
   [..._eqpAceCache.na, ..._eqpAceCache.pertence, ..._eqpAceCache.compat].forEach(a => m.set(a.id, a));
@@ -1067,14 +1067,14 @@ function eqpRenderAcessorios(){
     c.innerHTML = `<p class="vazio">${_eqpAceModo ? "Nenhuma peça nesta visão." : "Nenhuma peça ligada a esta máquina. Na ficha do acessório, informe <em>Pertence à TAG</em> ou marque como compatível; peças movidas para a máquina aparecem aqui sozinhas."}</p>`;
     return;
   }
-  // jogo separado: irmãos do jogo (no catálogo inteiro) em lugares diferentes
+
   const cat = _eqpAceCache.cat || [];
   const jogoLocais = {};
   cat.forEach(a => { if(!a.jogo) return; const k = `${a.familia}|${a.jogo}`; const loc = (typeof aceColKey === "function") ? aceColKey(a) : (a.local_tipo + ":" + (a.local_equipamento_id || a.local_obra_id || "")); (jogoLocais[k] = jogoLocais[k] || new Set()).add(loc); });
   const separado = a => a.jogo && (jogoLocais[`${a.familia}|${a.jogo}`]?.size || 0) > 1;
   const descr = a => (typeof aceDescr === "function" ? aceDescr(a) : (a.tipo || ""));
   const onde = a => (typeof aceOnde === "function" ? aceOnde(a) : (a.local_tipo || ""));
-  // grupos por Ø (desc), peças sem Ø no fim; dentro: jogo, seq, marcação
+
   const porDiam = new Map();
   base.forEach(a => { const k = a.diametro_mm ? Number(a.diametro_mm) : 0; (porDiam.get(k) || porDiam.set(k, []).get(k)).push(a); });
   const chaves = [...porDiam.keys()].sort((x, y) => (x === 0) - (y === 0) || y - x);
@@ -1100,12 +1100,12 @@ function eqpRenderAcessorios(){
   }).join("");
 }
 
-/* ---------- salvar ---------- */
+
 async function salvarEquipamento(){
   const vendido = bemVendido(_eqpAtual);
-  const podeCadastro = eqpPodeEditar() && !vendido;   // fase 96: bem vendido fica só para consulta
-  const mudouValor = eqpValorBemMudou();              // valor e data de aquisição: diretoria e financeiro, também em bem vendido
-  // valor para remessa: só diretoria e financeiro, pela RPC (nunca no update do cadastro)
+  const podeCadastro = eqpPodeEditar() && !vendido;
+  const mudouValor = eqpValorBemMudou();
+
   const remessa = typeof fiscalItemRemessaMudou === "function" ? fiscalItemRemessaMudou("eqp") : null;
   if(remessa && remessa.erro){ aviso("app-aviso", remessa.erro, "erro"); ativarTabEquipamento("fiscal"); return; }
   if(!podeCadastro){
@@ -1132,7 +1132,7 @@ async function salvarEquipamento(){
     nome: $("eqp-nome").value.trim(), tipo: $("eqp-tipo").value,
     marca: $("eqp-marca").value.trim() || null, modelo: $("eqp-modelo").value.trim() || null,
     ano_fabricacao: n($("eqp-ano").value), numero_serie: $("eqp-serie").value.trim() || null,
-    horimetro: n($("eqp-horimetro").value),   // valor e data de aquisição não entram aqui: vão por eqpValorBemGravar()
+    horimetro: n($("eqp-horimetro").value),
     codigo_externo: $("eqp-cod-ext").value.trim() || null, ativo: $("eqp-ativo").checked,
     localizacao_tipo: localTipo,
     localizacao_obra_id: ["obra","em_transito","cliente"].includes(localTipo) ? ($("eqp-local-obra").value || null) : null,
@@ -1141,19 +1141,19 @@ async function salvarEquipamento(){
     encaixe_trado: $("eqp-encaixe").value.trim() || null, acoplamento_trado: $("eqp-acopl").value || null,
     diametro_max_mm: n($("eqp-diam-max").value), profundidade_max_m: n($("eqp-prof-max").value), pino_trado_mm: n($("eqp-pino").value),
     obs_acessorios: $("eqp-obs-ace").value.trim() || null,
-    grupo_cronograma: ($("eqp-grupo-crono")?.value || "").trim() || null   // fase 189a: grupo no cronograma (RG 11.15)
+    grupo_cronograma: ($("eqp-grupo-crono")?.value || "").trim() || null
   };
   if(!reg.nome){ aviso("app-aviso", "Informe o nome do equipamento.", "erro"); $("eqp-nome").focus(); return; }
   if(reg.localizacao_tipo === "obra" && !reg.localizacao_obra_id){ aviso("app-aviso", "Escolha a obra em que a máquina está.", "erro"); return; }
-  // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
+
   const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("eqp") : null;
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabEquipamento("fiscal"); return; }
   if(fis) Object.assign(reg, fis);
-  // fase 107a; lote S66-f: em máquina já salva o tipo grava na hora pela RPC (equipamento_definir_tipo_servico), não aqui
+
   if(!_eqpEditId && $("eqp-tipo-servico-campo") && $("eqp-tipo-servico-campo").style.display !== "none") reg.tipo_servico_padrao = $("eqp-tipo-servico").value || null;
-  // hotfix 320: serviços da máquina nova (um só = nulo); na máquina salva grava pela RPC
+
   if(!_eqpEditId && $("eqp-tipos-servico-campo") && $("eqp-tipos-servico-campo").style.display !== "none") reg.tipos_servico = eqpTiposServicoMarcados(reg.tipo_servico_padrao);
-  // lote S63-g (#284): vínculo com o principal; quem já é principal de outro fica travado (o banco também recusa)
+
   const selPrin = $("eqp-principal");
   if($("eqp-principal-campo") && $("eqp-principal-campo").style.display !== "none" && selPrin && selPrin.dataset.carregado === "1" && selPrin.dataset.travado !== "1") reg.equipamento_principal_id = selPrin.value || null;
   const atual = _eqpAtual || {};
@@ -1182,7 +1182,7 @@ async function salvarEquipamento(){
 async function eqpMudarStatus(novo){
   if(!_eqpEditId) return;
   if(novo === (_eqpAtual.status || "disponivel")) return;
-  // fase 96: "Vendido" nasce do registro da venda (modal); sair de vendido só cancelando a venda
+
   if(bemVendido(_eqpAtual)){ aviso("app-aviso", `${_eqpAtual.codigo} foi vendido. Para devolvê-lo ao cadastro, cancele a venda na aba Venda.`, "erro"); ativarTabEquipamento("venda"); return; }
   if(novo === "vendido"){ if(typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); return; }
   if(!eqpPodeEditar()) return;
@@ -1195,7 +1195,7 @@ async function eqpMudarStatus(novo){
   await abrirEquipamento(_eqpEditId);
 }
 
-/* ---------- atalhos para outros módulos ---------- */
+
 function eqpNovaRemessa(){
   const e = _eqpAtual; if(!e?.id) return;
   if(!irParaSecao("movimentacoes") || typeof novaMovimentacao !== "function") return;
@@ -1244,7 +1244,7 @@ async function eqpAbrirMovimentacao(id){
   if(typeof abrirMovimentacao === "function") abrirMovimentacao(id);
 }
 
-/* ---------- ligação ---------- */
+
 function ligarEquipamentos(){
   if(!$("sec-equipamentos")) return;
   document.querySelector('nav button[data-secao="equipamentos"]')?.addEventListener("click", () => carregarEquipamentos(false));
@@ -1254,10 +1254,10 @@ function ligarEquipamentos(){
   $("eqp-busca")?.addEventListener("input", debounce(renderEquipamentos));
   $("btn-eqp-atualizar")?.addEventListener("click", () => carregarEquipamentos(true));
   $("btn-eqp-novo")?.addEventListener("click", novoEquipamento);
-  $("eqp-sem-busca")?.addEventListener("input", debounce(eqpSemRender));   // lote S58 (#232)
+  $("eqp-sem-busca")?.addEventListener("input", debounce(eqpSemRender));
   $("eqp-sem-grupo")?.addEventListener("change", eqpSemRender);
   $("btn-eqp-sem-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-sem-salvar", eqpSemSalvar));
-  $("eqp-vrm-busca")?.addEventListener("input", debounce(eqpVrmRender));   // valor para remessa
+  $("eqp-vrm-busca")?.addEventListener("input", debounce(eqpVrmRender));
   ["eqp-vrm-f-situacao", "eqp-vrm-f-valor"].forEach(id => $(id)?.addEventListener("change", eqpVrmRender));
   $("btn-eqp-vrm-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-vrm-salvar", eqpVrmSalvar));
   $("eqp-vrm-imp-arquivo")?.addEventListener("change", e => { const f = e.target.files?.[0]; e.target.value = ""; eqpVrmImportarArquivo(f); });
@@ -1267,14 +1267,14 @@ function ligarEquipamentos(){
     if(el) abrirEquipamento(el.dataset.id);
   });
 
-  // ficha
+
   $("btn-eqp-voltar")?.addEventListener("click", mostrarPainelEquipamentos);
   $("btn-eqp-salvar")?.addEventListener("click", () => comBotaoTravado("btn-eqp-salvar", salvarEquipamento));
-  $("eqp-tipo-servico")?.addEventListener("change", eqpTipoServicoMudou);   // lote S66-f (#320)
-  $("eqp-tipos-servico")?.addEventListener("change", eqpTiposServicoMudou);   // hotfix 320
+  $("eqp-tipo-servico")?.addEventListener("change", eqpTipoServicoMudou);
+  $("eqp-tipos-servico")?.addEventListener("change", eqpTiposServicoMudou);
   $("btn-eqp-remessa")?.addEventListener("click", eqpNovaRemessa);
   $("btn-eqp-acessorios")?.addEventListener("click", eqpVerAcessorios);
-  $("btn-eqp-vender")?.addEventListener("click", () => { if(_eqpAtual && typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); });   // fase 96
+  $("btn-eqp-vender")?.addEventListener("click", () => { if(_eqpAtual && typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); });
   $("eqp-local-tipo")?.addEventListener("change", eqpToggleLocalObra);
   document.querySelectorAll("#eqp-notebook button").forEach(b => b.addEventListener("click", () => ativarTabEquipamento(b.dataset.tab)));
   document.querySelectorAll("#eqp-ficha .sb-btn[data-goto-tab]").forEach(b => b.addEventListener("click", () => ativarTabEquipamento(b.dataset.gotoTab)));
@@ -1284,12 +1284,12 @@ function ligarEquipamentos(){
   $("eqp-mob-lista")?.addEventListener("click", e => { if(e.target.closest("a.link-obra")) return; const tr = e.target.closest("tr[data-mob]"); if(tr) eqpAbrirMobilizacao(tr.dataset.mob); });
   $("eqp-mov-lista")?.addEventListener("click", e => {
     if(e.target.closest("a.link-obra, a.link-cad")) return;
-    const tv = e.target.closest("tr[data-vg]");   // fase 89: linha da viagem abre a ficha em Logística
+    const tv = e.target.closest("tr[data-vg]");
     if(tv){ if(irParaSecao("frota") && typeof abrirViagem === "function") abrirViagem(tv.dataset.vg, null); return; }
     const tr = e.target.closest("tr[data-mov]"); if(tr) eqpAbrirMovimentacao(tr.dataset.mov);
   });
-  // fase 59: OS de manutenção
-  // fase 92: a linha abre a ficha da OS em Manutenção (o modal da fase 59 fica só como reserva, sem o módulo carregado)
+
+
   $("eqp-man-lista")?.addEventListener("click", e => {
     if(e.target.closest("button") || e.target.closest("a")) return;
     const tr = e.target.closest("tr[data-os]"); if(!tr) return;
@@ -1303,17 +1303,17 @@ function ligarEquipamentos(){
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarEquipamentos);
 else ligarEquipamentos();
 
-/* ====================================================================
-   LOTE S66-f (#320) — tipo de serviço padrão da máquina pela engenharia
-   RPC equipamento_definir_tipo_servico (definer): muda só equipamentos.tipo_servico_padrao e grava registros_log. Quem
-   pode: engenheiro, assistente de engenharia e os cargos que já gravam equipamentos (lista igual à da RPC, com diretor).
-   ==================================================================== */
+
+
+
+
+
 const EQP_CARGOS_TIPO_SERVICO = ["diretor", "admin", "engenheiro", "assistente_engenharia", "mecanico", "logistica", "rh", "gestor_acessorios", "gestor_frota", "gestor_manutencao"];
 function eqpPodeDefinirTipoServico(){
   return !!usuarioAtual && EQP_CARGOS_TIPO_SERVICO.includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
 }
 async function eqpGravarTipoServico(equipId, tipo, tipos){
-  // hotfix 320: p_tipos = serviços da máquina (omitido mantém os de hoje; um só grava nulo)
+
   const args = { p_equip: equipId, p_tipo: tipo };
   if(Array.isArray(tipos)) args.p_tipos = tipos;
   const { error } = await sb.rpc("equipamento_definir_tipo_servico", args);
@@ -1325,7 +1325,7 @@ async function eqpGravarTipoServico(equipId, tipo, tipos){
   });
   return true;
 }
-/* hotfix 320: "Serviços que esta máquina faz" (equipamentos.tipos_servico). O padrão fica sempre marcado. */
+
 function eqpTiposServicoPreencher(e, editavel, rpc){
   const campo = $("eqp-tipos-servico-campo"), box = $("eqp-tipos-servico");
   if(!campo || !box) return;
@@ -1344,7 +1344,7 @@ function eqpTiposServicoMarcados(padrao){
 }
 async function eqpTiposServicoMudou(ev){
   const chk = ev.target;
-  if(!chk.matches("input[type=checkbox]") || $("eqp-tipos-servico").dataset.rpc !== "1" || !_eqpEditId) return;   // máquina nova: vai junto no Salvar
+  if(!chk.matches("input[type=checkbox]") || $("eqp-tipos-servico").dataset.rpc !== "1" || !_eqpEditId) return;
   const padrao = $("eqp-tipo-servico")?.value || "";
   if(!padrao){ aviso("app-aviso", "Escolha antes o tipo de serviço padrão.", "erro"); chk.checked = !chk.checked; return; }
   const tipos = [...new Set([...document.querySelectorAll("#eqp-tipos-servico input[type=checkbox]:checked")].map(i => i.value).concat(padrao))];
@@ -1355,8 +1355,8 @@ async function eqpTiposServicoMudou(ev){
 }
 async function eqpTipoServicoMudou(ev){
   const sel = ev.target;
-  if(sel.dataset.rpc !== "1" || !_eqpEditId){   // máquina nova: vai junto no Salvar
-    if(!_eqpEditId) eqpTiposServicoPreencher({ tipos_servico: eqpTiposServicoMarcados(null) || [] }, true, false);   // hotfix 320
+  if(sel.dataset.rpc !== "1" || !_eqpEditId){
+    if(!_eqpEditId) eqpTiposServicoPreencher({ tipos_servico: eqpTiposServicoMarcados(null) || [] }, true, false);
     return;
   }
   const ant = _eqpAtual?.tipo_servico_padrao || "", novo = sel.value || "";
@@ -1367,9 +1367,9 @@ async function eqpTipoServicoMudou(ev){
   const ok = await eqpGravarTipoServico(_eqpEditId, novo);
   sel.disabled = false;
   if(ok) aviso("app-aviso", `Tipo de serviço gravado: ${rot}.`, "ok"); else sel.value = ant;
-  if(_eqpAtual) eqpTiposServicoPreencher(_eqpAtual, true, true);   // hotfix 320: o padrão novo fica marcado
+  if(_eqpAtual) eqpTiposServicoPreencher(_eqpAtual, true, true);
 }
-/* "Definir agora" no aviso das Chegadas do Geodigitus (máquina sem tipo de serviço padrão) */
+
 async function eqpDefinirTipoServicoPrompt(equipId, codigo){
   if(!eqpPodeDefinirTipoServico()){ aviso("app-aviso", "Seu perfil não define o tipo de serviço da máquina.", "erro"); return false; }
   const ops = Object.entries(typeof TIPO_SERVICO === "object" ? TIPO_SERVICO : {});

@@ -1,17 +1,17 @@
-/* ====================================================================
-   Clientes: saneamento do cadastro (fase 182b, 18/11/2026)
-   Spec: docs/specs/fase-182-cadastro-cliente.md (parte 182b). Lista conferida: docs/cargas/clientes-saneamento-2026-11-16.md.
-   - Visão "A corrigir" no painel de Clientes: uma linha por problema, com o motivo.
-   - "Completar pelo CNPJ": consulta a BrasilAPI um a um (fiscalBuscarCnpj, com pausa), mostra a prévia e grava só os
-     campos vazios depois do OK (RPC clientes_completar_receita). Situação não ativa e razão social diferente viram aviso.
-   - "Juntar cadastros" (só diretor): escolhe o que fica e o que sai, mostra a contagem de cada lado
-     (clientes_juntar_previa) e junta depois da confirmação (clientes_juntar). Nada é juntado sem o clique do diretor.
-   Prefixo dos IDs: cls-.
-   ==================================================================== */
 
-let _clsReceita = {};        // id do cliente -> { razao, situacao, ativa } da última consulta em lote
-let _clsLote = null;         // { itens: [{ cli, dados, campos }], parar }
-const CLS_PAUSA_MS = 1300;   // BrasilAPI limita as consultas seguidas
+
+
+
+
+
+
+
+
+
+
+let _clsReceita = {};
+let _clsLote = null;
+const CLS_PAUSA_MS = 1300;
 
 const CLS_ROTULO_FK = {
   "obras.cliente_id": "Obras (cliente)", "obras.obra_para_id": "Obras (\"Obra para\")", "orcamentos.cliente_id": "Orçamentos",
@@ -42,7 +42,7 @@ function clsPalavraChave(c){
   return p[0] || "";
 }
 
-/* ---------- problemas ---------- */
+
 function clsProblemas(){
   const ativos = _clientes.filter(c => c.ativo !== false);
   const out = [];
@@ -56,14 +56,14 @@ function clsProblemas(){
     if(r && !r.ativa) add(c, `Receita: situação ${r.situacao}`);
     if(r && r.razao && clsNorm(r.razao) !== clsNorm(String(c.nome || "").split(",")[0])) add(c, `Receita: razão social "${r.razao}"`);
   });
-  // mesma raiz de CNPJ sem o mesmo grupo
+
   const porRaiz = {};
   ativos.forEach(c => { const r = cliRaiz(c.cpf_cnpj); if(r) (porRaiz[r] = porRaiz[r] || []).push(c); });
   Object.values(porRaiz).filter(l => l.length > 1).forEach(l => {
     const grupos = new Set(l.map(c => c.grupo_id || ""));
     if(grupos.size > 1 || grupos.has("")) l.forEach(c => add(c, `Mesma raiz de CNPJ de ${l.filter(x => x !== c).map(x => x.nome).join(", ")}, sem o mesmo grupo`));
   });
-  // nomes parecidos, um com e outro sem CNPJ
+
   const porChave = {};
   ativos.forEach(c => { const k = clsPalavraChave(c); if(k) (porChave[k] = porChave[k] || []).push(c); });
   Object.values(porChave).forEach(l => {
@@ -102,7 +102,7 @@ function clsRender(){
   clsRenderLote();
 }
 
-/* ---------- completar pelo CNPJ em lote ---------- */
+
 function clsCandidatosLote(){
   return _clientes.filter(c => c.ativo !== false && clsDigitos(c.cpf_cnpj).length === 14
     && (clsVazio(c.logradouro) || clsVazio(c.nome_fantasia) || clsVazio(c.codigo_ibge) || clsVazio(c.cep) || clsVazio(c.cidade)));
@@ -167,7 +167,7 @@ async function clsGravarLote(){
   aviso("app-aviso", `${ok} cliente(s) completados pela Receita${falhas.length ? `; ${falhas.length} com erro: ${falhas.join("; ")}` : ""}.`, falhas.length ? "aviso" : "sucesso");
 }
 
-/* ---------- juntar cadastros ---------- */
+
 function clsAbrirJuntar(saiId, ficaId){
   if(!clsPodeJuntar()) return;
   const ops = _clientes.filter(c => c.ativo !== false).sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"))
@@ -215,7 +215,7 @@ async function clsConfirmarJuntar(){
   aviso("app-aviso", `"${s.nome}" juntado em "${f.nome}". Movido: ${mov || "nada ligado"}.`, "sucesso");
 }
 
-/* ---------- ligação ---------- */
+
 function ligarClientesSaneamento(){
   $("cli-conteudo")?.addEventListener("click", (e) => {
     if(_cliView !== "corrigir") return;

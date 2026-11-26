@@ -1,21 +1,21 @@
-/* ====================================================================
-   Módulo: Encontro de Contas (fase 190a, #214) — fechamento de caixa por funcionário (RG 8.5)
-   Entradas (dinheiro que o funcionário recebeu), relatórios aprovados (abatem o saldo), prestação de contas (notinha
-   entregue em mãos, só informação: NÃO soma no saldo) e fechamentos. Saldo = Σ entradas − Σ relatórios, sempre lido da
-   vw_ec_saldos (o front não calcula saldo; o total do rodapé de cada aba é só a soma da lista).
-   Leitura no banco por ec_pode_ler(): quem lê financeiro (menos o comercial) e o gestor da obra em que o funcionário
-   está alocado. Grava: financeiro, admin e diretor. Fechar e desfazer só pelas RPCs; linha fechada não se edita.
-   Prefixo: ecc-.
-   ==================================================================== */
 
-let _eccSaldos = [];       // vw_ec_saldos
-let _eccFuncs = [];        // funcionários (id, nome, ativo) para abrir o caixa de quem ainda não tem lançamento
-let _eccObras = [];        // obras (id, codigo, nome) para os selects e o filtro
-let _eccAloc = {};         // funcionario_id -> Set(obra_id) da competência atual e da anterior
+
+
+
+
+
+
+
+
+
+let _eccSaldos = [];
+let _eccFuncs = [];
+let _eccObras = [];
+let _eccAloc = {};
 let _eccView = "lista";
 let _eccCarregado = false;
-let _eccAtual = null;      // { func, saldo, entradas, relatorios, prestacoes, fechamentos, perfis }
-let _eccEdit = null;       // { tipo: "entrada"|"relatorio"|"prestacao", id }
+let _eccAtual = null;
+let _eccEdit = null;
 
 const ECC_TIPOS = { deposito_conta: "Depósito em conta", caixa_financeiro: "Caixa Financeiro", cartao_flash: "Cartão Flash",
   cartao_vex: "Cartão VEX", reembolso: "Reembolso", outro: "Outro" };
@@ -23,16 +23,16 @@ const ECC_TABELA = { entrada: "ec_entradas", relatorio: "ec_relatorios", prestac
 const ECC_TITULO = { entrada: "Entrada", relatorio: "Relatório aprovado", prestacao: "Prestação de contas" };
 const ECC_NOVO = { entrada: "Nova entrada", relatorio: "Novo relatório aprovado", prestacao: "Nova prestação de contas" };
 
-/* Espelham ec_pode_ler() e as policies de escrita. O gestor de obra sem leitura financeira não tem o item no menu (hoje
-   todos os gestores são engenheiros); o banco decide o que ele lê. */
-function eccPodeVer(){ return podeVerEncontroContas(); }   // core.js (menu)
+
+
+function eccPodeVer(){ return podeVerEncontroContas(); }
 function eccPodeGravar(){ return !!usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo); }
 function eccPodeDesfazer(){ return !!usuarioAtual && usuarioAtual.cargo === "diretor"; }
 function eccObraRotulo(id){ if(!id) return "—"; const o = _eccObras.find(x => x.id === id); return obraRotulo(id) || (o ? `${o.codigo} — ${o.nome}` : "—"); }
 function eccSaldoCls(v){ return Number(v) < 0 ? "txt-perigo" : ""; }
 function eccSemAcento(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
 
-/* ---------- carga ---------- */
+
 async function carregarEncontroContas(force){
   const cont = $("ecc-conteudo"); if(!cont) return;
   if(force || !_eccCarregado){
@@ -67,7 +67,7 @@ function eccPreencherFiltros(){
     .map(f => `<option value="${esc(f.id)}">${esc(f.nome)}${f.ativo ? "" : " (inativo)"}</option>`).join("");
 }
 
-/* ---------- painel ---------- */
+
 function eccFiltrados(){
   const q = eccSemAcento($("ecc-busca")?.value || "").trim();
   const sit = $("ecc-situacao")?.value || "";
@@ -111,7 +111,7 @@ function renderEncontroContas(){
 function renderEccCartoes(dados){
   const cols = [["A prestar contas", s => Number(s.saldo) > 0], ["Zerado", s => Number(s.saldo) === 0], ["A devolver ao funcionário", s => Number(s.saldo) < 0]];
   const card = s => `<div class="func-kan-card linha-clicavel" data-id="${esc(s.funcionario_id)}" tabindex="0">
-      ${/* html */ uiAvatar(s.nome)}
+      ${  uiAvatar(s.nome)}
       <div class="func-kan-card-body">
         <div class="func-kan-card-nome">${esc(s.nome)}</div>
         <div class="func-kan-card-funcao ${eccSaldoCls(s.saldo)}" data-val-sens>${brl(s.saldo)}</div>
@@ -123,7 +123,7 @@ function renderEccCartoes(dados){
   }).join("")}</div>`;
 }
 
-/* ---------- ficha ---------- */
+
 function mostrarPainelEncontro(){
   $("ecc-ficha").style.display = "none"; $("ecc-painel").style.display = "";
   _eccAtual = null;
@@ -169,23 +169,23 @@ function renderFichaEncontro(aba){
     ? `<button type="button" class="btn-sec btn-sm" data-ecc-editar="${esc(tipo)}" data-id="${esc(l.id)}">Editar</button> <button type="button" class="btn-sec btn-sm acao-perigo" data-ecc-excluir="${esc(tipo)}" data-id="${esc(l.id)}">Excluir</button>` : "";
   const soma = arr => arr.reduce((t, l) => t + Number(l.valor || 0), 0);
   const tabela = (cab, linhas, total, colsAntes, colsDepois) => !linhas ? "" : `<div class="tabela-rola"><table>
-    <thead><tr>${/* html */ cab}</tr></thead><tbody>${/* html */ linhas}</tbody>
+    <thead><tr>${  cab}</tr></thead><tbody>${  linhas}</tbody>
     <tfoot><tr><td colspan="${Number(colsAntes)}"><strong>Total</strong></td><td class="num"><strong>${brl(total)}</strong></td><td colspan="${Number(colsDepois)}"></td></tr></tfoot></table></div>`;
   const ordem = arr => [...arr].sort((x, y) => String(y.data).localeCompare(String(x.data)));
   $("ecc-entradas").innerHTML = !a.entradas.length ? uiVazio("Nenhuma entrada.") : tabela(
     "<th>Data</th><th>Tipo</th><th>Descrição</th><th>Obra</th><th class=\"num\">Valor</th><th>Situação</th><th>Observação</th><th></th>",
     ordem(a.entradas).map(l => `<tr><td>${dataBR(l.data)}</td><td>${esc(ECC_TIPOS[l.tipo] || l.tipo)}</td><td>${esc(l.descricao || "—")}</td>
-      <td>${esc(eccObraRotulo(l.obra_id))}</td><td class="num">${brl(l.valor)}</td><td>${/* html */ sit(l)}</td><td class="meta">${/* html */ obs(l)}</td><td>${/* html */ acoes("entrada", l)}</td></tr>`).join(""),
+      <td>${esc(eccObraRotulo(l.obra_id))}</td><td class="num">${brl(l.valor)}</td><td>${  sit(l)}</td><td class="meta">${  obs(l)}</td><td>${  acoes("entrada", l)}</td></tr>`).join(""),
     soma(a.entradas), 4, 3);
   $("ecc-relatorios").innerHTML = !a.relatorios.length ? uiVazio("Nenhum relatório aprovado.") : tabela(
     "<th>Data</th><th>Descrição</th><th>Obra</th><th class=\"num\">Valor</th><th>Situação</th><th>Observação</th><th></th>",
     ordem(a.relatorios).map(l => `<tr><td>${dataBR(l.data)}</td><td>${esc(l.descricao || "—")}</td><td>${esc(eccObraRotulo(l.obra_id))}</td>
-      <td class="num">${brl(l.valor)}</td><td>${/* html */ sit(l)}</td><td class="meta">${/* html */ obs(l)}</td><td>${/* html */ acoes("relatorio", l)}</td></tr>`).join(""),
+      <td class="num">${brl(l.valor)}</td><td>${  sit(l)}</td><td class="meta">${  obs(l)}</td><td>${  acoes("relatorio", l)}</td></tr>`).join(""),
     soma(a.relatorios), 3, 3);
   $("ecc-prestacoes").innerHTML = (!a.prestacoes.length ? uiVazio("Nenhuma prestação de contas.") : tabela(
     "<th>Data</th><th>Despesa</th><th class=\"num\">Valor</th><th>Situação</th><th>Observação</th><th></th>",
     ordem(a.prestacoes).map(l => `<tr><td>${dataBR(l.data)}</td><td>${esc(l.despesa || "—")}</td><td class="num">${brl(l.valor)}</td>
-      <td>${/* html */ sit(l)}</td><td class="meta">${/* html */ obs(l)}</td><td>${/* html */ acoes("prestacao", l)}</td></tr>`).join(""),
+      <td>${  sit(l)}</td><td class="meta">${  obs(l)}</td><td>${  acoes("prestacao", l)}</td></tr>`).join(""),
     soma(a.prestacoes), 2, 3)) + `<p class="meta">A prestação de contas é só informação para quem fecha o caixa: não entra no saldo.</p>`;
   const pode = eccPodeDesfazer();
   $("ecc-fechamentos").innerHTML = !a.fechamentos.length ? uiVazio("Nenhum fechamento registrado no app.") : `<div class="tabela-rola"><table>
@@ -203,7 +203,7 @@ function ativarTabEncontro(nome){
   document.querySelectorAll("#ecc-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.tab === nome));
   document.querySelectorAll("#ecc-ficha .odoo-tab").forEach(t => t.classList.toggle("ativa", t.dataset.tab === nome));
 }
-/* depois de gravar: a ficha e a linha do painel voltam do banco (o saldo é da view) */
+
 async function eccRecarregar(aba){
   const id = _eccAtual?.func?.id; if(!id) return;
   await abrirEncontroContas(id);
@@ -213,7 +213,7 @@ async function eccRecarregar(aba){
   if(data){ if(i >= 0) _eccSaldos[i] = data; else _eccSaldos.push(data); } else if(i >= 0) _eccSaldos.splice(i, 1);
 }
 
-/* ---------- lançamento (entrada, relatório, prestação) ---------- */
+
 function abrirLancamentoEcc(tipo, id){
   if(!eccPodeGravar() || !_eccAtual) return;
   const lista = { entrada: _eccAtual.entradas, relatorio: _eccAtual.relatorios, prestacao: _eccAtual.prestacoes }[tipo];
@@ -269,7 +269,7 @@ async function excluirLancamentoEcc(tipo, id){
   await eccRecarregar();
 }
 
-/* ---------- fechar e desfazer ---------- */
+
 function abrirFecharCaixaEcc(){
   if(!eccPodeGravar() || !_eccAtual) return;
   $("ecc-f-titulo").textContent = "Fechar caixa · " + _eccAtual.func.nome;
@@ -304,23 +304,23 @@ async function desfazerFechamentoEcc(id){
   await eccRecarregar("fechamentos");
 }
 
-/* ---------- imprimir o fechamento (pelo navegador) ---------- */
+
 function imprimirFechamentoEcc(id){
   const a = _eccAtual, f = a?.fechamentos.find(x => x.id === id); if(!f) return;
   const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }
   const doF = arr => arr.filter(l => l.fechamento_id === id).sort((x, y) => String(x.data).localeCompare(String(y.data)));
-  const tab = (titulo, cab, linhas, total) => `<h2>${esc(titulo)}</h2>${linhas ? `<table><thead><tr>${/* html */ cab}</tr></thead><tbody>${/* html */ linhas}</tbody>
+  const tab = (titulo, cab, linhas, total) => `<h2>${esc(titulo)}</h2>${linhas ? `<table><thead><tr>${  cab}</tr></thead><tbody>${  linhas}</tbody>
     <tfoot><tr><td colspan="2">Total</td><td class="n">${brl(total)}</td></tr></tfoot></table>` : "<p>Nenhum.</p>"}`;
   const en = doF(a.entradas), re = doF(a.relatorios), pr = doF(a.prestacoes);
   const soma = arr => arr.reduce((t, l) => t + Number(l.valor || 0), 0);
   const html = `<h1>Fechamento de caixa · RG 8.5</h1>
     <p><strong>${esc(a.func.nome)}</strong>${a.func.matricula ? ` · matrícula ${esc(a.func.matricula)}` : ""} · fechado até ${dataBR(f.data)}
       por ${esc(a.perfis[f.fechado_por] || "—")} em ${dataHoraBR(f.fechado_em)}${f.desfeito_em ? " · <strong>DESFEITO</strong>" : ""}</p>
-    ${/* html */ tab("Entradas (caixa de obra)", "<th>Data</th><th>Tipo / descrição</th><th class=\"n\">Valor</th>",
+    ${  tab("Entradas (caixa de obra)", "<th>Data</th><th>Tipo / descrição</th><th class=\"n\">Valor</th>",
       en.map(l => `<tr><td>${dataBR(l.data)}</td><td>${esc(ECC_TIPOS[l.tipo] || l.tipo)}${l.descricao ? " · " + esc(l.descricao) : ""}</td><td class="n">${brl(l.valor)}</td></tr>`).join(""), soma(en))}
-    ${/* html */ tab("Relatórios aprovados", "<th>Data</th><th>Descrição</th><th class=\"n\">Valor</th>",
+    ${  tab("Relatórios aprovados", "<th>Data</th><th>Descrição</th><th class=\"n\">Valor</th>",
       re.map(l => `<tr><td>${dataBR(l.data)}</td><td>${esc(l.descricao || "")}</td><td class="n">${brl(l.valor)}</td></tr>`).join(""), soma(re))}
-    ${/* html */ tab("Prestação de contas (não entra no saldo)", "<th>Data</th><th>Despesa</th><th class=\"n\">Valor</th>",
+    ${  tab("Prestação de contas (não entra no saldo)", "<th>Data</th><th>Despesa</th><th class=\"n\">Valor</th>",
       pr.map(l => `<tr><td>${dataBR(l.data)}</td><td>${esc(l.despesa || "")}</td><td class="n">${brl(l.valor)}</td></tr>`).join(""), soma(pr))}
     <table class="res"><tr><td>Saldo anterior</td><td class="n">${brl(f.saldo_anterior)}</td></tr>
       <tr><td>+ Entradas</td><td class="n">${brl(f.total_entradas)}</td></tr><tr><td>− Relatórios aprovados</td><td class="n">${brl(f.total_relatorios)}</td></tr>
@@ -333,11 +333,11 @@ function imprimirFechamentoEcc(id){
     table { width: 100%; border-collapse: collapse; } th, td { border-bottom: 1px solid silver; padding: 3px 4px; text-align: left; }
     .n { text-align: right; } tfoot td { font-weight: bold; } .res { width: 50%; margin: 16px 0 0 auto; }
     .ass { display: flex; gap: 40px; margin-top: 60px; } .ass div { flex: 1; border-top: 1px solid black; text-align: center; padding-top: 4px; }
-  </style></head><body>${/* html */ html}</body></html>`);
+  </style></head><body>${  html}</body></html>`);
   w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
 }
 
-/* ---------- WhatsApp do colaborador (fase 190d, D19): vincular e desvincular o número ---------- */
+
 function eccFoneBR(e164){
   const d = String(e164 || "").replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
   return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : String(e164 || "");
@@ -385,7 +385,7 @@ async function vincularWhatsAppEcc(sugerido){
   uiAvisar("WhatsApp vinculado.", "ok");
 }
 
-/* ---------- smart-button "Caixa" na ficha do funcionário (D9) ---------- */
+
 async function eccSmartFuncionario(funcId){
   const b = $("func-sb-caixa"); if(!b) return;
   b.style.display = "none"; b.dataset.id = funcId || "";
@@ -396,7 +396,7 @@ async function eccSmartFuncionario(funcId){
   b.style.display = "";
 }
 
-/* ---------- ligação ---------- */
+
 function ligarEncontroContas(){
   if(!$("sec-encontro-contas")) return;
   document.querySelector('nav button[data-secao="encontro-contas"]')?.addEventListener("click", () => { mostrarPainelEncontro(); carregarEncontroContas(false); });

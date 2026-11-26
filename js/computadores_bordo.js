@@ -1,23 +1,23 @@
-/* ====================================================================
-   Módulo: Computadores de bordo Geodigitus (CPU Saci) — fase 107a
-   Visão "Computadores de bordo" no painel de Equipamentos (toggle #eqp-views, data-view="cpb") e ficha Odoo própria
-   (#cpb-ficha): statusbar ativo → reserva → manutenção → baixado, chips IMEI / máquina atual / calibração até /
-   sincronização, smart-buttons (estacas, vínculos, certificados) e abas Dados · Vínculos · Calibração · Sincronização.
-   O IMEI identifica a CPU; a estaca é atribuída à máquina vigente na data pelo vínculo por período (o gatilho do banco
-   recusa sobreposição). Certificados no bucket privado computadores-bordo (pasta = id da CPU).
-   Quem cadastra CPU, vínculo e certificado: computador_bordo_pode_operar() no banco (admin, engenheiro, assistente de
-   engenharia, gestor de frota, gestor de manutenção; diretor); "Sincronizar agora" cria RDO e exige rdo_pode_operar()
-   (decisão 7), conferido pela function geodigitus-sync. Nada de IMEI cadastrado sozinho: IMEI do balde sem cadastro
-   aparece na lista "IMEIs no balde sem cadastro" para alguém cadastrar ou ignorar com motivo.
-   Sem a migration da 107a aplicada (vw_computadores_bordo inexistente), a visão avisa e o KPI some.
-   ==================================================================== */
 
-let _cpbRegistros = null;      // vw_computadores_bordo
-let _cpbImeisBalde = [];       // geodigitus_imeis_bucket sem cadastro
-let _cpbAtual = null;          // registro aberto
-let _cpbEditId = null;         // null = nova
-let _cpbFiltroCal = "";        // filtro de calibração vindo do KPI ou do Para regularizar
-let _cpbIndisponivel = false;  // migration da 107a não aplicada
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _cpbRegistros = null;
+let _cpbImeisBalde = [];
+let _cpbAtual = null;
+let _cpbEditId = null;
+let _cpbFiltroCal = "";
+let _cpbIndisponivel = false;
 
 const CPB_STATUS = {
   ativo:      { label: "Ativo",          cor: "verde" },
@@ -43,17 +43,17 @@ const CPB_ARQ = { novo: "Novo", baixado: "Baixado", decodificado: "Decodificado"
 const CPB_MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 
 const cpbTag = (mapa, v) => { const o = mapa[v]; return `<span class="tag ${esc(o ? o.cor : "cinza")}">${esc(o ? o.label : (v || "—"))}</span>`; };
-/* espelha computador_bordo_pode_operar() do banco */
+
 function cpbPodeOperar(){
   return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "engenheiro", "assistente_engenharia", "gestor_frota", "gestor_manutencao"].includes(usuarioAtual.cargo);
 }
-/* espelha rdo_pode_operar(): sincronizar cria RDO (decisão 7) */
+
 function cpbPodeSincronizar(){
   return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado"].includes(usuarioAtual.cargo);
 }
 const cpbIndisp = (err) => !!err && ["42P01", "PGRST205", "PGRST200", "42703"].includes(err.code);
 
-/* ---------- carga ---------- */
+
 async function carregarComputadoresBordo(force){
   if(_cpbRegistros && !force) return _cpbRegistros;
   const [v, b] = await Promise.all([
@@ -73,7 +73,7 @@ async function carregarComputadoresBordo(force){
   return _cpbRegistros;
 }
 
-/* KPI do painel de Equipamentos: CPU ativa com calibração vencida ou sem certificado */
+
 async function cpbAtualizarKpi(){
   const box = $("eqp-kpi-cpu-box"); if(!box) return;
   await carregarComputadoresBordo(false);
@@ -82,7 +82,7 @@ async function cpbAtualizarKpi(){
   const el = $("eqp-kpi-cpu"); if(el) el.textContent = n;
 }
 
-/* ---------- painel (dentro do card de Equipamentos) ---------- */
+
 function cpbFiltradas(){
   const q = ($("cpb-busca")?.value || "").trim().toLowerCase();
   const st = $("cpb-f-status")?.value || "";
@@ -98,7 +98,7 @@ async function cpbRenderPainel(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   if(!_cpbRegistros) cont.innerHTML = `<p class="vazio">Carregando computadores de bordo…</p>`;
   await carregarComputadoresBordo(false);
-  if(typeof _eqpView !== "undefined" && _eqpView !== "cpb") return;   // trocou de visão enquanto carregava
+  if(typeof _eqpView !== "undefined" && _eqpView !== "cpb") return;
   const bn = $("btn-cpb-novo"); if(bn) bn.style.display = cpbPodeOperar() && !_cpbIndisponivel ? "" : "none";
   const bd = $("btn-cpb-descobrir"); if(bd) bd.style.display = cpbPodeOperar() && !_cpbIndisponivel ? "" : "none";
   const fc = $("cpb-f-cal"); if(fc && _cpbFiltroCal && !fc.value) fc.value = _cpbFiltroCal;
@@ -130,7 +130,7 @@ async function cpbRenderPainel(){
       <tbody>${linhas}</tbody></table></div>` : `<p class="vazio">Nenhum computador de bordo com esses filtros.</p>`}${balde}`;
 }
 
-/* chamado pelo KPI e pelo Para regularizar (dashboard.js) */
+
 function cpbAbrirPainel(filtro){
   _cpbFiltroCal = filtro === "cpu_calibracao_vencida" ? "vencida" : "";
   if(typeof _eqpView !== "undefined") _eqpView = "cpb";
@@ -142,7 +142,7 @@ function cpbAbrirPainel(filtro){
   if(typeof renderEquipamentos === "function") renderEquipamentos();
 }
 
-/* ---------- ficha ---------- */
+
 function cpbFecharFicha(render = true){
   const f = $("cpb-ficha"); if(f) f.style.display = "none";
   const p = $("eqp-painel"); if(p) p.style.display = "";
@@ -221,7 +221,7 @@ async function cpbCarregarFilhas(c){
     sb.from("geodigitus_estacas").select("situacao").eq("computador_id", id).limit(5000)
   ]);
   if(_cpbAtual?.id !== id) return;
-  // vínculos
+
   const vs = vinc.data || [];
   const pode = cpbPodeOperar();
   const atual = vs.find(v => !v.fim);
@@ -233,7 +233,7 @@ async function cpbCarregarFilhas(c){
       <tbody>${vs.map(v => `<tr><td><strong>${esc(v.equipamento?.codigo || "?")}</strong> ${esc(v.equipamento?.nome || "")}</td><td>${dataBR(v.inicio)}</td>
         <td>${v.fim ? dataBR(v.fim) : `<span class="tag verde">atual</span>`}</td><td>${esc(v.motivo || "—")}</td></tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Sem vínculo: as estacas desta CPU ficam "sem máquina" até alguém vincular.</p>`;
-  // certificados
+
   const cs = cal.data || [];
   $("cpb-cal-lista").innerHTML = cs.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Certificado</th><th>Laboratório</th><th>Emitido em</th><th>Válido até</th><th>Arquivo</th><th>Observações</th></tr></thead>
@@ -242,7 +242,7 @@ async function cpbCarregarFilhas(c){
         <td>${k.arquivo_url ? `<button type="button" class="btn-sec btn-sm" data-cpb-cert="${esc(k.arquivo_url)}">Abrir</button>` : "—"}</td><td>${esc(k.observacoes || "")}</td></tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum certificado de calibração: a CPU aparece em "Para regularizar".</p>`;
   $("cpb-cal-form").style.display = pode ? "" : "none";
-  // sincronização
+
   const as = arqs.data || [];
   const porSt = {}; as.forEach(a => { porSt[a.status] = (porSt[a.status] || 0) + 1; });
   const porSit = {}; (ests.data || []).forEach(g => { porSit[g.situacao] = (porSit[g.situacao] || 0) + 1; });
@@ -324,7 +324,7 @@ async function cpbSalvarCertificado(){
   if(f){
     const ext = (f.name.split(".").pop() || "").toLowerCase(), tipo = CPB_MIME[ext];
     if(!tipo){ aviso("app-aviso", "Arquivo do certificado: PDF, JPG, PNG ou WEBP.", "erro"); return; }
-    // supabase-js ignora contentType quando o corpo é File: reembalar em Blob com o MIME da extensão
+
     const caminho = `${_cpbEditId}/${Date.now()}.${ext}`;
     const { error: upErr } = await sb.storage.from("computadores-bordo").upload(caminho, new Blob([await f.arrayBuffer()], { type: tipo }), { contentType: tipo });
     if(upErr){ aviso("app-aviso", "Não foi possível enviar o arquivo: " + upErr.message, "erro"); return; }
@@ -343,12 +343,12 @@ async function cpbAbrirCertificado(caminho){
   if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o certificado" + (error ? ": " + error.message : "."), "erro"); return; }
   window.open(data.signedUrl, "_blank", "noopener");
 }
-/* "Sincronizar agora" (uma CPU) e "Descobrir IMEIs": function geodigitus-sync com o JWT do usuário */
+
 async function cpbInvocarSync(corpo, rotulo){
   const { data, error } = await sb.functions.invoke("geodigitus-sync", { body: corpo });
   if(error){
     let msg = error.message;
-    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){ /* corpo não é JSON */ }
+    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){   }
     aviso("app-aviso", `${rotulo}: ${msg}`, "erro"); return null;
   }
   return data;
@@ -375,7 +375,7 @@ async function cpbIgnorarImei(pasta, imei){
   _cpbRegistros = null; renderEquipamentos();
 }
 
-/* ---------- na ficha da máquina: chip "CPU <imei>" e bloco Computador de bordo ---------- */
+
 async function cpbPreencherMaquina(e){
   const box = $("eqp-chip-cpu-box"), bloco = $("eqp-cpb-bloco");
   if(box) box.style.display = "none";
@@ -392,7 +392,7 @@ async function cpbPreencherMaquina(e){
     : `<p class="meta">Sem computador de bordo vinculado (a Geodigitus equipa só hélice contínua e secante).</p>`;
 }
 
-/* ---------- eventos ---------- */
+
 function ligarComputadoresBordo(){
   if(!$("sec-equipamentos")) return;
   ["cpb-f-status", "cpb-f-cal"].forEach(id => $(id)?.addEventListener("change", () => { if(id === "cpb-f-cal") _cpbFiltroCal = $(id).value; if(_eqpView === "cpb") cpbRenderPainel(); }));

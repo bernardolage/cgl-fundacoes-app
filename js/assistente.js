@@ -1,18 +1,18 @@
-/* ====================================================================
-   Módulo: Assistente (fase 174a — 12/11/2026)
-   Chat em painel lateral, aberto pelo botão "Assistente" do topo em qualquer tela (tela cheia no celular).
-   Responde dúvida de uso e entrevista a pessoa para montar um chamado estruturado (rotina, como faz hoje, onde trava,
-   exemplo real, impacto, ideia de quem abriu). A edge function `assistente` nunca grava chamado: devolve o rascunho, que
-   aparece como cartão editável aqui; "Abrir chamado" grava pelo insert de sempre (RLS da pessoa) com origem 'assistente'.
-   Print: anexar ou colar (Ctrl+V); reduzido para 1600 px em JPEG e enviado ao bucket privado assistente-anexos
-   (<uid>/<conversa>/). Até 5 por conversa. Ditado pela Web Speech API do navegador (pt-BR): o texto cai na caixa para
-   a pessoa revisar; nada de áudio é gravado pelo app. Sem suporte, o botão não aparece.
-   Prefixo de IDs: ast-. Carregado depois de chamados.js (usa chamadosContextoAtual, chamEnviarAnexos, CHAM_CATEGORIA).
-   Fase 174b: modo orçamento ("Montar orçamento", só com o módulo extra assistente_orcamento). Arquivos (projeto em PDF,
-   planilha, sondagem, pedido) vão para orcamentos-arquivos/<uid>/pendente/<conversa>/; o projeto é lido pela
-   extrair-estacas-pdf com o SHA-256 do arquivo (leitura paga uma vez), a planilha é lida aqui (até 300 linhas). O resumo do
-   orçamento abre na tela de orçamento preenchida (preencherOrcamentoDoAssistente em js/orcamentos.js); quem salva é a pessoa.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const AST_BUCKET = "assistente-anexos";
 const AST_BUCKET_ORC = "orcamentos-arquivos";
@@ -23,26 +23,26 @@ const AST_TIPOS_ARQ = { projeto: "Projeto (quadro de estacas)", sondagem: "Sonda
 const AST_MAX_IMAGENS = 5;
 const AST_LADO_MAX = 1600;
 const AST_LIMITE_MS = 130000;
-// telas com dado pessoal: o painel avisa antes de anexar print (D9)
+
 const AST_SECOES_SENSIVEIS = new Set(["funcionarios", "rhh", "rhv", "sesmt", "sesmt-ocorrencias"]);
 
 let _astConversaId = null;
-let _astContexto = null;      // tela e registro no momento em que o assistente abriu
-let _astItens = [];           // { tipo: "usuario"|"assistente"|"rascunho"|"parecidos"|"aviso", ... }
-let _astPendentes = [];       // prints enviados ao bucket e ainda não mandados na mensagem: { caminho, url }
-let _astPrintsConversa = [];  // todos os prints da conversa (vão para o chamado)
+let _astContexto = null;
+let _astItens = [];
+let _astPendentes = [];
+let _astPrintsConversa = [];
 let _astEnviando = false;
-let _astSomenteLeitura = false; // "Ver conversa" de um chamado
+let _astSomenteLeitura = false;
 let _astReconhecedor = null;
-let _astModo = "geral";        // fase 174b: "geral" ou "orcamento"
-let _astArqPendentes = [];     // arquivos escolhidos e ainda não enviados: { file, nome, ext, tipo }
-let _astArquivosConversa = []; // arquivos já no bucket: { caminho, tipo, nome, sha256, tamanho }
-let _astStatus = "";           // o que está acontecendo enquanto envia ("Lendo o projeto…")
+let _astModo = "geral";
+let _astArqPendentes = [];
+let _astArquivosConversa = [];
+let _astStatus = "";
 
 const astPodeAbrirChamado = () => !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
 const astPodeOrcamento = () => typeof temModuloExtra === "function" && temModuloExtra("assistente_orcamento");
 
-/* ---------- Abrir, fechar, nova conversa ---------- */
+
 function abrirAssistente(ctx){
   if(!usuarioAtual){ aviso("app-aviso", "Entre no sistema para usar o assistente.", "erro"); return; }
   const painel = $("ast-painel");
@@ -70,15 +70,15 @@ function novaConversaAssistente(modo){
   renderAssistente();
   setTimeout(() => $("ast-texto")?.focus(), 50);
 }
-/* fase 174b: conversa de orçamento (D2) */
+
 function montarOrcamentoAssistente(){
   if(!astPodeOrcamento()) return;
   if($("ast-painel")?.hidden !== false) abrirAssistente();
   novaConversaAssistente("orcamento");
 }
 
-/* ---------- Render ---------- */
-/* A caixa de mensagem cresce com o texto até 160 px (o CSS limita) e volta a uma linha depois de enviar */
+
+
 function astAjustarCaixa(){
   const c = $("ast-texto");
   if(!c) return;
@@ -103,8 +103,8 @@ function astRenderContexto(){
   el.innerHTML = tela ? `<span class="rotulo-caps">Tela</span><span class="ast-contexto-tela">${esc(tela)}</span>`
     + (reg ? `<span class="ast-contexto-sep">/</span>${uiCodigo(reg)}` : "") : "";
 }
-/* Resposta do assistente: escapa linha a linha e só então troca **negrito** e `código`; linhas "1. …" viram passos
-   numerados e "- …" lista. O resto do markdown fica como texto. A mensagem de quem escreve continua literal. */
+
+
 function astInline(linha){
   return esc(linha)
     .replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>")
@@ -113,12 +113,12 @@ function astInline(linha){
 function astFormatarResposta(texto){
   const blocos = [];
   let par = [], lista = null;
-  const fecharPar = () => { if(par.length){ blocos.push(`<p>${/* html */ par.map(astInline).join("\n")}</p>`); par = []; } };
+  const fecharPar = () => { if(par.length){ blocos.push(`<p>${  par.map(astInline).join("\n")}</p>`); par = []; } };
   const fecharLista = () => {
     if(!lista) return;
     blocos.push(lista.tipo === "ol"
-      ? `<ol class="ast-passos">${/* html */ lista.itens.map((t, k) => `<li><span class="ast-passo-n" aria-hidden="true">${esc(k + 1)}</span><span>${/* html */ astInline(t)}</span></li>`).join("")}</ol>`
-      : `<ul class="ast-lista">${/* html */ lista.itens.map(t => `<li>${/* html */ astInline(t)}</li>`).join("")}</ul>`);
+      ? `<ol class="ast-passos">${  lista.itens.map((t, k) => `<li><span class="ast-passo-n" aria-hidden="true">${esc(k + 1)}</span><span>${  astInline(t)}</span></li>`).join("")}</ol>`
+      : `<ul class="ast-lista">${  lista.itens.map(t => `<li>${  astInline(t)}</li>`).join("")}</ul>`);
     lista = null;
   };
   for(const linha of String(texto || "").replace(/\r/g, "").split("\n")){
@@ -143,7 +143,7 @@ function astTurno(it){
     + (it.arquivos && it.arquivos.length ? `<span class="ast-msg-prints">${esc(it.arquivos.map(a => `${a.nome} (${AST_TIPOS_ARQ[a.tipo] || a.tipo})`).join(", "))}</span>` : "");
   const sem = it.sem_resposta ? `<div class="ast-msg-nota-info">Pergunta guardada para a equipe responder e para o manual do app.</div>` : "";
   const txt = eu ? esc(it.texto || "") : astFormatarResposta(it.texto);
-  return `<section class="${esc(cls)}"><span class="rotulo-caps">${esc(rotulo)}</span><div class="ast-turno-txt">${/* html */ txt}</div>${prints}${sem}</section>`;
+  return `<section class="${esc(cls)}"><span class="rotulo-caps">${esc(rotulo)}</span><div class="ast-turno-txt">${  txt}</div>${prints}${sem}</section>`;
 }
 function astCartaoRascunho(it, i){
   const r = it.rascunho;
@@ -178,8 +178,8 @@ function astCartaoRascunho(it, i){
     </div>
   </div>`;
 }
-/* fase 174b (D7): resumo do orçamento montado pelo assistente. Total sem e com ISS pelas funções do orçamento
-   (orcIssSobre); preço de cada item com a fonte que o servidor calculou. Nada é gravado aqui. */
+
+
 function astCartaoOrcamento(it, i){
   const r = it.rascunho || {};
   const itens = Array.isArray(r.itens) ? r.itens : [];
@@ -191,7 +191,7 @@ function astCartaoOrcamento(it, i){
   const cli = r.cliente?.id ? `Cliente: <strong>${esc(r.cliente.nome || "")}</strong>`
     : `Cliente não cadastrado: <strong>${esc(r.cliente?.nome || "—")}</strong>${r.cliente?.cnpj ? " · CNPJ " + esc(r.cliente.cnpj) : ""} (cadastrar pelo CNPJ)`;
   const chips = [
-    `<span class="chip">${/* html */ cli}</span>`,
+    `<span class="chip">${  cli}</span>`,
     `<span class="chip">Método: <strong>${esc(lbl(typeof ORC_TIPO_LBL !== "undefined" ? ORC_TIPO_LBL : null, r.tipo_proposta))}</strong></span>`,
     r.tipo_obra ? `<span class="chip">Obra: <strong>${esc(r.tipo_obra)}</strong></span>` : "",
     r.faixa_profundidade ? `<span class="chip">Profundidade: <strong>${esc(lbl(typeof ORC_FAIXA_LBL !== "undefined" ? ORC_FAIXA_LBL : null, r.faixa_profundidade))}</strong></span>` : "",
@@ -211,16 +211,16 @@ function astCartaoOrcamento(it, i){
   return `<div class="ast-cartao" data-ast-orcamento="${esc(i)}">
     <div class="ast-cartao-topo"><span class="rotulo-caps">Resumo do orçamento</span><span class="ast-pilula-aviso">Confira antes de salvar</span></div>
     <div class="ast-cartao-corpo">
-      <div class="ast-orc-chips">${/* html */ chips}</div>
+      <div class="ast-orc-chips">${  chips}</div>
       <table class="ast-orc-tabela"><thead><tr><th>Item</th><th class="num">Qtd.</th><th class="num">Unitário e fonte</th><th class="num">Total</th></tr></thead>
-        <tbody>${/* html */ linhas || `<tr><td colspan="4">Nenhum item.</td></tr>`}</tbody></table>
+        <tbody>${  linhas || `<tr><td colspan="4">Nenhum item.</td></tr>`}</tbody></table>
       <div class="ast-orc-totais" data-val-sens>
         <span>Subtotal (sem ISS)</span><span class="num">${esc(brl(sub))}</span>
         <span>ISS ${esc(issPd ? String(issP).replace(".", ",") + "% por dentro" : "não incluído")}</span><span class="num">${esc(brl(iss))}</span>
         <strong>Total com ISS</strong><strong class="num">${esc(brl(sub + iss))}</strong>
       </div>
-      ${r.avisos?.length ? `<div><span class="rotulo-caps">Avisos</span>${/* html */ lista(r.avisos, "avisos")}</div>` : ""}
-      ${r.pendencias?.length ? `<div><span class="rotulo-caps">Ficou sem resposta</span>${/* html */ lista(r.pendencias, "")}</div>` : ""}
+      ${r.avisos?.length ? `<div><span class="rotulo-caps">Avisos</span>${  lista(r.avisos, "avisos")}</div>` : ""}
+      ${r.pendencias?.length ? `<div><span class="rotulo-caps">Ficou sem resposta</span>${  lista(r.pendencias, "")}</div>` : ""}
     </div>
     <div class="ast-cartao-acoes">
       ${podeAbrir ? `<button type="button" class="btn btn-sm" data-ast-orc-abrir="${esc(i)}">Abrir na tela de orçamento</button>` : `<span class="meta">Seu perfil não abre a tela de orçamento.</span>`}
@@ -273,20 +273,20 @@ function renderAssistente(){
   const env = $("ast-enviar"); if(env) env.disabled = _astEnviando;
 }
 
-/* ---------- Conversa no banco (a function grava as mensagens; o front só cria a conversa quando precisa da pasta) ---------- */
+
 async function astGarantirConversa(){
   if(_astConversaId) return _astConversaId;
   const c = _astContexto || {};
   const { data, error } = await sb.from("assistente_conversas").insert({
     secao: c.modulo || null, registro_tipo: c.registro_id ? c.registro_tipo : null, registro_id: c.registro_id || null,
-    modo: _astModo === "orcamento" ? "orcamento" : "geral"   // fase 174b: a RLS só aceita 'orcamento' com o módulo extra
+    modo: _astModo === "orcamento" ? "orcamento" : "geral"
   }).select("id").single();
   if(error) throw new Error(error.message);
   _astConversaId = data.id;
   return _astConversaId;
 }
 
-/* ---------- Prints ---------- */
+
 function astReduzirImagem(arquivo){
   return new Promise((ok, falha) => {
     const url = URL.createObjectURL(arquivo);
@@ -315,7 +315,7 @@ async function astAnexarArquivos(arquivos){
     for(const f of imgs){
       const blob = await astReduzirImagem(f);
       const caminho = `${usuarioAtual.id}/${conv}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-      // supabase-js ignora contentType com File: o corpo já é Blob image/jpeg
+
       const up = await sb.storage.from(AST_BUCKET).upload(caminho, new Blob([blob], { type: "image/jpeg" }), { contentType: "image/jpeg", upsert: false });
       if(up.error){ astAviso("Não foi possível enviar o print: " + up.error.message); continue; }
       _astPendentes.push({ caminho, url: URL.createObjectURL(blob), blob });
@@ -333,7 +333,7 @@ async function astTirarPendente(i){
 }
 function astAviso(txt){ _astItens.push({ tipo: "aviso", texto: txt }); renderAssistente(); }
 
-/* ---------- Fase 174b: arquivos do orçamento (D9) ---------- */
+
 const AST_EXT_ORC = ["pdf", "xlsx", "xls", "csv", "jpg", "jpeg", "png", "webp"];
 function astAnexarArquivosOrc(arquivos){
   for(const f of [...arquivos]){
@@ -358,12 +358,12 @@ function astBase64(file){
     fr.readAsDataURL(file);
   });
 }
-/* páginas de um PDF pelo texto do arquivo (/Type /Page); 0 = não deu para contar (objetos comprimidos): segue */
+
 async function astContarPaginasPdf(file){
   const txt = new TextDecoder("latin1").decode(new Uint8Array(await file.arrayBuffer()));
   return (txt.match(/\/Type\s*\/Page(?!s)/g) || []).length;
 }
-/* planilha lida no navegador (SheetJS de vendor/): primeira aba, até 300 linhas não vazias, colunas separadas por " | " */
+
 async function astLerPlanilha(file){
   if(typeof XLSX === "undefined") return "";
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
@@ -374,20 +374,20 @@ async function astLerPlanilha(file){
   return linhas.slice(0, AST_PLANILHA_LINHAS).map(l => l.join(" | ")).join("\n")
     + (linhas.length > AST_PLANILHA_LINHAS ? `\n(… mais ${linhas.length - AST_PLANILHA_LINHAS} linha(s) não enviadas)` : "");
 }
-/* projeto: leitura do quadro de estacas pela extrair-estacas-pdf com o hash (cache D11: mesmo arquivo não paga de novo) */
+
 async function astLerProjeto(file, sha){
   const pdf = await astBase64(file);
   const { data, error } = await iaInvocarComLimite("extrair-estacas-pdf", { pdf_base64: pdf, sha256: sha },
     "A leitura do projeto passou do limite de tempo. Divida o PDF nas folhas do quadro de estacas.", 400000);
   if(error){
     let msg = error.message;
-    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){ /* corpo ilegível */ }
+    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){   }
     throw new Error(msg);
   }
   if(data?.error) throw new Error(data.error);
   return data;
 }
-/* sobe os arquivos pendentes para a pasta da conversa; devolve o que vai no corpo da mensagem */
+
 async function astEnviarArquivosOrc(conv, arqs){
   const enviados = [];
   let planilha = null;
@@ -428,7 +428,7 @@ async function astEnviarArquivosOrc(conv, arqs){
   return { enviados, planilha };
 }
 
-/* ---------- Enviar ---------- */
+
 async function enviarMensagemAssistente(textoForcado){
   if(_astEnviando || _astSomenteLeitura) return;
   const caixa = $("ast-texto");
@@ -459,7 +459,7 @@ async function enviarMensagemAssistente(textoForcado){
     const { data, error } = await iaInvocarComLimite("assistente", corpo, "O assistente demorou demais para responder. Tente de novo.", AST_LIMITE_MS);
     if(error){
       let msg = error.message;
-      try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){ /* corpo ilegível */ }
+      try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){   }
       throw new Error(msg);
     }
     if(data?.error) throw new Error(data.error);
@@ -467,7 +467,7 @@ async function enviarMensagemAssistente(textoForcado){
     _astItens.push({ tipo: "assistente", texto: data.resposta, sem_resposta: !!data.sem_resposta, hora: astHora() });
     if(Array.isArray(data.chamados_parecidos) && data.chamados_parecidos.length) _astItens.push({ tipo: "parecidos", chamados: data.chamados_parecidos });
     if(data.rascunho_chamado) _astItens.push({ tipo: "rascunho", rascunho: data.rascunho_chamado });
-    if(data.rascunho_orcamento) _astItens.push({ tipo: "orcamento", rascunho: data.rascunho_orcamento });   // fase 174b
+    if(data.rascunho_orcamento) _astItens.push({ tipo: "orcamento", rascunho: data.rascunho_orcamento });
     if(data.sugerir_modo_orcamento && astPodeOrcamento()) _astItens.push({ tipo: "oferta_orc" });
   } catch(e){
     _astItens.push({ tipo: "aviso", texto: "Não foi possível falar com o assistente: " + e.message });
@@ -477,7 +477,7 @@ async function enviarMensagemAssistente(textoForcado){
   }
 }
 
-/* ---------- Confirmar o chamado (insert da pessoa, origem 'assistente') ---------- */
+
 async function confirmarChamadoAssistente(i){
   const it = _astItens[i];
   if(!it || it.tipo !== "rascunho" || it.aberto || !usuarioAtual || !_astConversaId) return;
@@ -502,7 +502,7 @@ async function confirmarChamadoAssistente(i){
   };
   const { data, error } = await sb.from("chamados").insert(reg).select("id,numero").single();
   if(error){ aviso(`ast-r-aviso-${i}`, "Não foi possível abrir o chamado: " + error.message, "erro"); return; }
-  // prints da conversa vão para os anexos do chamado (rotina da fase 48: 5 arquivos, 20 MB)
+
   let falhas = [];
   if(_astPrintsConversa.length && typeof chamEnviarAnexos === "function"){
     const arquivos = [];
@@ -527,7 +527,7 @@ async function astVerChamado(id){
   if(typeof abrirChamado === "function") abrirChamado(id);
 }
 
-/* ---------- "Ver conversa" a partir da ficha do chamado (RLS: autor e diretoria) ---------- */
+
 async function abrirConversaAssistente(conversaId){
   const { data, error } = await sb.from("assistente_mensagens").select("papel,texto,anexos,sem_resposta,criado_em")
     .eq("conversa_id", conversaId).order("criado_em", { ascending: true });
@@ -545,7 +545,7 @@ async function abrirConversaAssistente(conversaId){
   renderAssistente();
 }
 
-/* ---------- Ditado (Web Speech API do navegador) ---------- */
+
 function astDitadoDisponivel(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
 function astAlternarDitado(alvo){
   if(_astReconhecedor){ astPararDitado(); return; }
@@ -553,7 +553,7 @@ function astAlternarDitado(alvo){
   if(!R) return;
   const rec = new R();
   rec.lang = "pt-BR"; rec.interimResults = false; rec.continuous = true;
-  const caixa = $(typeof alvo === "string" ? alvo : "ast-texto");   // fase 176: o cartão da cobrança dita na caixa dele
+  const caixa = $(typeof alvo === "string" ? alvo : "ast-texto");
   rec.addEventListener("result", (ev) => {
     let novo = "";
     for(let k = ev.resultIndex; k < ev.results.length; k++) if(ev.results[k].isFinal) novo += ev.results[k][0].transcript;
@@ -566,7 +566,7 @@ function astAlternarDitado(alvo){
   astMarcarMicrofone(true);
   rec.start();
 }
-function astPararDitado(){ if(_astReconhecedor){ try { _astReconhecedor.stop(); } catch(_){ /* já parado */ } } }
+function astPararDitado(){ if(_astReconhecedor){ try { _astReconhecedor.stop(); } catch(_){   } } }
 function astMarcarMicrofone(ligado){
   const b = $("ast-microfone");
   if(!b) return;
@@ -574,26 +574,26 @@ function astMarcarMicrofone(ligado){
   b.title = ligado ? "Parar o ditado" : "Ditar pelo microfone (o texto cai na caixa para você revisar)";
 }
 
-/* ---------- Fase 176: cobrança de resposta de chamado ----------
-   Quem tem chamado "Esperando resposta" à sua espera é chamado por um balão junto do botão Ajuda (sem abrir o painel nem
-   tirar o foco) e responde num cartão dentro do painel, um chamado por vez. Sem IA: a fila vem de chamados_cobranca_resumo()
-   (security invoker, mesma regra de "Esperando minha resposta") e a resposta grava pela chamado_aprovar, como no bloco
-   "Esperando" da ficha. Limites (decisão de 12/11/2026): no máximo 3 chamadas automáticas por dia, 60 min entre elas,
-   balão "Lembrar em 2 h" / "Hoje não", cartão "Lembrar depois" = próximo dia útil; o controle fica em chamado_cobrancas.
-   Não chama: aba escondida, sem atividade nos últimos 2 min, painel aberto, modal ou formulário não salvo, seção Chamados,
-   faixa de sessão expirando. O auditor vê balão e cartão sem os botões de enviar; como não grava cobrança, o adiamento
-   dele fica só na memória da aba. */
+
+
+
+
+
+
+
+
+
 const AST_COB = { primeiraMs: 2 * 60000, tickMs: 5 * 60000, atividadeMs: 2 * 60000, maxDia: 3, intervaloMs: 60 * 60000, balaoMs: 30000, resumo: 400 };
-let _astCobFila = [];          // itens de chamados_cobranca_resumo().fila
-let _astCobMeta = {};          // chamadas_hoje, ultima_chamada_em, fila_adiada_ate
+let _astCobFila = [];
+let _astCobMeta = {};
 let _astCobIdx = 0;
-let _astCobAberta = false;     // cartão visível no painel
-let _astCobEditando = false;   // "Editar" a resposta sugerida
-let _astCobAnexos = [];        // File[] escolhidos para o chamado atual
-let _astCobMsg = null;         // { tipo: "ok"|"erro", texto }
+let _astCobAberta = false;
+let _astCobEditando = false;
+let _astCobAnexos = [];
+let _astCobMsg = null;
 let _astCobExpandido = false;
 let _astCobTimer = null, _astCobBalaoTimer = null;
-let _astCobLocal = { uid: null, chamadas: [], filaAte: 0, chamado: {} };   // auditor (não grava cobrança)
+let _astCobLocal = { uid: null, chamadas: [], filaAte: 0, chamado: {} };
 
 const astCobLeitura = () => typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
 function astCobLocal(){
@@ -602,9 +602,9 @@ function astCobLocal(){
   return _astCobLocal;
 }
 
-/* chamado em iniciarApp() depois da política de sessão: primeira olhada em 2 min, depois a cada 5 min e na volta à aba */
+
 function astIniciarCobranca(){
-  astCobAtualizar();   // só o contador do botão
+  astCobAtualizar();
   if(_astCobTimer) return;
   setTimeout(() => astVerificarCobranca(), AST_COB.primeiraMs);
   _astCobTimer = setInterval(() => astVerificarCobranca(), AST_COB.tickMs);
@@ -628,7 +628,7 @@ function astCobContador(){
   if(btn) btn.setAttribute("aria-label", n ? `Ajuda: ${n} chamado${n > 1 ? "s" : ""} esperando a sua resposta` : "Ajuda: tirar dúvida ou relatar problema");
 }
 
-// o momento é bom para chamar? (nada aqui lê o banco)
+
 function astCobMomentoLivre(){
   if(!usuarioAtual || document.visibilityState !== "visible") return false;
   const ultima = typeof polLer === "function" ? Number(polLer("cgl_ultima_atividade")) || 0 : Date.now();
@@ -656,7 +656,7 @@ async function astVerificarCobranca(){
   astMostrarBalaoCobranca();
 }
 
-// grava em chamado_cobrancas; para o auditor (barrado pela policy) guarda na memória da aba
+
 async function astCobRegistrar(acao, chamadoId){
   const loc = astCobLocal(), agora = Date.now();
   if(!astCobLeitura()){
@@ -670,7 +670,7 @@ async function astCobRegistrar(acao, chamadoId){
   return null;
 }
 
-/* ---------- Balão ---------- */
+
 function astMostrarBalaoCobranca(){
   astFecharBalaoCobranca();
   const n = _astCobFila.length;
@@ -692,7 +692,7 @@ function astMostrarBalaoCobranca(){
     else astCobRegistrar(a === "hoje" ? "hoje_nao" : "adiado", null);
   });
   document.body.appendChild(b);
-  // sem resposta em 30 s: some e conta como "Lembrar em 2 h"
+
   _astCobBalaoTimer = setTimeout(() => { if($("ast-balao")){ astFecharBalaoCobranca(); astCobRegistrar("adiado", null); } }, AST_COB.balaoMs);
 }
 function astFecharBalaoCobranca(){
@@ -700,7 +700,7 @@ function astFecharBalaoCobranca(){
   $("ast-balao")?.remove();
 }
 
-/* ---------- Cartão no painel ---------- */
+
 async function astAbrirCobranca(){
   if($("ast-painel")?.hidden !== false) abrirAssistente();
   await astCobAtualizar();
@@ -731,27 +731,27 @@ function astCartaoCobranca(c){
   const sugerida = !!(c.sugerida && c.pergunta);
   const maxAnexos = typeof CHAM_ANEXO_MAX !== "undefined" ? CHAM_ANEXO_MAX : 5;
   const anexos = _astCobAnexos.length ? `<div class="ast-cob-anexos">${_astCobAnexos.map((f, i) => `<span class="ast-arquivo"><span class="ast-arquivo-nome" title="${esc(f.name)}">${esc(f.name)}</span><button type="button" class="btn-sec btn-sm" data-ast-cob-tirar="${esc(i)}" aria-label="Tirar ${esc(f.name)}">×</button></span>`).join("")}</div>` : "";
-  const mic = astDitadoDisponivel() ? `<button type="button" class="ast-caixa-btn" data-ast-cob-mic="1" aria-label="Ditar a resposta" title="Ditar pelo microfone (o texto cai na caixa para você revisar)">${/* html */ AST_SVG_MIC}</button>` : "";
-  const clipe = `<button type="button" class="ast-caixa-btn" data-ast-cob-anexar="1" aria-label="Anexar arquivo à resposta" title="Anexar arquivo à resposta (até ${esc(maxAnexos)}, 20 MB cada)">${/* html */ AST_SVG_CLIPE}</button>`;
+  const mic = astDitadoDisponivel() ? `<button type="button" class="ast-caixa-btn" data-ast-cob-mic="1" aria-label="Ditar a resposta" title="Ditar pelo microfone (o texto cai na caixa para você revisar)">${  AST_SVG_MIC}</button>` : "";
+  const clipe = `<button type="button" class="ast-caixa-btn" data-ast-cob-anexar="1" aria-label="Anexar arquivo à resposta" title="Anexar arquivo à resposta (até ${esc(maxAnexos)}, 20 MB cada)">${  AST_SVG_CLIPE}</button>`;
   let acao = "";
   if(leitura){
     acao = `<p class="meta">Usuário de revisão: só leitura, sem enviar resposta.</p>`;
   } else if(sugerida && !_astCobEditando){
-    acao = `${/* html */ anexos}<div class="ast-cob-botoes"><button type="button" class="btn btn-sucesso btn-sm" id="ast-cob-aprovar" title="Envia a resposta sugerida em seu nome e muda o chamado para ${esc(vai)}">Aprovar e enviar</button>
-      <button type="button" class="btn-sec btn-sm" data-ast-cob-editar="1">Editar</button>${/* html */ clipe}</div>`;
+    acao = `${  anexos}<div class="ast-cob-botoes"><button type="button" class="btn btn-sucesso btn-sm" id="ast-cob-aprovar" title="Envia a resposta sugerida em seu nome e muda o chamado para ${esc(vai)}">Aprovar e enviar</button>
+      <button type="button" class="btn-sec btn-sm" data-ast-cob-editar="1">Editar</button>${  clipe}</div>`;
   } else {
-    acao = `<div class="ast-caixa ast-cob-caixa"><textarea id="ast-cob-texto" rows="3" maxlength="15000" aria-label="${sugerida ? "Resposta sugerida, editável" : "Sua resposta"}" placeholder="Sua resposta">${esc(sugerida ? c.pergunta : "")}</textarea>${/* html */ clipe}${/* html */ mic}</div>${/* html */ anexos}
+    acao = `<div class="ast-caixa ast-cob-caixa"><textarea id="ast-cob-texto" rows="3" maxlength="15000" aria-label="${sugerida ? "Resposta sugerida, editável" : "Sua resposta"}" placeholder="Sua resposta">${esc(sugerida ? c.pergunta : "")}</textarea>${  clipe}${  mic}</div>${  anexos}
       <div class="ast-cob-botoes"><button type="button" class="btn btn-sm" id="ast-cob-enviar">${sugerida ? "Enviar resposta editada" : "Responder e enviar"}</button></div>`;
   }
   return `<section class="ast-cartao ast-cob" aria-label="Chamado esperando a sua resposta">
     <div class="ast-cartao-topo"><span class="rotulo-caps">Esperando a sua resposta</span><span class="meta">${esc(_astCobIdx + 1)} de ${esc(total)}</span>
-      <button type="button" class="btn-sec btn-sm ast-icone-btn" data-ast-cob-fechar="1" aria-label="Fechar o cartão" title="Fechar">${/* html */ AST_SVG_X}</button></div>
+      <button type="button" class="btn-sec btn-sm ast-icone-btn" data-ast-cob-fechar="1" aria-label="Fechar o cartão" title="Fechar">${  AST_SVG_X}</button></div>
     <div class="ast-cartao-corpo">
-      <div class="ast-cob-titulo">${/* html */ uiCodigo("#" + c.numero)} <strong>${esc(c.titulo || "—")}</strong></div>
-      <div class="ast-cob-meta">${/* html */ astCobPrazo(c)}<span class="meta">Aberto por ${esc(c.aberto_por_nome || "—")}${c.criado_em ? " em " + esc(dataBR(String(c.criado_em).slice(0, 10)).slice(0, 5)) : ""}${modulo ? " · " + esc(modulo) : ""}${obra ? " · " + esc(obra) : ""}</span></div>
-      ${/* html */ perg}
+      <div class="ast-cob-titulo">${  uiCodigo("#" + c.numero)} <strong>${esc(c.titulo || "—")}</strong></div>
+      <div class="ast-cob-meta">${  astCobPrazo(c)}<span class="meta">Aberto por ${esc(c.aberto_por_nome || "—")}${c.criado_em ? " em " + esc(dataBR(String(c.criado_em).slice(0, 10)).slice(0, 5)) : ""}${modulo ? " · " + esc(modulo) : ""}${obra ? " · " + esc(obra) : ""}</span></div>
+      ${  perg}
       ${desc ? `<p class="ast-cob-desc">${esc(descTxt)}${longa ? ` <button type="button" class="link-mini" data-ast-cob-mais="1">${_astCobExpandido ? "ver menos" : "ver mais"}</button>` : ""}</p>` : ""}
-      ${/* html */ acao}
+      ${  acao}
       ${leitura ? "" : `<p class="meta">Ao enviar, o chamado vai para <strong>${esc(vai)}</strong>.</p>`}
       <div id="ast-cob-aviso" class="ast-msg-erro" role="alert" hidden></div>
     </div>
@@ -772,7 +772,7 @@ function renderCobranca(){
   box.hidden = false;
   box.innerHTML = msg + (c ? astCartaoCobranca(c) : `<div class="ast-msg-nota-info" role="status">Nenhum chamado esperando você. Obrigado!</div>`);
 }
-// re-render guardando o que a pessoa já digitou
+
 function astCobRerender(){
   const txt = $("ast-cob-texto")?.value;
   renderCobranca();
@@ -802,14 +802,14 @@ async function astResponderCobranca(comTexto){
     if(erro){ astCobAvisoCartao(erro); return; }
     const falhas = await chamEnviarAnexos(c.id, _astCobAnexos);
     if(falhas.length){ astCobAvisoCartao("A resposta não foi enviada: o anexo falhou (" + falhas.join("; ") + ")."); return; }
-    // mesma trilha da ficha: o anexo vira um comentário de sistema
+
     await sb.from(CHAM_TBL.comentarios).insert({ chamado_id: c.id, [CHAM_COL.autor]: usuarioAtual.id,
       texto: `[status] anexou ${_astCobAnexos.length} arquivo(s): ${_astCobAnexos.map(f => f.name).join(", ")}` });
     _astCobAnexos = [];
   }
   const { data, error } = await sb.rpc("chamado_aprovar", { p_id: c.id, p_texto: texto });
   if(error){
-    // alguém respondeu antes ou o status mudou: avisa e tira da fila; erro de rede fica no cartão para tentar de novo
+
     if(/não está esperando|outra pessoa|não existe/i.test(error.message || "")){ _astCobMsg = { tipo: "erro", texto: `#${c.numero}: ${error.message}` }; astCobProximo(true); }
     else astCobAvisoCartao("Não foi possível enviar: " + error.message);
     return;
@@ -859,16 +859,16 @@ function ligarCobranca(){
   });
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarAssistente(){
   $("btn-assistente")?.addEventListener("click", () => {
     if($("ast-painel")?.hidden === false){ fecharAssistente(); return; }
-    astFecharBalaoCobranca(); abrirAssistente(); astAbrirCobranca();   // fase 176: a fila aparece ao abrir
+    astFecharBalaoCobranca(); abrirAssistente(); astAbrirCobranca();
   });
   ligarCobranca();
   $("ast-fechar")?.addEventListener("click", fecharAssistente);
   $("ast-nova")?.addEventListener("click", () => novaConversaAssistente());
-  $("ast-orcamento")?.addEventListener("click", montarOrcamentoAssistente);   // fase 174b
+  $("ast-orcamento")?.addEventListener("click", montarOrcamentoAssistente);
   $("ast-pendentes")?.addEventListener("change", (e) => {
     const s = e.target.closest("[data-ast-arq-tipo]");
     if(s && _astArqPendentes[Number(s.dataset.astArqTipo)]) _astArqPendentes[Number(s.dataset.astArqTipo)].tipo = s.value;
@@ -902,7 +902,7 @@ function ligarAssistente(){
     const ver = e.target.closest("[data-ast-ver-chamado]");
     if(ver){ astVerChamado(ver.dataset.astVerChamado); return; }
     if(e.target.closest("[data-ast-mesmo-assim]")){ enviarMensagemAssistente("Quero abrir um chamado novo mesmo assim."); return; }
-    if(e.target.closest("[data-ast-modo-orc]")){ montarOrcamentoAssistente(); return; }   // fase 174b
+    if(e.target.closest("[data-ast-modo-orc]")){ montarOrcamentoAssistente(); return; }
     const orc = e.target.closest("[data-ast-orc-abrir]");
     if(orc){
       const it = _astItens[Number(orc.dataset.astOrcAbrir)];

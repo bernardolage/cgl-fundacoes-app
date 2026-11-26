@@ -1,52 +1,52 @@
-/* ====================================================================
-   Módulo: ler as estacas da folha do projeto do cliente — fase 175b (prefixo ppl-)
-   Carregado depois de js/planta_projeto.js, js/planta_posicoes.js e js/planta_sequencia.js, e junto com o detector
-   (js/planta_detector.js, ppd-) e as regras da leitura (js/planta_leitura_regras.js). Os arquivos da planta chamam este por
-   ganchos guardados por typeof (pplLeiMontar, pplLeiExtraBarra, pplLeiMarcaClasse, pplLeiColocar, pplLeiAposAcao,
-   pplLeiSelHTML e pplLeiOferecer); sem ele, a folha fica como era.
-   - "Ler estacas da folha" (barra da folha, só para quem edita estaca, folha que veio de PDF): o navegador abre o PDF
-     original, acha os símbolos redondos das estacas sem IA (ppdFormas), desenha a folha em ladrilhos e manda cada um à
-     edge function ler-planta-estacas, que devolve nome e caixa de cada estaca. Os nomes são juntados, sem repetir a
-     sobreposição, e puxados para o centro do símbolo mais perto (pplJuntar, pplPuxar).
-   - Prévia antes de gravar: lidas, já existentes (só posiciona), novas (cria), ambíguas e pontos sem nome, com marcadores
-     tracejados sobre a folha. "Usar as lidas" grava; "Descartar e marcar à mão" não grava nada.
-   - Gravar: estaca nova nasce prevista, com tipo e Ø escolhidos uma vez na prévia e o local da folha; a posição nasce com
-     origem 'leitura' e conferida = false ("a conferir": borda tracejada). Ambíguas e sem nome viram pontos
-     (obras_plantas_pontos). O resumo vai para obras_plantas.leitura_resumo.
-   - Pilar que virou estaca (P10 prevista, sem execução, sem medida e sem posição, e a folha leu P10A e P10B): a prévia
-     oferece trocar P10 por P10A pela RPC estaca_renomear_pilar, que grava em registros_log. Nunca apaga estaca.
-   - A conferir: clicar no marcador (modo de edição) e "Conferir", ou arrastar, marca conferida; "A conferir (N)" mostra só
-     essas; "Conferir todas desta folha". "Desfazer a leitura" (só na sessão) apaga as estacas criadas que continuam
-     previstas e sem execução, tira as posições gravadas e desfaz as trocas de pilar.
-   As funções pplLeiCusto, pplLeiEstacasObra, pplLeiResumo, pplLeiLinhasPosicao, pplLeiPontos e pplLeiPreviaHTML são puras
-   e testadas por scripts/testar-fase175b.mjs.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const PPL_FUNCAO = "ler-planta-estacas";
-const PPL_PARALELO = 4;                    // ladrilhos lidos ao mesmo tempo
-const PPL_CUSTO_LADRILHO_USD = 0.013;      // medido na 8506 (12/11/2026): US$ 0,25 em 20 ladrilhos
-const PPL_VERSAO = "175b-1";               // versão do detector e da leitura, gravada nos pontos e no resumo
-const PPL_LOTE = 200;                      // linhas por gravação
+const PPL_PARALELO = 4;
+const PPL_CUSTO_LADRILHO_USD = 0.013;
+const PPL_VERSAO = "175b-1";
+const PPL_LOTE = 200;
 
-/* ---------- regras puras ---------- */
+
 function pplLeiCusto(ladrilhos){
   const n = Math.max(0, Number(ladrilhos) || 0);
   return Math.max(0.01, Math.round(n * PPL_CUSTO_LADRILHO_USD * 100) / 100);
 }
 const pplLeiDinheiro = (v) => (Number(v) || 0).toFixed(2).replace(".", ",");
-/* as estacas da obra no formato das regras (pplClassificar e pplPilares) */
+
 function pplLeiEstacasObra(estacas, comPosicao, medidas){
   const pos = comPosicao instanceof Set ? comPosicao : new Set(), med = medidas instanceof Set ? medidas : new Set();
   return (Array.isArray(estacas) ? estacas : []).filter(e => e && e.id).map(e => ({ id: e.id, nome: String(e.numero || "").trim(), status: e.status,
     local: e.local || "", bloco: e.bloco || "", diametro_mm: e.diametro_mm, temExecucao: Number(e._execs_total) > 0, temMedida: med.has(e.id), temPosicao: pos.has(e.id) }));
 }
-/* Junta a classificação e os pilares no que a prévia mostra e grava.
-   classe = pplClassificar(...); pilares = pplPilares(...); naFolha = Set dos ids já posicionados nesta folha.
-   Lista antes da leitura (a planilha do projeto já criou as estacas): quando ao menos metade dos nomes lidos já existe
-   na obra, a leitura só posiciona e confere; nome lido fora da lista vai para "fora da lista" (fica como ponto com o
-   nome, para conferir) e não é criado. Sem lista, os nomes novos são criados.
-   Devolve { posicionar: [{ estaca_id, nome, x, y }], novas: [{ nome, x, y }], foraDaLista, ambiguas, semNome, conferir,
-   pilares, ja, modoLista }. */
+
+
+
+
+
+
+
 function pplLeiResumo(classe, pilares, naFolha){
   const c = classe || {}, folha = naFolha instanceof Set ? naFolha : new Set();
   const existentes = (c.existentes || []).filter(it => it.estaca && it.estaca.id);
@@ -57,14 +57,14 @@ function pplLeiResumo(classe, pilares, naFolha){
   return { posicionar, novas: modoLista ? [] : lidas, foraDaLista: modoLista ? lidas : [], ambiguas: c.ambiguas || [], semNome: c.semNome || [],
     conferir: c.conferir || [], pilares: modoLista ? [] : (pilares || []).filter(p => p && p.estaca && p.filhas && p.filhas.length >= 2), ja: ja.length, modoLista };
 }
-/* As linhas de posição que vão ao banco: origem leitura, a conferir. Só uuid de verdade e fração de 0 a 1. */
+
 function pplLeiLinhasPosicao(plantaId, obraId, itens){
   return (Array.isArray(itens) ? itens : []).map(it => {
     const l = typeof ppjPosLinha === "function" ? ppjPosLinha(plantaId, it.estaca_id, obraId, it.x, it.y) : null;
     return l ? { ...l, origem: "leitura", conferida: false } : null;
   }).filter(Boolean);
 }
-/* Os pontos guardados: símbolos sem nome e estacas ambíguas (com o nome lido). formas: as do detector, em fração. */
+
 function pplLeiPontos(plantaId, obraId, resumo, formas){
   const r = resumo || {}, f = Array.isArray(formas) ? formas : [], saida = [];
   const lim = (v) => Math.min(1, Math.max(0, Math.round(Number(v) * 1e6) / 1e6));
@@ -78,7 +78,7 @@ function pplLeiPontos(plantaId, obraId, resumo, formas){
   }
   return saida;
 }
-/* p = { resumo, lidas, previstas, tipo, diametro, tipos: { valor: rotulo }, local, ladrilhos, segundos, custo } */
+
 function pplLeiPreviaHTML(p){
   const o = p || {}, r = o.resumo || {}, novas = (r.novas || []).length, pos = (r.posicionar || []).length;
   const amb = (r.ambiguas || []).length, sem = (r.semNome || []).length + (r.conferir || []).length;
@@ -98,24 +98,24 @@ function pplLeiPreviaHTML(p){
         : `<p class="meta">${esc(texto + " Não troca: ela já tem execução, medida ou posição.")}</p>`;
     }).join("")}</div>` : "";
   const nomes = (l) => l.slice(0, 40).map(it => uiCodigo(it.nome || "?")).join(" ") + (l.length > 40 ? esc(` e mais ${l.length - 40}`) : "");
-  const listaAmb = amb ? `<p class="meta">Ambíguas (repetidas na folha ou na obra; ficam como ponto para marcar à mão): ${/* html */ nomes(r.ambiguas)}</p>` : "";
-  const listaFora = (r.foraDaLista || []).length ? `<p class="meta">A obra já tem a lista do projeto: a leitura só posiciona. Lidas fora da lista (ficam como ponto com o nome, para conferir; nada é criado): ${/* html */ nomes(r.foraDaLista)}</p>` : "";
+  const listaAmb = amb ? `<p class="meta">Ambíguas (repetidas na folha ou na obra; ficam como ponto para marcar à mão): ${  nomes(r.ambiguas)}</p>` : "";
+  const listaFora = (r.foraDaLista || []).length ? `<p class="meta">A obra já tem a lista do projeto: a leitura só posiciona. Lidas fora da lista (ficam como ponto com o nome, para conferir; nada é criado): ${  nomes(r.foraDaLista)}</p>` : "";
   return `<div class="ppl-previa" role="region" aria-label="Prévia da leitura da folha">
       <div class="ppl-topo"><strong>Prévia da leitura</strong><span class="meta">Os marcadores tracejados mostram onde cada estaca lida ficaria. Nada foi gravado ainda.</span></div>
-      ${/* html */ kpis}${/* html */ meta}${/* html */ criar}${/* html */ pilares}${/* html */ listaAmb}${/* html */ listaFora}
+      ${  kpis}${  meta}${  criar}${  pilares}${  listaAmb}${  listaFora}
       <div class="ppl-acoes"><button type="button" class="btn btn-sm" data-ppl="usar"${pos + novas ? "" : " disabled"} title="Grava as estacas lidas nesta folha. As posições ficam a conferir.">Usar as lidas</button>
         <button type="button" class="btn-sec btn-sm" data-ppl="descartar" title="Não grava nada. Marque as estacas à mão em Editar posições.">Descartar e marcar à mão</button></div>
     </div>`;
 }
 
-/* ====================================================================
-   Tela
-   ==================================================================== */
+
+
+
 function pplLeiEstadoNovo(plantaId){
   return { plantaId, conferir: new Set(), soConferir: false, fase: "", feitos: 0, total: 0, oferta: null, previa: null, sessao: null, ocupado: false, g: null, msg: "" };
 }
 let _ppl = pplLeiEstadoNovo(null);
-/* os tipos oferecidos para estaca nova: os ativos da aba Estacas (js/estacas.js), com o rótulo de lá */
+
 function pplLeiTipos(){
   const rot = typeof ESTACA_TIPOS !== "undefined" && ESTACA_TIPOS ? ESTACA_TIPOS : (typeof PPJ_SEQ_TIPOS !== "undefined" ? PPJ_SEQ_TIPOS : {});
   const chaves = typeof ESTACA_TIPOS_ATIVOS !== "undefined" && Array.isArray(ESTACA_TIPOS_ATIVOS) ? ESTACA_TIPOS_ATIVOS : Object.keys(rot);
@@ -123,7 +123,7 @@ function pplLeiTipos(){
 }
 const pplLeiFolhaPdf = (f) => !!(f && f.documento && /\.pdf$/i.test(String(f.documento.storage_path || "")));
 
-/* Gancho de ppjPosMontar: folha nova no visor. Lê quais posições desta folha estão a conferir. */
+
 function pplLeiMontar(st){
   const mesma = _ppl.plantaId === st.plantaId;
   const sessao = mesma ? _ppl.sessao : null, oferta = mesma ? _ppl.oferta : null;
@@ -144,12 +144,12 @@ async function pplLeiLerConferir(plantaId){
   pplLeiRepintar();
 }
 function pplLeiRepintar(){
-  if(_ppl.g) _ppl.g.ppjZ = null;   // a prévia mudou: os marcadores tracejados são refeitos
+  if(_ppl.g) _ppl.g.ppjZ = null;
   const st = typeof _ppjPos !== "undefined" ? _ppjPos : null;
   if(st && st.disponivel && st.plantaId === _ppl.plantaId) ppjPosPintar(st);
   pplLeiCaixa();
 }
-/* Gancho de ppjPosBarra: botões da leitura e do "a conferir" (já escapados) */
+
 function pplLeiExtraBarra(st){
   const folha = typeof ppjFolhaAtual === "function" ? ppjFolhaAtual() : null;
   if(!folha || folha.id !== st.plantaId) return "";
@@ -160,21 +160,21 @@ function pplLeiExtraBarra(st){
     partes.push(`<button type="button" class="btn-sec btn-sm" data-ppl="ler" title="Ler os nomes das estacas desta folha com a IA de imagem e mostrar a prévia antes de gravar">Ler estacas da folha</button>`);
   return partes.join("");
 }
-/* Gancho de ppjPosMarcadores: borda tracejada na estaca a conferir; filtro "A conferir" esconde as outras */
+
 function pplLeiMarcaClasse(no, id){
   no.classList.toggle("ppl-a-conferir", _ppl.conferir.has(id));
   no.classList.toggle("ppl-oculta", _ppl.soConferir && !_ppl.conferir.has(id));
 }
-/* Gancho de ppjPosPainel: na estaca selecionada a conferir, o botão Conferir */
+
 function pplLeiSelHTML(st, estaca){
   if(!estaca || !_ppl.conferir.has(estaca.id) || !ppjPodeEditar()) return "";
   return `<button type="button" class="btn-sec btn-sm" data-ppl="conferir-uma" data-ppl-id="${esc(estaca.id)}" title="A posição lida está certa: marcar como conferida">Conferir</button>`;
 }
-/* Gancho de ppjPosFazer: mover a estaca a conferir confere; tirar da folha tira da conta */
+
 function pplLeiAposAcao(st, acao){
   if(!acao || !_ppl.conferir.has(acao.estaca_id)) return;
   if(acao.tipo === "tirar"){ _ppl.conferir.delete(acao.estaca_id); pplLeiRepintar(); return; }
-  if(acao.tipo === "mover") st.fila = st.fila.then(() => pplLeiConferir([acao.estaca_id]));   // depois da gravação da posição
+  if(acao.tipo === "mover") st.fila = st.fila.then(() => pplLeiConferir([acao.estaca_id]));
 }
 async function pplLeiConferir(ids){
   const lista = (ids || []).filter(id => _ppl.conferir.has(id)), plantaId = _ppl.plantaId;
@@ -193,7 +193,7 @@ async function pplLeiConferir(ids){
   pplLeiRepintar();
 }
 
-/* ---------- caixa da leitura (progresso, oferta, prévia, sessão) ---------- */
+
 function pplLeiCaixa(){
   const el = $("ppl-caixa");
   if(!el) return;
@@ -208,7 +208,7 @@ function pplLeiCaixa(){
   el.innerHTML = html;
   el.hidden = !html;
 }
-/* Gancho de ppjGerar: folha nova guardada. Abre a primeira e oferece a leitura. */
+
 function pplLeiOferecer(folhas){
   const f = (folhas || []).find(pplLeiFolhaPdf);
   if(!f || !ppjPodeEditar()) return;
@@ -221,11 +221,11 @@ function pplLeiOferecer(folhas){
     if(_ppl.plantaId !== f.id || !_ppl.oferta) return;
     _ppl.preparo = prep; _ppl.oferta = { custo: pplLeiCusto(prep.ladrilhos.length) };
     pplLeiCaixa();
-  }).catch(() => { /* o erro aparece se a pessoa pedir a leitura */ });
+  }).catch(() => {   });
 }
 
-/* ---------- ler ---------- */
-/* Abre o PDF original da folha, acha os símbolos e monta os ladrilhos (sem IA, sem custo) */
+
+
 async function pplLeiPreparar(folha){
   if(!pplLeiFolhaPdf(folha)) throw new Error("Esta folha não veio de um PDF. A leitura precisa do PDF do projeto; projeto escaneado se marca à mão.");
   let rot = 0;
@@ -289,7 +289,7 @@ async function pplLeiLer(){
     await Promise.all(Array.from({ length: Math.min(PPL_PARALELO, prep.ladrilhos.length) }, trabalhador));
     if(!respostas.length) throw new Error("nenhum ladrilho foi lido" + (ultimoErro ? ` (${ultimoErro})` : ""));
     const puxado = pplPuxar(pplJuntar(respostas, prep.ladrilhos, prep.W, prep.H), prep.formas, prep.W, prep.H);
-    // o que a obra já tem: execução (_execs_total), medida (RPC) e posição em qualquer folha
+
     const estacas = ppjEstacas();
     const [medR, posR] = await Promise.all([sb.rpc("estacas_medidas", { p_obra: st.obraId }),
       lerTudo(() => sb.from(PPJ_POS_TABELA).select("estaca_id,planta_id").eq("obra_id", st.obraId), "estaca_id,planta_id")]);
@@ -317,7 +317,7 @@ async function pplLeiLer(){
   pplLeiRepintar();
 }
 
-/* ---------- prévia sobre a folha: marcadores tracejados ---------- */
+
 function pplLeiColocar(st){
   if(!st.svg) return;
   let g = _ppl.g;
@@ -352,7 +352,7 @@ function pplLeiColocar(st){
   g.replaceChildren(...nos);
 }
 
-/* ---------- gravar ---------- */
+
 async function pplLeiGravar(){
   const st = _ppjPos, folha = ppjFolhaAtual(), pv = _ppl.previa;
   if(!pv || _ppl.ocupado || !folha || !st || folha.id !== st.plantaId || !ppjPodeEditar()) return;
@@ -372,12 +372,12 @@ async function pplLeiGravar(){
   const lista = typeof _estacas !== "undefined" && Array.isArray(_estacas) ? _estacas : null;
   let problema = "";
   try {
-    // 1. trocas de pilar, pela RPC (fica em registros_log)
+
     const posicionar = r.posicionar.slice();
     for(const p of trocas){
       const lida = r.novas.find(n => n.nome === p.filhas[0]);
       const { data, error } = await sb.rpc("estaca_renomear_pilar", { p_estaca: p.estaca.id, p_numero: p.filhas[0] });
-      if(error){   // a troca foi recusada: a estaca lida nasce nova, como as outras filhas
+      if(error){
         problema += ` ${p.estaca.nome} não foi trocada (${error.message}).`;
         const l = lida ? ppjSeqLinhaEstaca({ obraId: st.obraId, numero: lida.nome, tipo, diametro, local: folha.local, hoje: hojeISO(), tipos: Object.keys(pplLeiTipos()) }) : {};
         if(l.linha){ l.linha.observacoes = `Lida da folha do projeto em ${dataBR(hojeISO())}.`; linhas.push({ linha: l.linha, n: lida }); }
@@ -388,7 +388,7 @@ async function pplLeiGravar(){
       if(e) e.numero = data.depois;
       if(lida) posicionar.push({ estaca_id: p.estaca.id, nome: lida.nome, x: lida.x, y: lida.y });
     }
-    // 2. estacas novas
+
     for(let i = 0; i < linhas.length; i += PPL_LOTE){
       const lote = linhas.slice(i, i + PPL_LOTE);
       const ins = await sb.from("estacas").insert(lote.map(x => x.linha)).select(PPJ_SEQ_COLUNAS);
@@ -400,7 +400,7 @@ async function pplLeiGravar(){
         if(lida) posicionar.push({ estaca_id: nova.id, nome: nova.numero, x: lida.n.x, y: lida.n.y });
       }
     }
-    // 3. posições, a conferir
+
     const linhasPos = pplLeiLinhasPosicao(folha.id, st.obraId, posicionar);
     for(let i = 0; i < linhasPos.length; i += PPL_LOTE){
       const up = await sb.from(PPJ_POS_TABELA).upsert(linhasPos.slice(i, i + PPL_LOTE), { onConflict: "planta_id,estaca_id", ignoreDuplicates: true }).select("estaca_id,x_frac,y_frac");
@@ -412,7 +412,7 @@ async function pplLeiGravar(){
       }
     }
     ppjPosGuardar(st);
-    // 4. pontos sem nome e ambíguos (os prováveis da leitura anterior desta folha saem)
+
     const pontos = pplLeiPontos(folha.id, st.obraId, r, pv.formas);
     const apaga = await sb.from("obras_plantas_pontos").delete().eq("planta_id", folha.id).eq("situacao", "provavel");
     if(apaga.error) console.error("Leitura da folha, pontos antigos:", apaga.error);
@@ -420,7 +420,7 @@ async function pplLeiGravar(){
       const ip = await sb.from("obras_plantas_pontos").insert(pontos.slice(i, i + PPL_LOTE));
       if(ip.error){ console.error("Leitura da folha, pontos:", ip.error); problema += " Os pontos sem nome não foram guardados."; break; }
     }
-    // 5. resumo da leitura na folha
+
     const resumo = { lidas: pv.mostra.lidas, existentes: r.posicionar.length, novas: sessao.criadas.length, trocas: sessao.trocas.length, ambiguas: r.ambiguas.length,
       fora_da_lista: (r.foraDaLista || []).length, sem_nome: r.semNome.length + r.conferir.length, posicionadas: sessao.posicoes.length, versao: PPL_VERSAO, ...pv.info };
     const fr = await sb.from("obras_plantas").update({ leitura_em: new Date().toISOString(), leitura_resumo: resumo }).eq("id", folha.id).select("id");
@@ -439,7 +439,7 @@ async function pplLeiGravar(){
   if(typeof renderEstacas === "function") renderEstacas();
   pplLeiRepintar();
 }
-/* Desfaz a leitura gravada nesta sessão: só apaga estaca criada por ela que continua prevista e sem execução */
+
 async function pplLeiDesfazer(){
   const s = _ppl.sessao, st = _ppjPos;
   if(!s || _ppl.ocupado || !ppjPodeEditar()) return;
@@ -485,7 +485,7 @@ async function pplLeiDesfazer(){
   pplLeiRepintar();
 }
 
-/* ---------- eventos ---------- */
+
 function pplLeiClique(ev){
   const b = ev.target && ev.target.closest ? ev.target.closest("[data-ppl]") : null;
   if(!b || b.disabled) return;
@@ -512,7 +512,7 @@ if(typeof document !== "undefined"){
   else ligarPlantaLeitura();
 }
 
-// teste em Node (scripts/testar-fase175b.mjs)
+
 if(typeof module === "object" && module && module.exports){
   Object.assign(module.exports, { PPL_CUSTO_LADRILHO_USD, PPL_VERSAO, pplLeiCusto, pplLeiEstacasObra, pplLeiResumo, pplLeiLinhasPosicao, pplLeiPontos, pplLeiPreviaHTML });
 }

@@ -1,10 +1,10 @@
-/* ====================================================================
-   App do operador (fase 129b) — op_parada.js
-   Tela 7: paradas do dia (Iniciar / Encerrar, linha do tempo, lançar à mão).
-   As horas paradas saem do gatilho do banco. Fase 166: "A obra ficou paralisada?" e "Em razão do cliente?" são perguntas com
-   Sim e Não. O motivo só sugere a resposta, à vista de quem lança; salvar exige as duas respondidas e o envio leva sempre sim
-   ou não explícito. Sem resposta nunca vira "não".
-   ==================================================================== */
+
+
+
+
+
+
+
 
 const MOTIVOS_PARADA = [
   ["aguardando_liberacao", "Aguardando liberação"], ["aguardando_locacao", "Aguardando locação"],
@@ -13,8 +13,8 @@ const MOTIVOS_PARADA = [
   ["deslocamento_interno", "Deslocamento interno"], ["outro", "Outro"]
 ];
 const ROTULO_MOTIVO = Object.fromEntries(MOTIVOS_PARADA);
-/* Resposta sugerida por motivo (fase 166). Cópia idêntica à de js/rdo.js: os dois arquivos não carregam na mesma página, e o
-   scripts/testar-fase166.mjs compara as duas. null = sem sugestão: a pergunta aparece sem resposta e salvar exige responder. */
+
+
 const PARADA_RESPOSTA_PADRAO = {
   aguardando_liberacao: { paralisado: true, em_razao_cliente: true },
   aguardando_locacao: { paralisado: true, em_razao_cliente: true },
@@ -28,20 +28,20 @@ const PARADA_RESPOSTA_PADRAO = {
 };
 const PARADA_AVISO_RESPOSTA = "Responda se a obra ficou paralisada e se foi em razão do cliente.";
 const PARADA_PERGUNTAS = [["paralisado", "A obra ficou paralisada?"], ["em_razao_cliente", "Em razão do cliente?"]];
-/* só verdadeiro e falso são resposta; qualquer outra coisa é "sem resposta" (nulo) */
+
 const paradaBool = (v) => v === true ? true : v === false ? false : null;
 function paradaSugestao(motivo){
   const s = Object.prototype.hasOwnProperty.call(PARADA_RESPOSTA_PADRAO, motivo) ? PARADA_RESPOSTA_PADRAO[motivo] : null;
   return { paralisado: paradaBool(s && s.paralisado), em_razao_cliente: paradaBool(s && s.em_razao_cliente) };
 }
-/* motivo sem sugestão (ou desconhecido): quem lança tem de responder à mão */
+
 function paradaSemSugestao(motivo){ const s = paradaSugestao(motivo); return s.paralisado === null || s.em_razao_cliente === null; }
-/* falta alguma das duas respostas: não dá para salvar */
+
 function paradaRespostaFalta(r){ return !r || paradaBool(r.paralisado) === null || paradaBool(r.em_razao_cliente) === null; }
 
-let _parModo = null;      // null | "iniciar" | "lancar" | id da parada em correção
+let _parModo = null;
 let _parMotivo = null;
-let _parResp = { paralisado: null, em_razao_cliente: null };   // as duas respostas do formulário aberto (null = sem resposta)
+let _parResp = { paralisado: null, em_razao_cliente: null };
 
 function horasEntre(ini, fim){
   const a = minutos(ini), b = minutos(fim);
@@ -83,7 +83,7 @@ OP.telas.parada = async function(){
     }).join("")}</ol>`;
 };
 
-/* abre o formulário: parada nova começa sem resposta (o motivo sugere depois); em correção vale o que está gravado */
+
 function abrirFormularioParada(modo){
   const p = (modo !== "iniciar" && modo !== "lancar") ? (OP.snap.paradas || []).find(x => x.id === modo) : null;
   _parModo = modo; _parMotivo = null;
@@ -128,7 +128,7 @@ async function salvarParada(){
   const desc = $("op-par-desc").value.trim();
   if(m === "outro" && !desc){ avisar("Descreva a parada quando o motivo é Outro.", "aviso"); return; }
   if(paradaRespostaFalta(_parResp)){ avisar(PARADA_AVISO_RESPOSTA, "aviso"); return; }
-  const paralisado = _parResp.paralisado, cliente = _parResp.em_razao_cliente;   // sempre sim ou não explícito
+  const paralisado = _parResp.paralisado, cliente = _parResp.em_razao_cliente;
   const lista = OP.snap.paradas || (OP.snap.paradas = []);
   if(_parModo === "iniciar"){
     if(paradaAberta()){ avisar("Já há uma parada em andamento.", "aviso"); return; }
@@ -173,7 +173,7 @@ document.addEventListener("click", async (ev) => {
   if(d.parMotivo){
     _parMotivo = d.parMotivo;
     document.querySelectorAll("[data-par-motivo]").forEach(b => { b.classList.toggle("ativo", b.dataset.parMotivo === _parMotivo); b.setAttribute("aria-pressed", String(b.dataset.parMotivo === _parMotivo)); });
-    // parada nova: o motivo refaz a sugestão, à vista do operador, que pode trocar; em correção vale o que está gravado
+
     if(!_parModo || _parModo === "iniciar" || _parModo === "lancar"){ _parResp = paradaSugestao(_parMotivo); marcarRespostasParada(); }
     return;
   }

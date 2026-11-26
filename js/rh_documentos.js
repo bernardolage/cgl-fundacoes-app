@@ -1,28 +1,28 @@
-/* ====================================================================
-   Módulo: RH — documentos de admissão em PDF (fase 93a, chamado #69)
 
-   Os cinco modelos Word com mala direta do Departamento Pessoal viram HTML
-   com os campos no lugar dos MERGEFIELD e saem em PDF pelo html2pdf (mesma
-   identidade dos outros PDFs do app: pdfMargens/pdfCarimbarRodape do core).
-   O arquivo vai para o bucket privado rh-documentos/<funcionario_id>/ e
-   ganha uma linha em funcionario_documentos (tipo admissao_*). Depois, o
-   botão "Enviar para assinatura" manda o PDF à D4Sign (function d4sign-api,
-   ação enviar_rh; plano básico 10 req/h, nunca polling: o status volta pelo
-   d4sign-webhook).
 
-   Modelos (texto conferido pela Jucirlene contra o Word — checklist no PR):
-     admissao_ficha               RG 5.17 Cadastro para admissão de empregados (rev. 02 – 21/05/2025)
-     admissao_contrato            RG 5.4  Contrato de experiência + 5.4.1 acordo de compensação +
-                                          5.4.2 declaração de opção (FGTS) + 5.4.3 seguro-desemprego (rev. 01 – 20/10/2023)
-     admissao_contrato_ajudante   RG 5.5  Idem, com §1º/§2º de progressão do ajudante (rev. 01 – 20/10/2023)
-     admissao_prorrogacao         RG 5.6  Termo de prorrogação do contrato de experiência (rev. 01 – 20/10/2023)
-     admissao_contrato_trabalho   RG 5.7  Contrato de trabalho — retorno depois de 12 meses (rev. 01 – 20/10/2023)
 
-   Estilo inline com hex: o PDF roda fora do CSS do app (exceção da paleta,
-   como propostas.js e gerarPDFMedicao). Tudo que vem do banco passa por esc().
-   Prefixo dos IDs: rhd-. Depende de funcionarios.js (funcCarregarSensivel,
-   funcVeSensivel, _funcs) só em tempo de execução.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const RHD_EMPRESA = {
   nome:       "CGL Fundações Ltda",
@@ -42,17 +42,17 @@ const RHD_MODELOS = {
   admissao_prorrogacao:       { rg: "RG 5.6",  titulo: "Termo de prorrogação do contrato de experiência", rev: "01 – 20/10/2023", rotulo: "Prorrogação do contrato de experiência (RG 5.6)", arquivo: "prorrogacao-experiencia" },
   admissao_contrato_trabalho: { rg: "RG 5.7",  titulo: "Contrato de trabalho",                 rev: "01 – 20/10/2023", rotulo: "Contrato de trabalho — retorno após 12 meses (RG 5.7)", arquivo: "contrato-de-trabalho" }
 };
-/* lote S56c (#188): documentos de admissão que NÃO são gerados pelo app, só anexados (PDF já assinado). O tipo começa por
-   "admissao_", então a policy func_docs_admissao_so_rh já restringe a leitura ao RH e à diretoria. */
+
+
 const RHD_ANEXOS = {
   admissao_contrato_pj: { rotulo: "Contrato PJ", arquivo: "contrato-pj" }
 };
-let _rhdTemAnexoPj = true;   // false quando o banco ainda não tem o valor admissao_contrato_pj (migration loteS56c0)
-/* contrato que a admissão pede, pelo tipo_documento */
+let _rhdTemAnexoPj = true;
+
 const RHD_CONTRATO_POR_TIPO = { padrao: "admissao_contrato", ajudante_soldador: "admissao_contrato_ajudante", retorno_12_meses: "admissao_contrato_trabalho" };
 
-/* ---------- salário por extenso (pt-BR) ----------
-   rhExtenso(2464) → "Dois Mil Quatrocentos e Sessenta e Quatro Reais"; rhExtenso(1050.5) → "Mil e Cinquenta Reais e Cinquenta Centavos" */
+
+
 const RHD_UNID = ["", "Um", "Dois", "Três", "Quatro", "Cinco", "Seis", "Sete", "Oito", "Nove", "Dez", "Onze", "Doze", "Treze", "Quatorze", "Quinze", "Dezesseis", "Dezessete", "Dezoito", "Dezenove"];
 const RHD_DEZ  = ["", "", "Vinte", "Trinta", "Quarenta", "Cinquenta", "Sessenta", "Setenta", "Oitenta", "Noventa"];
 const RHD_CENT = ["", "Cento", "Duzentos", "Trezentos", "Quatrocentos", "Quinhentos", "Seiscentos", "Setecentos", "Oitocentos", "Novecentos"];
@@ -97,9 +97,9 @@ function rhExtenso(valor){
   return saida.replace(/\s+/g, " ").trim();
 }
 
-/* ---------- utilitários de texto ---------- */
+
 const rhdV   = (v) => (v == null || String(v).trim() === "") ? "" : String(v).trim();
-const rhdOu  = (v, vazio = "________________") => rhdV(v) ? esc(rhdV(v)) : /* html */ vazio;
+const rhdOu  = (v, vazio = "________________") => rhdV(v) ? esc(rhdV(v)) :   vazio;
 const rhdDat = (d) => d ? dataBR(String(d).slice(0, 10)) : "____/____/______";
 const rhdBRL = (v) => (v == null || v === "") ? "R$ __________" : "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const rhdX   = (cond) => cond ? "X" : "&nbsp;&nbsp;";
@@ -108,11 +108,11 @@ function rhdDataPorExtenso(iso){
   return esc(d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }));
 }
 
-/* ---------- cabeçalho do SGQ (todas as páginas dos modelos) ----------
-   lote S64-d (#290): como no Word: logo à esquerda; "Sistema de Gestão da Qualidade" no alto; faixa laranja
-   "TIPO DE DOCUMENTO" com o título grande embaixo; à direita, coluna estreita com as faixas IDENTIFICAÇÃO, REVISÃO e
-   PÁGINA, cada uma com o valor logo abaixo. */
-const RHD_FAIXA = "#C55A11";   // laranja das faixas do cabeçalho do SGQ (gerador de PDF: exceção da paleta)
+
+
+
+
+const RHD_FAIXA = "#C55A11";
 function rhdCabecalho(titulo, rg, rev, pagina, total){
   const cel = "border:1px solid #333;padding:0 4px;font-size:7.5pt;line-height:1.25;";
   const faixa = `${cel}background:${RHD_FAIXA};color:#fff;font-weight:700;`;
@@ -136,20 +136,20 @@ function rhdCabecalho(titulo, rg, rev, pagina, total){
     <tr><td style="${val}">${esc(pagina)} de ${esc(total)}</td></tr>
   </table>`;
 }
-/* 10 pt justificado: o contrato de experiência (RG 5.4/5.5, 14 parágrafos + quadro do VT + assinaturas) tem de caber numa página A4 */
+
 const RHD_P = "font-family:Arial,Helvetica,sans-serif;font-size:10pt;line-height:1.38;color:#111;text-align:justify;margin:0 0 2.4mm;";
 function rhdPagina(conteudo, primeira){
-  return `<div style="${primeira ? "" : "page-break-before:always;"}font-family:Arial,Helvetica,sans-serif;color:#111;">${/* html */ conteudo}</div>`;
+  return `<div style="${primeira ? "" : "page-break-before:always;"}font-family:Arial,Helvetica,sans-serif;color:#111;">${  conteudo}</div>`;
 }
-/* página cheia (contrato de experiência do ajudante com os dois §, contrato de trabalho): 9,5 pt para caber como no Word */
+
 function rhdDensa(html, extra){
-  // lote S64-d (#290): "extra" = contrato de trabalho (RG 5.7, 10 cláusulas): 9 pt para caber numa página só
+
   const estilo = extra ? "font-size:9pt;line-height:1.2;color:#111;text-align:justify;margin:0 0 1.1mm;"
                        : "font-size:9.5pt;line-height:1.3;color:#111;text-align:justify;margin:0 0 1.9mm;";
   return html.replace(/font-size:10pt;line-height:1\.38;[^"]*margin:0 0 2\.4mm;/g, estilo);
 }
 function rhdAssinaturas(nomeEmpregado, comEmpresa = true, rotuloEmpregado = ""){
-  const bloco = (t) => `<td style="width:50%;text-align:center;padding:14mm 4mm 0;font-size:10pt;"><div style="border-top:1px solid #111;padding-top:2mm;">${/* html */ t}</div></td>`;
+  const bloco = (t) => `<td style="width:50%;text-align:center;padding:14mm 4mm 0;font-size:10pt;"><div style="border-top:1px solid #111;padding-top:2mm;">${  t}</div></td>`;
   return `<table style="width:100%;border-collapse:collapse;margin-top:6mm;" class="nao-quebrar"><tr>
     ${comEmpresa ? bloco(RHD_EMPRESA.nomeCaixa) : `<td style="width:50%;"></td>`}
     ${bloco((rotuloEmpregado ? rotuloEmpregado + "<br>" : "") + rhdOu(nomeEmpregado))}
@@ -162,7 +162,7 @@ function rhdTestemunhas(){
   </tr></table>`;
 }
 
-/* ---------- dados para a mala direta ---------- */
+
 function rhdCampos(d){
   const { f = {}, s = {}, a = {} } = d;
   const salario = a.salario ?? s.salario_contabil ?? null;
@@ -182,20 +182,20 @@ function rhdCampos(d){
   };
 }
 
-/* ====================================================================
-   RG 5.17 — Cadastro para admissão de empregados (ficha cadastral)
-   lote S64-d (#290): layout do modelo Word (rev. 02 – 21/05/2025): quadro "DADOS PARA ADMISSÃO" com o título dentro,
-   faixa "DADOS PESSOAIS" em quadro próprio, rótulo em cima e valor embaixo no mesmo corpo de letra, mãe e pai em linhas
-   próprias, linha de uniforme/EPI com os traços. Sem o "CHEK LIST COMPLEMENTAR" (pedido do RH no #290). "Ciente em" leva
-   a data de admissão, como a data de assinatura dos demais documentos. Texto da LGPD sem mudança.
-   ==================================================================== */
+
+
+
+
+
+
+
 function rhdHtmlFicha(c){
   const m = RHD_MODELOS.admissao_ficha;
   const F = "font-family:Arial,Helvetica,sans-serif;";
   const td = "border:1px solid #111;padding:1px 4px 2px;font-size:9pt;line-height:1.3;vertical-align:top;";
-  const cel = (rotulo, valor, extra = "") => `<td style="${td}${esc(extra)}">${esc(rotulo)}<br>${/* html */ valor || "&nbsp;"}</td>`;
-  const linha = (cels) => `<table style="width:100%;border-collapse:collapse;${F}margin-top:-1px;"><tr>${/* html */ cels}</tr></table>`;
-  const quadro = (conteudo, extra = "") => `<div style="border:2px solid #111;${esc(extra)}">${/* html */ conteudo}</div>`;
+  const cel = (rotulo, valor, extra = "") => `<td style="${td}${esc(extra)}">${esc(rotulo)}<br>${  valor || "&nbsp;"}</td>`;
+  const linha = (cels) => `<table style="width:100%;border-collapse:collapse;${F}margin-top:-1px;"><tr>${  cels}</tr></table>`;
+  const quadro = (conteudo, extra = "") => `<div style="border:2px solid #111;${esc(extra)}">${  conteudo}</div>`;
   const traco = (w) => `<span style="display:inline-block;width:${esc(w)};border-bottom:1px solid #111;margin:0 2mm;">&nbsp;</span>`;
   const corpo = `
     ${rhdCabecalho(m.titulo.toUpperCase(), m.rg, m.rev, 1, 1)}
@@ -231,9 +231,9 @@ function rhdHtmlFicha(c){
   return rhdPagina(corpo, true);
 }
 
-/* ====================================================================
-   RG 5.4 / RG 5.5 — Documentos admissionais (4 páginas)
-   ==================================================================== */
+
+
+
 function rhdHtmlContratoExperiencia(c, tipo){
   const ajudante = tipo === "admissao_contrato_ajudante";
   const m = RHD_MODELOS[tipo];
@@ -299,7 +299,7 @@ function rhdHtmlContratoExperiencia(c, tipo){
     ${rhdTestemunhas()}`;
   return rhdPagina(ajudante ? rhdDensa(pag1) : pag1, true) + rhdPagina(pag2) + rhdPagina(pag3) + rhdPagina(pag4);
 }
-/* quadro Empresa / CNPJ / Endereço / Empregado / Cargo (RG 5.4.3, 5.5.3 e 5.6) */
+
 function rhdTabelaPartes(c, comCtps){
   const E = RHD_EMPRESA;
   const td = "border:1px solid #333;padding:2px 5px;font-size:10pt;vertical-align:top;";
@@ -312,9 +312,9 @@ function rhdTabelaPartes(c, comCtps){
   </table>`;
 }
 
-/* ====================================================================
-   RG 5.6 — Termo de prorrogação do contrato de experiência
-   ==================================================================== */
+
+
+
 function rhdHtmlProrrogacao(c){
   const m = RHD_MODELOS.admissao_prorrogacao, E = RHD_EMPRESA;
   const corpo = `
@@ -331,9 +331,9 @@ function rhdHtmlProrrogacao(c){
   return rhdPagina(corpo, true);
 }
 
-/* ====================================================================
-   RG 5.7 — Contrato de trabalho (retorno depois de 12 meses)
-   ==================================================================== */
+
+
+
 function rhdHtmlContratoTrabalho(c){
   const m = RHD_MODELOS.admissao_contrato_trabalho, E = RHD_EMPRESA;
   const corpo = `
@@ -370,7 +370,7 @@ function rhdHtml(tipo, dados){
   }
 }
 
-/* ---------- PDF em memória (Blob), mesma identidade do pdfGerar do core ---------- */
+
 async function rhdPdfBlob(html){
   if(typeof html2pdf === "undefined") throw new Error("Biblioteca html2pdf não carregada.");
   const { margem, largPx } = pdfMargens(190, 12);
@@ -389,7 +389,7 @@ async function rhdPdfBlob(html){
   return pdf.output("blob");
 }
 
-/* ---------- dados do funcionário para a mala direta ---------- */
+
 async function rhdAdmissaoAtual(funcionarioId){
   const { data, error } = await sb.from("admissoes").select("*").eq("funcionario_id", funcionarioId)
     .order("data_admissao", { ascending: false }).limit(1);
@@ -406,11 +406,11 @@ async function rhdDados(funcionarioId, admissaoId){
   return { f, s, a: a || {} };
 }
 
-/* ---------- gerar, guardar e registrar ---------- */
-let _rhdDocs = [];          // funcionario_documentos (tipo admissao_*) do funcionário aberto
-let _rhdAdm  = null;        // última admissão do funcionário aberto
+
+let _rhdDocs = [];
+let _rhdAdm  = null;
 let _rhdFuncId = null;
-let _rhdAlvo = null;        // documento do modal da D4Sign
+let _rhdAlvo = null;
 
 function rhdNomeArquivo(tipo, nome){
   const m = RHD_MODELOS[tipo] || RHD_ANEXOS[tipo] || { arquivo: "documento" };
@@ -423,7 +423,7 @@ async function rhdGerar(tipo, funcionarioId, admissaoId){
   const m = RHD_MODELOS[tipo];
   const html = rhdHtml(tipo, dados);
   const blob = await rhdPdfBlob(html);
-  // regra de upload do projeto: MIME pela extensão e corpo reembalado em Blob
+
   const corpo = new Blob([blob], { type: "application/pdf" });
   const path = `${funcionarioId}/${tipo}_${Date.now()}.pdf`;
   const { error: upErr } = await sb.storage.from("rh-documentos").upload(path, corpo, { contentType: "application/pdf", upsert: false });
@@ -445,7 +445,7 @@ async function rhdGerar(tipo, funcionarioId, admissaoId){
   return data;
 }
 
-/* todos os da admissão: ficha + o contrato que o tipo_documento pede */
+
 async function rhdGerarAdmissao(funcionarioId, admissao){
   const tipos = ["admissao_ficha", RHD_CONTRATO_POR_TIPO[admissao?.tipo_documento] || "admissao_contrato"];
   const feitos = [];
@@ -470,7 +470,7 @@ async function rhdExcluir(doc){
   if(typeof carregarDocsFuncionario === "function") carregarDocsFuncionario();
 }
 
-/* ---------- bloco na aba Documentos da ficha ---------- */
+
 function rhdTagAssinatura(st){
   if(typeof tagAssinatura === "function") return tagAssinatura(st || "nao_iniciada");
   return `<span class="tag cinza">${esc(st || "nao_iniciada")}</span>`;
@@ -485,7 +485,7 @@ async function rhdCarregar(funcionarioId){
   if(!_rhdFuncId || typeof funcVeSensivel !== "function" || !funcVeSensivel()){ cont.innerHTML = ""; return; }
   const [adm, docs] = await Promise.all([
     rhdAdmissaoAtual(_rhdFuncId),
-    // tipo é enum: filtra pela lista (like exigiria cast no banco); lote S56c: + os anexados (contrato PJ)
+
     rhdLerDocs(true)
   ]);
   _rhdAdm = adm;
@@ -496,7 +496,7 @@ async function rhdLerDocs(comAnexos){
   const tipos = Object.keys(RHD_MODELOS).concat(comAnexos && _rhdTemAnexoPj ? Object.keys(RHD_ANEXOS) : []);
   const r = await sb.from("funcionario_documentos").select("*").eq("funcionario_id", _rhdFuncId).in("tipo", tipos)
     .order("gerado_em", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
-  // banco sem o valor novo do enum (22P02 invalid input value): lê só os gerados e esconde o anexo
+
   if(r.error && comAnexos && _rhdTemAnexoPj && /admissao_contrato_pj|invalid input value|22P02/i.test((r.error.message || "") + (r.error.code || ""))){
     _rhdTemAnexoPj = false;
     return rhdLerDocs(false);
@@ -504,12 +504,12 @@ async function rhdLerDocs(comAnexos){
   return r;
 }
 
-/* lote S56c (#188): anexar o contrato PJ assinado (PDF) ao arquivo do funcionário, no bucket privado rh-documentos */
+
 async function rhdAnexarContratoPj(file){
   if(!file || !_rhdFuncId) return;
   const ext = extensaoArquivo(file);
   if(ext !== "pdf"){ aviso("rhd-aviso", "Anexe o contrato PJ em PDF.", "erro"); return; }
-  const mime = mimeDoArquivo(file, ext);   // regra de upload do projeto: MIME pela extensão e corpo reembalado em Blob
+  const mime = mimeDoArquivo(file, ext);
   const path = `${_rhdFuncId}/admissao_contrato_pj_${Date.now()}.${ext}`;
   aviso("rhd-aviso", "Enviando o contrato PJ…", "aviso");
   const { error: upErr } = await sb.storage.from("rh-documentos").upload(path, new Blob([file], { type: mime }), { contentType: mime, upsert: false });
@@ -532,7 +532,7 @@ async function rhdAnexarContratoPj(file){
   aviso("rhd-aviso", "Contrato PJ anexado ao arquivo do funcionário.", "ok");
 }
 
-/* lote S56c (#188): o botão de anexar só aparece com o tipo de contrato PJ na ficha, banco com o enum novo e usuário que escreve */
+
 function rhdPodeAnexarPj(){
   return _rhdTemAnexoPj && !!_rhdFuncId && $("func-tipo-contrato")?.value === "pj" && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
 }
@@ -576,7 +576,7 @@ function rhdRender(){
     <p class="meta">Texto transcrito dos modelos Word do Departamento Pessoal (RG 5.17, 5.4, 5.5, 5.6 e 5.7). O envio para assinatura usa 4 das 10 requisições/hora da D4Sign; o status volta sozinho pelo webhook.</p>`;
   if(a) $("rhd-modelo").value = RHD_CONTRATO_POR_TIPO[a.tipo_documento] || "admissao_contrato";
 
-  $("btn-rhd-anexar-pj")?.addEventListener("click", () => $("rhd-pj-arquivo")?.click());   // lote S56c (#188)
+  $("btn-rhd-anexar-pj")?.addEventListener("click", () => $("rhd-pj-arquivo")?.click());
   $("rhd-pj-arquivo")?.addEventListener("change", (ev) => { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if(f) comBotaoTravado("btn-rhd-anexar-pj", () => rhdAnexarContratoPj(f)); });
   $("btn-rhd-previa")?.addEventListener("click", () => rhdVisualizar($("rhd-modelo").value, _rhdFuncId, _rhdAdm?.id).catch(e => aviso("rhd-aviso", e.message || String(e), "erro")));
   $("btn-rhd-gerar")?.addEventListener("click", () => comBotaoTravado("btn-rhd-gerar", async () => {
@@ -609,7 +609,7 @@ function rhdRender(){
   cont.querySelectorAll(".rhd-excluir").forEach(b => b.addEventListener("click", () => { const d = _rhdDocs.find(x => x.id === b.dataset.id); if(d) rhdExcluir(d); }));
 }
 
-/* ---------- D4Sign (segunda etapa da 93a) ---------- */
+
 async function rhdAbrirModalAssinatura(doc){
   _rhdAlvo = doc;
   $("rhd-doc-nome").textContent = doc.descricao || doc.tipo;
@@ -617,7 +617,7 @@ async function rhdAbrirModalAssinatura(doc){
   $("rhd-email-1").value = $("func-email")?.value || "";
   $("rhd-nome-2").value  = ""; $("rhd-email-2").value = ""; $("rhd-mensagem").value = "";
   let usada = null;
-  try { const r = await sb.rpc("d4sign_cota_usada"); usada = r.error ? null : r.data; } catch(_e){ /* cortesia */ }
+  try { const r = await sb.rpc("d4sign_cota_usada"); usada = r.error ? null : r.data; } catch(_e){   }
   $("rhd-cota-nota").textContent = usada === null
     ? "O envio usa 4 das 10 requisições/hora do plano D4Sign."
     : `O envio usa 4 requisições. Cota da última hora: ${usada}/10 usadas.`;
@@ -661,14 +661,14 @@ async function rhdAtualizarStatus(docId){
   await rhdCarregar(_rhdFuncId);
 }
 
-/* ---------- pré-visualização em HTML (conferência do texto contra o Word) ---------- */
+
 async function rhdVisualizar(tipo, funcionarioId, admissaoId){
   const dados = await rhdDados(funcionarioId, admissaoId);
   const html = rhdHtml(tipo, dados);
   const w = window.open("", "_blank");
   if(!w){ aviso("app-aviso", "Pop-up bloqueado. Permita pop-ups para visualizar.", "erro"); return; }
   w.document.open();
-  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(RHD_MODELOS[tipo].rotulo)}</title></head><body style="margin:12mm auto;max-width:190mm;background:#fff;">${/* html */ html}</body></html>`);
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(RHD_MODELOS[tipo].rotulo)}</title></head><body style="margin:12mm auto;max-width:190mm;background:#fff;">${  html}</body></html>`);
   w.document.close();
 }
 

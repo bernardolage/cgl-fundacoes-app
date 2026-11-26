@@ -1,21 +1,21 @@
-/* ====================================================================
-   Módulo: Catálogo de Serviços
-   Visualização e edição do catálogo de serviços da CGL:
-   categorias (3 níveis) -> serviços -> variantes precificáveis.
-   Três visões: Lista, Catálogo (por categoria) e Kanban.
-   Carregamento sob demanda: só busca o catálogo ao abrir a aba.
-   ==================================================================== */
 
-/* ---------- Estado do módulo ---------- */
-let _servCarregado = false;     /* catálogo já buscado do banco? */
-let _servCategorias = [];       /* categorias_servico */
-let _servServicos   = [];       /* servicos */
-let _servVariantes  = [];       /* servico_variantes */
-let _servPrecos     = {};       /* variante_id -> registro de preço vigente */
-let _servView       = "lista";  /* visão atual: lista | catalogo | kanban */
-let servEditId      = null;     /* id da variante em edição */
 
-/* ---------- Rótulos ---------- */
+
+
+
+
+
+
+
+let _servCarregado = false;
+let _servCategorias = [];
+let _servServicos   = [];
+let _servVariantes  = [];
+let _servPrecos     = {};
+let _servView       = "lista";
+let servEditId      = null;
+
+
 const SERV_NATUREZA = {
   mobilizacao:        "Mobilização",
   verba:              "Verba administrativa",
@@ -38,17 +38,17 @@ function corTipoObra(t){
   return t === "industrial" ? "ambar" : t === "especial" ? "azul" : "cinza";
 }
 
-/* ---------- Helpers de hierarquia ---------- */
+
 const servCatById = (id) => _servCategorias.find(c => c.id === id);
 const servById    = (id) => _servServicos.find(s => s.id === id);
 
-/* sobe a hierarquia de categorias até o nível 1 (categoria principal) */
+
 function servCatRaiz(catId){
   let c = servCatById(catId), guarda = 0;
   while(c && c.parent_id && guarda < 6){ c = servCatById(c.parent_id); guarda++; }
   return c || null;
 }
-/* caminho legível "Principal > Subcategoria > Tipo" */
+
 function servCatCaminho(catId){
   const partes = []; let c = servCatById(catId), guarda = 0;
   while(c && guarda < 6){
@@ -58,19 +58,19 @@ function servCatCaminho(catId){
   }
   return partes.join(" › ");
 }
-/* preço de referência de uma variante (ou null) */
+
 function precoVariante(id){
   const p = _servPrecos[id];
   return p && p.preco_referencia != null ? Number(p.preco_referencia) : null;
 }
 
-/* ---------- Carga do catálogo ---------- */
+
 async function carregarCatalogoServicos(){
   const cont = $("serv-conteudo");
   if(cont) cont.innerHTML = `<p class="vazio">Carregando catálogo...</p>`;
   const [cat, srv, vrt, prc] = await Promise.all([
     sb.from("categorias_servico").select("*").order("ordem_exibicao"),
-    sb.from("servicos").select("*").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),   // lote S65-e: ordem padrão
+    sb.from("servicos").select("*").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),
     sb.from("servico_variantes").select("*").order("codigo"),
     sb.from("servico_precos").select("*").order("vigente_desde", { ascending:false })
   ]);
@@ -82,14 +82,14 @@ async function carregarCatalogoServicos(){
   _servServicos   = srv.data || [];
   _servVariantes  = vrt.data || [];
   _servPrecos = {};
-  /* mantém apenas o preço mais recente de cada variante */
+
   (prc.data || []).forEach(p => { if(!_servPrecos[p.variante_id]) _servPrecos[p.variante_id] = p; });
   _servCarregado = true;
   preencherFiltrosServ();
   renderServicos();
 }
 
-/* ---------- Filtros ---------- */
+
 function preencherFiltrosServ(){
   const raizes = _servCategorias
     .filter(c => c.nivel === 1)
@@ -102,7 +102,7 @@ function preencherFiltrosServ(){
     Object.entries(SERV_TIPO_OBRA).map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
 }
 
-/* devolve as variantes que passam pelos filtros, já com serviço e raiz resolvidos */
+
 function variantesFiltradas(){
   const termo = ($("serv-busca").value || "").trim().toLowerCase();
   const fCat  = $("serv-f-categoria").value;
@@ -127,11 +127,11 @@ function variantesFiltradas(){
     });
 }
 
-/* ---------- Lote S65-e (#317): ordem padrão dos serviços ----------
-   servicos.ordem_exibicao define a ordem no catálogo (visão Catálogo e Kanban) e no seletor de itens do orçamento.
-   As setas aparecem na visão Catálogo para quem grava o catálogo (comercial; diretor pelo has_role, policy servicos_write).
-   Mover troca o serviço com o vizinho da mesma categoria principal e renumera o catálogo inteiro (10, 20, 30…) na ordem
-   categoria principal › serviço, para o seletor do orçamento seguir as categorias; grava só os que mudaram. */
+
+
+
+
+
 function servOrdenar(grupos){
   const o = s => s.ordem_exibicao == null ? Infinity : Number(s.ordem_exibicao);
   return grupos.sort((a, b) => (o(a.s) - o(b.s)) || String(a.s.codigo || "").localeCompare(String(b.s.codigo || ""), "pt-BR"));
@@ -147,7 +147,7 @@ async function servMoverOrdem(servId, passo){
   const o = x => x.ordem_exibicao == null ? Infinity : Number(x.ordem_exibicao);
   const todos = _servServicos.slice().sort((a, b) => (rOrd(a) - rOrd(b)) || String(rId(a)).localeCompare(String(rId(b))) || (o(a) - o(b)) || String(a.codigo || "").localeCompare(String(b.codigo || ""), "pt-BR"));
   const i = todos.findIndex(x => x.id === servId), j = i + passo;
-  if(i < 0 || j < 0 || j >= todos.length || rId(todos[j]) !== rId(s)) return;   // só dentro da mesma categoria principal
+  if(i < 0 || j < 0 || j >= todos.length || rId(todos[j]) !== rId(s)) return;
   [todos[i], todos[j]] = [todos[j], todos[i]];
   const mudar = todos.map((x, k) => ({ x, nova: (k + 1) * 10 })).filter(m => Number(m.x.ordem_exibicao) !== m.nova);
   const res = await Promise.all(mudar.map(m => sb.from("servicos").update({ ordem_exibicao: m.nova }).eq("id", m.x.id).select("id")));
@@ -158,7 +158,7 @@ async function servMoverOrdem(servId, passo){
   document.querySelector(`[data-serv="${CSS.escape(servId)}"][data-serv-ordem="${passo}"]`)?.focus();
 }
 
-/* ---------- Render: despachante ---------- */
+
 function renderServicos(){
   if(!_servCarregado) return;
   const dados = variantesFiltradas();
@@ -168,15 +168,15 @@ function renderServicos(){
   else                              renderServLista(dados);
 }
 
-/* lote S68-d (#364): unidade da variante (coluna servico_variantes.unidade, fase 40); vazia herda a do serviço,
-   com a marca "(do serviço)". O orçamento usa a mesma regra (v.unidade || unidade do serviço). */
+
+
 function servUnidadeVarHtml(v, s){
   if(v.unidade) return esc(v.unidade);
   const su = s && s.unidade;
   return su ? `${esc(su)} <span class="u-txt-fraco">(do serviço)</span>` : "—";
 }
 
-/* ---------- Render: Lista ---------- */
+
 function renderServLista(dados){
   const cont = $("serv-conteudo");
   if(!dados.length){
@@ -191,7 +191,7 @@ function renderServLista(dados){
       <td>${esc(s.nome)}</td>
       <td>${esc(raiz ? raiz.nome : "—")}</td>
       <td><span class="tag ${corTipoObra(v.tipo_obra)}">${esc(SERV_TIPO_OBRA[v.tipo_obra]||v.tipo_obra||"—")}</span></td>
-      <td>${/* html */ servUnidadeVarHtml(v, s)}</td>
+      <td>${  servUnidadeVarHtml(v, s)}</td>
       <td class="num">${preco!=null ? brl(preco) : '<span class="tag cinza">sem preço</span>'}</td>
     </tr>`;
   }).join("");
@@ -203,7 +203,7 @@ function renderServLista(dados){
     <tbody>${linhas}</tbody></table></div>`;
 }
 
-/* agrupa as variantes filtradas por serviço */
+
 function agruparPorServico(dados){
   const grupos = {};
   dados.forEach(d => {
@@ -213,7 +213,7 @@ function agruparPorServico(dados){
   return grupos;
 }
 
-/* faixa de preço de uma lista de variantes, como texto */
+
 function faixaPreco(vars){
   const precos = vars.map(v => precoVariante(v.id)).filter(x => x != null);
   if(!precos.length) return "sem preço";
@@ -221,7 +221,7 @@ function faixaPreco(vars){
   return min === max ? brl(min) : `${brl(min)} – ${brl(max)}`;
 }
 
-/* ---------- Render: Kanban (colunas = categorias principais) ---------- */
+
 function renderServKanban(dados){
   const cont = $("serv-conteudo");
   const grupos = agruparPorServico(dados);
@@ -252,7 +252,7 @@ function renderServKanban(dados){
     : `<p class="vazio">Nenhum serviço encontrado para os filtros.</p>`;
 }
 
-/* ---------- Render: Catálogo (agrupado por categoria principal) ---------- */
+
 function renderServCatalogo(dados){
   const cont = $("serv-conteudo");
   const grupos = agruparPorServico(dados);
@@ -272,7 +272,7 @@ function renderServCatalogo(dados){
           <td>${esc(v.codigo)}</td>
           <td>${esc(v.nome)}</td>
           <td><span class="tag ${corTipoObra(v.tipo_obra)}">${esc(SERV_TIPO_OBRA[v.tipo_obra]||v.tipo_obra||"—")}</span></td>
-          <td>${/* html */ servUnidadeVarHtml(v, g.s)}</td>
+          <td>${  servUnidadeVarHtml(v, g.s)}</td>
           <td class="num">${preco!=null ? brl(preco) : '<span class="tag cinza">—</span>'}</td>
         </tr>`;
       }).join("");
@@ -295,7 +295,7 @@ function renderServCatalogo(dados){
   cont.innerHTML = html || `<p class="vazio">Nenhum serviço encontrado para os filtros.</p>`;
 }
 
-/* ---------- Alternância painel x ficha ---------- */
+
 function mostrarPainelServ(){
   $("serv-ficha").style.display = "none";
   $("serv-painel").style.display = "block";
@@ -315,9 +315,9 @@ function abrirFichaServ(id){
     <div><span>Serviço</span><strong>${esc(s.nome)}</strong></div>
     <div><span>Categoria</span><strong>${esc(servCatCaminho(s.categoria_id))}</strong></div>
     <div><span>Natureza</span><strong>${esc(SERV_NATUREZA[s.natureza]||s.natureza)}</strong></div>
-    <div><span>Unidade</span><strong>${/* html */ servUnidadeVarHtml(v, s)}</strong></div>` : "";
+    <div><span>Unidade</span><strong>${  servUnidadeVarHtml(v, s)}</strong></div>` : "";
 
-  /* lote S68-d (#364): unidade desta variante; a 1ª opção (vazia) herda a do serviço e grava null */
+
   const listaUn = (typeof UNIDADES !== "undefined" ? UNIDADES : []).slice();
   if(v.unidade && !listaUn.includes(v.unidade)) listaUn.push(v.unidade);
   $("serv-unidade").innerHTML = `<option value="">— a do serviço (${esc((s && s.unidade) || "sem unidade")}) —</option>`
@@ -335,11 +335,11 @@ function abrirFichaServ(id){
   $("serv-custo").value    = p.custo_estimado ?? "";
   $("serv-margem").value   = p.margem_minima_pct ?? "";
   $("serv-obs").value      = v.observacoes || "";
-  /* textos do serviço (nota interna do catálogo, 16/11/2026): ficam no serviço, não na variante; só quem grava o catálogo edita */
+
   $("serv-obs-proposta").value = (s && s.observacoes_padrao) || "";
   $("serv-nota-interna").value = (s && s.nota_interna) || "";
   ["serv-obs-proposta", "serv-nota-interna"].forEach(idc => { $(idc).disabled = !s || !servPodeOrdenar(); });
-  servPreencherEstrutura(s);   // lote S66-g (#316)
+  servPreencherEstrutura(s);
   $("serv-ativo").checked  = v.ativo !== false;
   $("serv-ficha-titulo").textContent = v.nome || "Editar serviço";
 
@@ -348,7 +348,7 @@ function abrirFichaServ(id){
   $("serv-nome").focus();
 }
 
-/* ---------- Eventos ---------- */
+
 document.querySelectorAll(".serv-view-btn").forEach(b => {
   b.addEventListener("click", () => {
     document.querySelectorAll(".serv-view-btn").forEach(x => x.classList.remove("ativo"));
@@ -372,19 +372,19 @@ $("serv-conteudo").addEventListener("click", (e) => {
 
 $("btn-voltar-serv").addEventListener("click", mostrarPainelServ);
 
-/* ao clicar na aba Serviços: volta ao painel e carrega o catálogo na 1ª vez */
+
 const navServicos = document.querySelector('nav button[data-secao="servicos"]');
 if(navServicos) navServicos.addEventListener("click", () => {
   mostrarPainelServ();
   if(!_servCarregado) carregarCatalogoServicos();
 });
 
-/* ---------- Salvar (edição da variante + preço de referência) ---------- */
+
 $("form-servico").addEventListener("submit", async (e) => {
   e.preventDefault();
   if(!servEditId) return;
 
-  /* valida a faixa de profundidade (regra do banco: ambas ou nenhuma) */
+
   const pmin = $("serv-profmin").value !== "" ? Number($("serv-profmin").value) : null;
   const pmax = $("serv-profmax").value !== "" ? Number($("serv-profmax").value) : null;
   if((pmin === null) !== (pmax === null)){
@@ -396,12 +396,12 @@ $("form-servico").addEventListener("submit", async (e) => {
     return;
   }
 
-  /* 1. atualiza a variante */
+
   const regVar = {
     nome:           $("serv-nome").value.trim(),
     descricao:      $("serv-desc").value.trim() || null,
     tipo_obra:      $("serv-tipoobra").value,
-    unidade:        $("serv-unidade").value || null,   // lote S68-d: vazio herda a unidade do serviço
+    unidade:        $("serv-unidade").value || null,
     diametro_mm:    $("serv-diam").value !== "" ? Number($("serv-diam").value) : null,
     faixa_prof_min: pmin,
     faixa_prof_max: pmax,
@@ -414,7 +414,7 @@ $("form-servico").addEventListener("submit", async (e) => {
     return;
   }
 
-  /* 1b. textos do serviço (texto na proposta e nota interna), só quando mudaram */
+
   const varAtual = _servVariantes.find(x => x.id === servEditId);
   const servAtual = varAtual ? servById(varAtual.servico_id) : null;
   if(servAtual && servPodeOrdenar()){
@@ -429,7 +429,7 @@ $("form-servico").addEventListener("submit", async (e) => {
     }
   }
 
-  /* 1c. lote S66-g (#316): estrutura do serviço (nome, categoria, natureza, unidade), só quando mudou e para quem pode */
+
   if(servAtual && servPodeEstrutura()){
     const est = servEstruturaValores();
     if(!est.nome){ aviso("app-aviso", "Variante salva; informe o nome do serviço para gravar a estrutura.", "erro"); return; }
@@ -442,7 +442,7 @@ $("form-servico").addEventListener("submit", async (e) => {
     }
   }
 
-  /* 2. grava o preço de referência (atualiza o vigente ou cria o primeiro) */
+
   const preco  = $("serv-preco").value  !== "" ? Number($("serv-preco").value)  : null;
   const custo  = $("serv-custo").value  !== "" ? Number($("serv-custo").value)  : null;
   const margem = $("serv-margem").value !== "" ? Number($("serv-margem").value) : null;
@@ -478,13 +478,13 @@ $("form-servico").addEventListener("submit", async (e) => {
   mostrarPainelServ();
 });
 
-/* ====================================================================
-   LOTE S66-g (#316) — estrutura do serviço na ficha
-   Nome, categoria, natureza e unidade são do serviço (os três primeiros valem para todas as variantes; a unidade do
-   serviço vale para as variantes sem unidade própria, lote S68-d). Antes só apareciam nos chips do
-   topo, sem campo para editar (causa do "travado" do Thales). Editam: o diretor e quem tem o acesso extra vigente
-   "catalogo_estrutura" (Configurações › Usuários e acessos; só a diretoria concede). O banco confere no gatilho trg_servicos_estrutura_guard.
-   ==================================================================== */
+
+
+
+
+
+
+
 function servPodeEstrutura(){
   if(!servPodeOrdenar()) return false;
   return usuarioAtual.cargo === "diretor" || (typeof temModuloExtra === "function" && temModuloExtra("catalogo_estrutura"));

@@ -1,51 +1,51 @@
-/* ====================================================================
-   LOGÍSTICA — painel (fase 37 · Frota, 08/09/2026; fase 89 · viagem única, 19/10/2026)
-   A viagem (tabela viagens, antiga tabela de deslocamentos da fase 37) é o registro central da logística:
-   caminhão, motorista, data, origem → destino, km e custo (km × R$/km, colunas geradas no
-   banco; o km atual do veículo acompanha a maior chegada registrada, por gatilho). Nota de
-   remessa ou retorno (movimentacoes_ativos.viagem_id) e MDF-e (manifestos_mdfe.viagem_id)
-   são documentos da viagem. Visões: Viagens (lista e kanban por status), Veículos (TAG,
-   placa, km, R$/km, FIPE, onde está) e Documentos (notas sem viagem, MDF-e a encerrar).
-   A ficha da viagem (prefixo vg-) fica em js/viagens.js, carregado depois deste arquivo.
-   Escrita: logistica_pode_operar() no banco = logPodeOperar() aqui; veículos continuam pela
-   policy de equipamentos (frotaPodeEditar). Localização de máquina vem da mobilização (fase 34).
-   Fase 130 (27/10/2026, #186): finalidade "Frete terceirizado" = viagem feita por transportador de fora
-   (viagens.transportador_id/placa/motorista, sem caminhão nem km). Valor, vencimento e documento ficam
-   em viagem_fretes (1:1), que só pode_ler_contas_pagar() lê: o embed frete:viagem_fretes(...) vem nulo
-   para os demais e a tela mostra só o frete_status (texto). O custo é direto e gera o título a pagar.
-   Fase 118a (04/11/2026): visão Abastecimentos, só leitura, do cartão da PlusFrota (frota_abastecimentos, gravada só pela
-   function plusfrota-sync). Não entra em custo nem em km da máquina: isso é a 118b.
-   Fase 186c (16/11/2026, #281): notinha dos postos (frota_abastecimentos_posto) na mesma visão, com filtro de origem e
-   fechamento do mês por posto (frota_posto_fechamento_salvar). Fora da vw_custos: o custo vem do pedido ao posto com a NF.
-   ==================================================================== */
-let _frotaView = "viagens";          // viagens | veiculos | documentos | abastecimentos
-let _frotaModo = "lista";            // lista | kanban (visão Viagens)
-let _frotaVeic = [];                 // equipamentos tipo caminhao/veiculo
-let _frotaEquipOutros = [];          // demais equipamentos (atendidos, itens)
-let _frotaFuncs = [];                // funcionários ativos (motoristas)
-let _frotaObras = [];                // obras não canceladas (origem/destino, filtro)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _frotaView = "viagens";
+let _frotaModo = "lista";
+let _frotaVeic = [];
+let _frotaEquipOutros = [];
+let _frotaFuncs = [];
+let _frotaObras = [];
 let _frotaViagens = { chave: null, dados: [] };
-let _frotaDocs = null;               // visão Documentos: { notas, mdfes, abertas }
-let _frotaNotasSemViagem = null;     // indicador "notas sem viagem"
-let _frotaTipoFiltro = "";           // lote S46 (#95): cartão Caminhões ativos / Veículos leves filtra a lista (caminhao | veiculo)
+let _frotaDocs = null;
+let _frotaNotasSemViagem = null;
+let _frotaTipoFiltro = "";
 let _frotaVeicEditId = null;
-let _frotaUltimaData;                // undefined = ainda não consultado; null = nenhuma viagem
-let _frotaCondutor = null;           // lote S69-f (#333): Map equipamento_id -> { nome, data, origem } do último a dirigir (60 dias)
+let _frotaUltimaData;
+let _frotaCondutor = null;
 
 const FROTA_TIPO_LBL = { caminhao: "Caminhão", veiculo: "Veículo" };
 const FROTA_STATUS_LBL = { disponivel: "Disponível", em_uso: "Em uso", manutencao: "Manutenção", em_manutencao: "Manutenção", inativo: "Inativo", vendido: "Vendido" };
 const VG_STAGES = ["planejada", "em_transito", "concluida"];
 const VG_FINALIDADES = { mobilizacao: "Mobilização", desmobilizacao: "Desmobilização", apoio: "Apoio à obra", entrega_material: "Entrega de material", manutencao: "Manutenção", outro: "Outro", frete_terceirizado: "Frete terceirizado" };
-/* fase 130: viagens.frete_status (mantido pelo banco; texto sem valor, a logística lê) */
+
 const VG_FRETE_STATUS = { a_informar: ["Frete a informar", "ambar"], a_gerar: ["Pedido na conclusão", "ambar"], pedido: ["Pedido de compra", "azul"], aguardando_aprovacao: ["Aguardando aprovação", "ambar"], reprovado: ["Reprovado", "vermelho"], gerado: ["Título gerado", "azul"], exportado: ["Título exportado", "verde"], cancelado: ["Cancelado", "cinza"] };
 function vgEhFrete(v){ return !!v && v.finalidade === "frete_terceirizado"; }
-/* viagem_fretes vem como objeto (1:1) ou nulo para quem não lê contas a pagar */
+
 function vgFrete(v){ if(!v || !v.frete) return null; return Array.isArray(v.frete) ? (v.frete[0] || null) : v.frete; }
 function vgPodeVerFrete(){ return typeof podeVerContasPagar === "function" && podeVerContasPagar(); }
-/* lote travas 09/11/2026 (BAN-05): quem informa o frete. Mesma lista da RPC viagem_frete_gravar (admin, logistica, gestor_frota,
-   financeiro, comprador); diretor entra por has_role() lá e aqui na lista. Os demais registram a viagem e deixam o frete para eles. */
+
+
 function vgPodeInformarFrete(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "logistica", "gestor_frota", "financeiro", "comprador"].includes(usuarioAtual.cargo); }
-/* valor da viagem: frota própria = km × R$/km (valor_total); frete = valor combinado (nulo quando o usuário não lê) */
+
 function vgValorViagem(v){
   if(vgEhFrete(v)){ const f = vgFrete(v); return f && f.valor_frete != null ? Number(f.valor_frete) : null; }
   return v && v.valor_total != null ? Number(v.valor_total) : null;
@@ -58,17 +58,17 @@ function vgTransportadorTxt(v){
 }
 function vgTagFreteStatus(st){ const m = VG_FRETE_STATUS[st]; return m ? `<span class="tag ${esc(m[1])}">${esc(m[0])}</span>` : ""; }
 const VG_LOC = { base: "Base CGL", obra: "Obra", cliente: "Cliente", fornecedor_manutencao: "Fornecedor / manutenção" };
-/* Mesma lista de logistica_pode_operar() (migration da fase 89); diretor entra por has_role() lá e aqui na lista. */
+
 const VG_LOGISTICA_CARGOS = ["diretor", "admin", "logistica", "gestor_frota", "encarregado", "almoxarife", "engenheiro", "assistente_engenharia", "mecanico", "rh", "gestor_acessorios", "gestor_manutencao", "comercial"];
 
 function logPodeOperar(){ return !!usuarioAtual && !ehSomenteLeitura() && VG_LOGISTICA_CARGOS.includes(usuarioAtual.cargo); }
 function frotaPodeEditar(){
   return !!usuarioAtual && !ehSomenteLeitura() && ["admin", "diretor", "rh", "logistica", "encarregado", "engenheiro", "mecanico", "gestor_frota"].includes(usuarioAtual.cargo);
 }
-/* fase 118a: mesmas listas de frota_abast_pode_ler() e frota_abast_pode_sync(); diretor entra por has_role() lá e aqui na lista */
+
 function frotaPodeVerAbast(){ return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_frota", "financeiro", "auditor"].includes(usuarioAtual.cargo); }
 function frotaPodeSyncAbast(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "logistica", "gestor_frota"].includes(usuarioAtual.cargo); }
-/* fase 186c: mesma lista de frota_posto_pode_operar() (notinha e fechamento do posto); auditor fica fora pelo ehSomenteLeitura e no banco */
+
 function frotaPodeOperarPosto(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "logistica", "gestor_frota"].includes(usuarioAtual.cargo); }
 function frotaMoeda(v){ return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function frotaNum(v, d = 0){ return Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: d, minimumFractionDigits: d }); }
@@ -78,7 +78,7 @@ function vgObraTxt(id){
   const o = _frotaObras.find(x => x.id === id);
   return o ? `${o.codigo} — ${o.nome}` : ((typeof mapaObras === "object" && mapaObras && mapaObras[id]) || "");
 }
-/* texto de origem ou destino da viagem: obra do cadastro, senão a descrição, senão o tipo */
+
 function vgLado(v, lado){
   const tipo = v[lado + "_tipo"], obraId = v[lado + "_obra_id"], desc = v[lado + "_descricao"];
   if((tipo === "obra" || tipo === "cliente") && obraId) return vgObraTxt(obraId) || desc || VG_LOC[tipo];
@@ -91,7 +91,7 @@ function vgNotasTxt(v){
   return notas.map(n => linkMovimentacao(n.id, n.nf_numero ? `NF ${n.nf_numero}` : n.numero)).join(", ");
 }
 
-/* ---------- carga ---------- */
+
 async function carregarFrota(force){
   const cont = $("frota-conteudo");
   if(!cont) return;
@@ -116,8 +116,8 @@ async function carregarFrota(force){
     _frotaAbast = { chave: null, dados: [], rodadas: [] };
     _frotaCondutor = null;
   }
-  // Mês inicial: o atual só se tiver lançamento; senão o último mês com viagem (a planilha foi importada até
-  // jul/2026 e a tela abria em setembro vazio — parecia que nada tinha subido).
+
+
   if(!$("frota-f-mes").value){
     if(_frotaUltimaData === undefined){
       const { data } = await sb.from("viagens").select("data").eq("status", "concluida").order("data", { ascending: false }).limit(1);
@@ -138,7 +138,7 @@ function frotaPreencherSelects(){
   manter($("frota-f-status"), Object.entries(STATUS.viagem).map(([k, o]) => `<option value="${esc(k)}">${esc(o.label)}</option>`).join(""), "Todo status");
 }
 
-/* ---------- render ---------- */
+
 function renderFrota(){
   document.querySelectorAll("#sec-frota .serv-view-btn[data-view]").forEach(b => b.classList.toggle("ativo", b.dataset.view === _frotaView));
   document.querySelectorAll("#frota-modos .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.modo === _frotaModo));
@@ -166,12 +166,12 @@ function frotaKpisFixos(){
   frotaKpi("frota-kpi-caminhoes", _frotaVeic.filter(v => v.tipo === "caminhao" && v.ativo !== false).length);
   frotaKpi("frota-kpi-veiculos", _frotaVeic.filter(v => v.tipo === "veiculo" && v.ativo !== false).length);
   frotaKpi("frota-kpi-notas", _frotaNotasSemViagem == null ? "—" : _frotaNotasSemViagem);
-  // lote S46 (#95): cartão do filtro em uso fica marcado (como os de Compras)
+
   $("frota-kpi-card-caminhoes")?.classList.toggle("ativo", _frotaView === "veiculos" && _frotaTipoFiltro === "caminhao");
   $("frota-kpi-card-veiculos")?.classList.toggle("ativo", _frotaView === "veiculos" && _frotaTipoFiltro === "veiculo");
   $("frota-kpi-card-notas")?.classList.toggle("ativo", _frotaView === "documentos");
 }
-/* lote S46 (#95): clicar no cartão filtra a lista de veículos pelo tipo (ativos); clicar de novo limpa */
+
 function frotaFiltrarTipo(tipo){
   const limpar = _frotaView === "veiculos" && _frotaTipoFiltro === tipo;
   _frotaTipoFiltro = limpar ? "" : tipo;
@@ -185,15 +185,15 @@ function frotaOndeEsta(v){
   return v.localizacao_tipo === "base" ? "Pátio" : (v.localizacao_tipo || "—");
 }
 
-/* lote S69-f (#333): o condutor não é cadastro do veículo; é o último a dirigir nos últimos 60 dias, entre a viagem
-   (concluída ou em trânsito, com o caminhão próprio) e o abastecimento do PlusFrota. O abastecimento só entra para quem
-   o lê (frota_abast_pode_ler no banco, frotaPodeVerAbast aqui); os demais veem só a viagem. Nenhuma permissão nova. */
+
+
+
 const FROTA_CONDUTOR_DIAS = 60;
 async function frotaCarregarCondutores(){
   const d = new Date(); d.setDate(d.getDate() - FROTA_CONDUTOR_DIAS);
   const desde = dataLocalISO(d);
   const mapa = new Map();
-  // ordem = data e hora quando houver (duas no mesmo dia); a data mostrada é a do lançamento, sem fuso
+
   const considerar = (equipId, nome, data, ordem, origem) => {
     nome = String(nome || "").trim();
     if(!equipId || !nome || !data) return;
@@ -223,7 +223,7 @@ function frotaCondutorCel(v){
 function renderFrotaVeiculos(){
   const cont = $("frota-conteudo");
   if(_frotaCondutor === null){
-    _frotaCondutor = undefined;   // carregando: a lista sai já e a coluna se completa quando a busca volta
+    _frotaCondutor = undefined;
     frotaCarregarCondutores().then(r => {
       _frotaCondutor = r.mapa;
       if(r.erro) console.warn("Condutor dos veículos:", r.erro.message);
@@ -231,10 +231,10 @@ function renderFrotaVeiculos(){
     });
   }
   const termo = ($("frota-busca")?.value || "").trim().toLowerCase();
-  // fase 96: veículo vendido sai da lista operacional (continua em _frotaVeic para as viagens antigas acharem o caminhão)
-  const vendidos = _frotaVeic.filter(v => bemVendido(v));   // fase 180c: inclui reserva de domínio e liberado para retirada
+
+  const vendidos = _frotaVeic.filter(v => bemVendido(v));
   const lista = _frotaVeic.filter(v => !bemVendido(v) && (!termo || `${v.codigo} ${v.nome || ""} ${v.placa || ""}`.toLowerCase().includes(termo))
-    && (!_frotaTipoFiltro || (v.tipo === _frotaTipoFiltro && v.ativo !== false)));   // lote S46 (#95): cartão clicado
+    && (!_frotaTipoFiltro || (v.tipo === _frotaTipoFiltro && v.ativo !== false)));
   const c = $("frota-contador"); if(c) c.textContent = `${lista.length} de ${_frotaVeic.length - vendidos.length}`;
   const ativos = _frotaVeic.filter(v => v.ativo !== false);
   const comFipe = ativos.filter(v => v.valor_fipe != null);
@@ -244,7 +244,7 @@ function renderFrotaVeiculos(){
   <div class="tabela-rola"><table>
     <thead><tr><th>TAG</th><th>Tipo</th><th>Descrição</th><th>Placa</th><th>Condutor</th><th class="num">km atual</th><th class="num">R$/km</th><th class="num">FIPE</th><th>Onde está</th><th>Status</th></tr></thead>
     <tbody>${lista.map(v => `<tr class="linha-clicavel" data-veic="${esc(v.id)}" ${v.ativo === false ? 'style="opacity:.55"' : ""}>
-        <td><strong>${esc(v.codigo)}</strong></td><td>${esc(FROTA_TIPO_LBL[v.tipo]) || esc(v.tipo)}</td><td>${esc(v.nome || "")}</td><td>${esc(v.placa || "—")}</td><td>${/* html */ frotaCondutorCel(v)}</td>
+        <td><strong>${esc(v.codigo)}</strong></td><td>${esc(FROTA_TIPO_LBL[v.tipo]) || esc(v.tipo)}</td><td>${esc(v.nome || "")}</td><td>${esc(v.placa || "—")}</td><td>${  frotaCondutorCel(v)}</td>
         <td class="num">${v.km != null ? frotaNum(v.km) : "—"}</td><td class="num">${v.valor_km != null ? frotaNum(v.valor_km, 2) : "—"}</td>
         <td class="num">${v.valor_fipe != null ? frotaMoeda(v.valor_fipe) + fipeRef(v) : '<span class="tag ambar" title="sem valor FIPE">—</span>'}</td>
         <td>${esc(frotaOndeEsta(v))}</td><td>${esc(FROTA_STATUS_LBL[v.status]) || esc(v.status || "")}</td></tr>`).join("") || `<tr><td colspan="10" class="vazio">Nenhum veículo cadastrado.</td></tr>`}</tbody>
@@ -253,15 +253,15 @@ function renderFrotaVeiculos(){
   $("frota-vendidos-ver")?.addEventListener("click", (e) => { e.preventDefault(); vbAbrirPainel({ busca: "" }); });
 }
 
-/* ---------- visão Viagens ---------- */
+
 const VG_SELECT_LISTA = "id,numero,data,status,finalidade,km_saida,km_chegada,km_total,valor_km,valor_total,observacoes,funcionario_id,obra_id,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,equipamento_atendido_id,caminhao_id,mobilizacao_id,data_saida,data_chegada,"
-  + "transportador_id,transportador_placa,transportador_motorista,frete_status,frete_reprovado_motivo,frete_sem_cte,"   // fase 130
+  + "transportador_id,transportador_placa,transportador_motorista,frete_status,frete_reprovado_motivo,frete_sem_cte,"
   + "funcionario:funcionarios(nome),caminhao:equipamentos!caminhao_id(codigo,nome,placa),equip:equipamentos!equipamento_atendido_id(codigo,nome),notas:movimentacoes_ativos(id,numero,tipo,status,nf_numero,interna),"
-  + "transportador:fornecedores!transportador_id(razao_social,nome_fantasia),frete:viagem_fretes(valor_frete,frete_vencimento,frete_documento)";   // fase 130: frete vem nulo para quem não lê contas a pagar
+  + "transportador:fornecedores!transportador_id(razao_social,nome_fantasia),frete:viagem_fretes(valor_frete,frete_vencimento,frete_documento)";
 
 async function frotaBuscarViagens(mes, camId){
   let q = sb.from("viagens").select(VG_SELECT_LISTA).order("data", { ascending: false }).order("numero", { ascending: false }).limit(2000);
-  // planejadas e em trânsito aparecem sempre; o período filtra só as concluídas e canceladas
+
   if(mes){
     const ini = mes + "-01";
     const fim = dataLocalISO(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0));
@@ -305,7 +305,7 @@ async function renderFrotaViagens(){
   const linhas = frotaViagensFiltradas();
   const c = $("frota-contador"); if(c) c.textContent = `${linhas.length} de ${_frotaViagens.dados.length}`;
   const fechadas = linhas.filter(v => v.status !== "cancelada");
-  // fase 130: frota própria (km × R$/km) e frete terceirizado (R$ pagos a transportadores) somam separados
+
   const tot = fechadas.filter(v => !vgEhFrete(v)).reduce((s, d) => ({ km: s.km + (Number(d.km_total) || 0), val: s.val + (Number(d.valor_total) || 0), n: s.n + 1 }), { km: 0, val: 0, n: 0 });
   const fretes = fechadas.filter(vgEhFrete);
   tot.frete = fretes.reduce((s, d) => s + (vgValorViagem(d) || 0), 0);
@@ -324,7 +324,7 @@ function renderFrotaLista(linhas, mes, tot){
   const cont = $("frota-conteudo");
   const obraTxt = v => vgLado(v, v.destino_tipo === "base" && v.origem_tipo !== "base" ? "origem" : "destino");
   const agrupar = (rot) => { const g = new Map(); linhas.filter(v => v.status !== "cancelada").forEach(d => { const k = rot(d); const a = g.get(k) || { k, n: 0, km: 0, val: 0 }; a.n++; a.km += Number(d.km_total) || 0; a.val += vgValorViagem(d) || 0; g.set(k, a); }); return [...g.values()].sort((a, b) => b.val - a.val); };
-  // fase 130: o frete terceirizado agrupa pelo transportador (sem km); o valor só soma para quem lê contas a pagar
+
   const porCam = agrupar(d => vgEhFrete(d) ? `🚚 ${d.transportador?.razao_social || d.transportador?.nome_fantasia || "Transportador"}` : d.caminhao ? `${d.caminhao.codigo} · ${d.caminhao.nome || ""}` : "Sem caminhão");
   const porObra = agrupar(obraTxt);
   const resumo = (titulo, lista) => `<div class="card" style="flex:1 1 320px;min-width:280px;"><h4 style="margin:0 0 8px;">${esc(titulo)}</h4><div class="tabela-rola"><table>
@@ -357,7 +357,7 @@ function renderFrotaLista(linhas, mes, tot){
     const csv = ["Viagem;Data;Status;Finalidade;Tipo;Transportador;Placa_transportador;Motorista;Caminhao;Equipamento;Origem;Destino;Notas;Km_saida;Km_chegada;Km;Valor_km;Valor;Status_frete"]
       .concat(linhas.map(d => [d.numero, dataBR(d.data), STATUS.viagem[d.status]?.label || d.status, VG_FINALIDADES[d.finalidade] || d.finalidade, vgEhFrete(d) ? "Frete terceirizado" : "Frota própria",
         vgEhFrete(d) ? (d.transportador?.razao_social || "") : "", d.transportador_placa || "", vgEhFrete(d) ? (d.transportador_motorista || "") : (d.funcionario?.nome || ""), d.caminhao?.codigo || "", d.equip?.codigo || "", vgLado(d, "origem"), vgLado(d, "destino"),
-        (d.notas || []).filter(n => !n.interna).map(n => n.nf_numero ? "NF " + n.nf_numero : n.numero).join(" "), d.km_saida, d.km_chegada, d.km_total, d.valor_km, vgValorViagem(d), vgEhFrete(d) ? ((VG_FRETE_STATUS[d.frete_status] || [d.frete_status || ""])[0]) : ""].map(cel).join(";"))).join("\n");   // fase 130: tipo, transportador e valor do frete (vazio para quem não lê)
+        (d.notas || []).filter(n => !n.interna).map(n => n.nf_numero ? "NF " + n.nf_numero : n.numero).join(" "), d.km_saida, d.km_chegada, d.km_total, d.valor_km, vgValorViagem(d), vgEhFrete(d) ? ((VG_FRETE_STATUS[d.frete_status] || [d.frete_status || ""])[0]) : ""].map(cel).join(";"))).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `viagens-${mes || "12m"}.csv`;
     document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(el.href), 2000);
@@ -390,7 +390,7 @@ function renderFrotaKanban(linhas){
   cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">O status muda na ficha da viagem (Iniciar, Concluir), onde o km fecha o custo.</p><div class="serv-kanban">${colunas}</div>`;
 }
 
-/* ---------- visão Documentos: notas sem viagem e MDF-e em aberto ---------- */
+
 async function renderFrotaDocumentos(){
   const cont = $("frota-conteudo");
   if(!_frotaDocs){
@@ -459,13 +459,13 @@ async function renderFrotaDocumentos(){
   })));
 }
 
-/* ---------- veículo: novo / editar ---------- */
+
 function abrirVeiculo(id){
   if(!frotaPodeEditar()) return;
   _frotaVeicEditId = id || null;
   const v = id ? _frotaVeic.find(x => x.id === id) : null;
   $("fveic-titulo").textContent = v ? `Veículo ${v.codigo}` : "Novo veículo";
-  // lote S44 (L1, #59): a TAG pode ser corrigida depois de criada (viagens, documentos e custos seguem pelo id)
+
   $("fveic-codigo").value = v?.codigo || ""; $("fveic-codigo").disabled = false;
   $("fveic-tipo").value = v?.tipo || "caminhao";
   $("fveic-nome").value = v?.nome || "";
@@ -478,14 +478,14 @@ function abrirVeiculo(id){
   $("fveic-status").value = v?.status || "disponivel";
   $("fveic-ativo").checked = v ? v.ativo !== false : true;
   $("fveic-obs").value = v?.observacoes || "";
-  // fase 96: venda do veículo (js/vendas_bens.js); vendido não chega aqui (sai da lista)
+
   const bVend = $("btn-fveic-vender");
   if(bVend) bVend.style.display = (v && !bemVendido(v) && typeof vbPodeRegistrar === "function" && vbPodeRegistrar(v)) ? "" : "none";
   $("frota-veic-modal").style.display = "flex";
 }
 function fecharVeiculo(){ $("frota-veic-modal").style.display = "none"; _frotaVeicEditId = null; }
 
-/* Aviso dentro do modal (o app-aviso do topo fica atrás do modal e a pessoa não vê) */
+
 function frotaAvisoVeic(msg, tipo){
   aviso("app-aviso", msg, tipo);
   const el = $("fveic-aviso"); if(!el) return;
@@ -494,15 +494,15 @@ function frotaAvisoVeic(msg, tipo){
 }
 const frotaSoAlfaNum = s => String(s || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 async function salvarVeiculo(){
-  // lote S43 (L1): TAG e Descrição são obrigatórias no banco (equipamentos.nome not null); antes o insert
-  // voltava 400 cru e o modal não dizia o que faltava. Placa e TAG repetidas também avisam antes de gravar.
+
+
   const codigo = $("fveic-codigo").value.trim().toUpperCase();
   const nome = $("fveic-nome").value.trim();
   const placa = frotaSoAlfaNum($("fveic-placa").value) || null;
   if(!codigo){ frotaAvisoVeic("Informe a TAG (ex.: 26-CM).", "erro"); $("fveic-codigo").focus(); return; }
   if(!nome){ frotaAvisoVeic("Informe a descrição do veículo (ex.: VW 24250).", "erro"); $("fveic-nome").focus(); return; }
-  // lote S44 (L1, #59): a TAG também é editável; a unicidade (equipamentos.codigo) vale contra todos os
-  // equipamentos (caminhões, veículos, perfuratrizes…), menos o próprio registro
+
+
   const atual = _frotaVeicEditId ? _frotaVeic.find(x => x.id === _frotaVeicEditId) : null;
   const tagMudou = !atual || String(atual.codigo || "").toUpperCase() !== codigo;
   if(tagMudou){
@@ -525,7 +525,7 @@ async function salvarVeiculo(){
   if(_frotaVeicEditId) r = await sb.from("equipamentos").update(tagMudou ? { ...reg, codigo } : reg).eq("id", _frotaVeicEditId);
   else r = await sb.from("equipamentos").insert({ ...reg, codigo, localizacao_tipo: "base" });
   if(r.error){
-    // 23505 = chave duplicada (TAG já usada por equipamento que não estava na lista); 23502 = coluna obrigatória vazia
+
     const msg = r.error.code === "23505" ? `A TAG ${codigo} já é usada por outro equipamento. Escolha outra.`
       : r.error.code === "23502" ? "Faltou um campo obrigatório (TAG ou descrição)."
       : r.error.message;
@@ -537,25 +537,25 @@ async function salvarVeiculo(){
   await carregarFrota(true);
 }
 
-/* volta da ficha da viagem para o painel (js/viagens.js chama) */
+
 function mostrarPainelFrota(recarregar){
   const f = $("vg-ficha"); if(f) f.style.display = "none";
   const p = $("frota-painel"); if(p) p.style.display = "";
   if(recarregar){ _frotaViagens.chave = null; _frotaDocs = null; }
-  if(!_frotaVeic.length) carregarFrota(false);   // ficha aberta por link antes do painel: carrega as listas primeiro
+  if(!_frotaVeic.length) carregarFrota(false);
   else renderFrota();
 }
 
-/* ---------- visão Abastecimentos (fase 118a) ---------- */
+
 let _frotaAbast = { chave: null, dados: [], rodadas: [] };
-let _frotaAbastModo = "lancamentos";  // lancamentos | colaborador
-let _frotaAbastMesPosto = false;      // o mês atual só é posto na primeira abertura; depois, vazio quer dizer todo o histórico
+let _frotaAbastModo = "lancamentos";
+let _frotaAbastMesPosto = false;
 
 const FROTA_ABAST_SELECT = "id,data,data_hora,placa,equipamento_id,funcionario_id,motorista_nome,ctipoproduto,cproduto,litros,valor,valor_litro,odometro,km_rodado,km_litro,credenciado,funcionario:funcionarios(nome),veic:equipamentos(codigo)";
-/* odômetro digitado errado: fora disto o km não entra em R$/km nem em km/l */
+
 const FROTA_ABAST_KM_MAX = 3000, FROTA_ABAST_KML_MAX = 40;
 
-/* fase 186c: notinha do posto, lida junto e posta no mesmo formato da linha da PlusFrota (origem "posto") */
+
 const FROTA_POSTO_SELECT = "id,data,data_hora,fornecedor_id,equipamento_id,placa,motorista_id,motorista_nome,produto,litros,preco_unitario,desconto,valor,km,horimetro,notinha_numero,foto_path,observacoes,fechamento_id,posto:fornecedores(razao_social,nome_fantasia),funcionario:funcionarios(nome),veic:equipamentos(codigo)";
 const FROTA_ORIGEM_ROT = { plusfrota: "PlusFrota", posto: "Postos" };
 function frotaPostoNome(f){ return f ? (f.nome_fantasia || f.razao_social || "Posto") : "Posto"; }
@@ -604,7 +604,7 @@ function frotaAbastFiltrados(){
   });
 }
 
-/* comparação justa (decisão 10 da spec): só combustível com km confiável entra em R$/km e km/l */
+
 function frotaAbastTotais(lista){
   const t = { n: lista.length, litros: 0, valor: 0, comb: 0, kmOk: 0, km: 0, valorKm: 0, litrosKm: 0 };
   lista.forEach(l => {
@@ -626,7 +626,7 @@ function frotaAbastPorColaborador(lista){
     const t = frotaAbastTotais(ls);
     return { ...t, id, nome: id ? (ls[0].funcionario?.nome || ls[0].motorista_nome || "Colaborador") : "Sem colaborador no app", rsKm: t.km ? t.valorKm / t.km : null, kmL: t.litrosKm ? t.km / t.litrosKm : null, incompleto: t.kmOk * 2 < t.comb || !t.kmOk };
   });
-  // maior R$/km primeiro; km incompleto fica fora da ordenação, abaixo; "Sem colaborador" por último
+
   const peso = g => !g.id ? 2 : (g.incompleto ? 1 : 0);
   return linhas.sort((a, b) => peso(a) - peso(b) || (peso(a) === 0 ? b.rsKm - a.rsKm : b.valor - a.valor));
 }
@@ -637,7 +637,7 @@ function frotaAbastRodapeHtml(){
   const atrasada = !quando || (Date.now() - quando.getTime()) > 2 * 86400000;
   const hora = quando ? `${dataBR(dataLocalISO(quando)).slice(0, 5)} ${esc(quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }))}` : "—";
   return `<div class="meta" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;">
-    <span>Atualizado em ${/* html */ hora}</span>
+    <span>Atualizado em ${  hora}</span>
     ${atrasada ? `<span class="tag ambar">Sem rodada bem-sucedida há mais de 2 dias</span>` : ""}
     ${frotaPodeSyncAbast() ? `<button type="button" class="btn-sec" id="btn-frota-abast-sync" style="margin-left:auto;">Sincronizar agora</button>` : ""}
   </div>`;
@@ -655,10 +655,10 @@ function frotaAbastKpisHtml(lista){
   </div>`;
 }
 
-/* lote S66-d (#325): km atual de cada veículo = a leitura mais recente entre o odômetro informado no PlusFrota
-   (frota_abastecimentos.odometro, de qualquer mês) e as leituras do app (equipamento_leituras: semanal, viagem, compra, OS).
-   Mesmo dia: vale o maior. Lido uma vez por abertura da visão. */
-let _frotaKmAtual = null;   // Map placa -> { km, data, origem, app: { km, data, origem } | null }
+
+
+
+let _frotaKmAtual = null;
 const FROTA_KM_ORIGEM = { semanal: "semanal", viagem: "viagem", compra: "pedido de compra", os: "OS", manual: "manual", planilha: "planilha" };
 async function frotaAbastCarregarKmAtual(){
   const desde = dataLocalISO(new Date(Date.now() - 180 * 86400000));
@@ -683,17 +683,17 @@ async function frotaAbastCarregarKmAtual(){
   _frotaKmAtual = mapa;
 }
 function frotaKmAtualTxt(k){ return k ? `${frotaNum(k.km)} km · ${k.origem} ${dataBR(k.data).slice(0, 5)}` : "—"; }
-/* topo da lista quando um veículo está filtrado: km atual, data e origem */
+
 function frotaAbastKmAtualHtml(){
   const placa = $("frota-a-veiculo")?.value || "";
   if(!placa || !_frotaKmAtual) return "";
   const k = _frotaKmAtual.get(placa);
   const outra = k?.app && (k.app.km !== k.km || k.app.data !== k.data)
     ? ` <span class="meta" title="Última leitura registrada no app (semanal, viagem, pedido de compra ou OS)">· no app: ${esc(frotaKmAtualTxt(k.app))}</span>` : "";
-  return `<div class="ui-secao" style="margin:0 0 8px;padding:8px 12px;">${uiRotuloValor("Km atual do veículo", k ? `<strong>${esc(frotaNum(k.km))} km</strong> <span class="meta">${esc(k.origem)} · ${esc(dataBR(k.data))}</span>${/* html */ outra}` : "Sem leitura de odômetro")}</div>`;
+  return `<div class="ui-secao" style="margin:0 0 8px;padding:8px 12px;">${uiRotuloValor("Km atual do veículo", k ? `<strong>${esc(frotaNum(k.km))} km</strong> <span class="meta">${esc(k.origem)} · ${esc(dataBR(k.data))}</span>${  outra}` : "Sem leitura de odômetro")}</div>`;
 }
 
-/* fase 186c: com as duas origens na lista, o tfoot traz uma linha por origem e o total */
+
 function frotaAbastPorOrigem(lista){
   const grupos = ["plusfrota", "posto"].map(o => [FROTA_ORIGEM_ROT[o], lista.filter(l => l.origem === o)]).filter(([, ls]) => ls.length);
   return grupos.length > 1 ? [...grupos.map(([r, ls]) => [`Total ${r}`, ls]), ["Total", lista]] : [["Total", lista]];
@@ -717,7 +717,7 @@ function frotaAbastLancamentosHtml(lista){
       <td class="num">${frotaAbastKmSuspeito(l) ? `<span class="tag ambar" title="Fora da conta de R$/km e km/l">km suspeito</span>` : (Number(l.km_rodado) > 0 ? frotaNum(l.km_rodado) : "—")}</td>
       <td class="num">${!frotaAbastKmSuspeito(l) && Number(l.km_litro) > 0 ? frotaNum(l.km_litro, 2) : "—"}</td>
     </tr>`).join("") || `<tr><td colspan="11" class="vazio">Nenhum abastecimento nesse filtro.</td></tr>`}</tbody>
-    <tfoot>${/* html */ rodape}</tfoot>
+    <tfoot>${  rodape}</tfoot>
   </table></div>`;
 }
 
@@ -751,14 +751,14 @@ async function renderFrotaAbast(){
         return q;
       }),
       sb.from("frota_abastecimentos_sync").select("fim,erro").order("inicio", { ascending: false }).limit(30),
-      _frotaKmAtual ? null : frotaAbastCarregarKmAtual(),   // lote S66-d (#325)
-      lerTudo(() => {   // fase 186c: notinhas dos postos
+      _frotaKmAtual ? null : frotaAbastCarregarKmAtual(),
+      lerTudo(() => {
         let q = sb.from("frota_abastecimentos_posto").select(FROTA_POSTO_SELECT);
         if(mes) q = q.gte("data", mes + "-01").lte("data", fimMes);
         return q;
       })
     ]);
-    if(_frotaView !== "abastecimentos" || ($("frota-a-mes")?.value || "todos") !== chave) return;   // o filtro mudou durante a leitura
+    if(_frotaView !== "abastecimentos" || ($("frota-a-mes")?.value || "todos") !== chave) return;
     if(ab.error){ cont.innerHTML = `<p class="vazio">Erro ao carregar abastecimentos: ${esc(ab.error.message)}</p>`; return; }
     if(po.error) aviso("app-aviso", "Notinhas dos postos: " + po.error.message, "erro");
     const postos = (po.data || []).map(frotaPostoParaLinha);
@@ -783,7 +783,7 @@ async function frotaAbastSincronizar(){
   const { data, error } = await sb.functions.invoke("plusfrota-sync", { body: { acao: "sincronizar" } });
   if(error){
     let msg = error.message;
-    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){ /* corpo não é JSON */ }
+    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){   }
     aviso("app-aviso", "Sincronização: " + msg, "erro"); return;
   }
   aviso("app-aviso", `Sincronização: ${Number(data?.lidas || 0)} lida(s), ${Number(data?.novas || 0)} nova(s), ${Number(data?.atualizadas || 0)} atualizada(s)${data?.ok ? "" : ". A rodada teve erro; a próxima cobre os últimos 7 dias"}.`, data?.ok ? "ok" : "aviso");
@@ -791,10 +791,10 @@ async function frotaAbastSincronizar(){
   renderFrota();
 }
 
-/* ---------- notinha do posto e fechamento do mês (fase 186c, #281) ---------- */
-const FROTA_POSTO_BUCKET = "viagens-anexos";   // logística grava nesse bucket (logistica_pode_operar); caminho abastecimento-posto/
-let _frotaPostos = null;                         // fornecedores que são posto (nome com "posto" ou "combust", categoria diesel/combustível)
-/* o nome que só cita um posto ("RESTAURANTE AO LADO DO POSTO ...") não é posto; categoria diesel/combustível sempre entra */
+
+const FROTA_POSTO_BUCKET = "viagens-anexos";
+let _frotaPostos = null;
+
 const FROTA_NAO_POSTO = /\b(restaurante|lanchonete|padaria)\b/i;
 let _frotaPostoEditId = null;
 let _frotaFechPedidos = [];
@@ -851,7 +851,7 @@ async function abrirNotinhaPosto(id){
 }
 function fecharNotinhaPosto(){ $("frota-posto-modal").style.display = "none"; _frotaPostoEditId = null; }
 
-/* litros × preço − desconto preenche o valor; o valor digitado à mão continua valendo */
+
 function frotaPostoCalcularValor(){
   const litros = Number($("fpn-litros").value || 0), preco = Number($("fpn-preco").value || 0), desc = Number($("fpn-desconto").value || 0);
   if(litros > 0 && preco > 0) $("fpn-valor").value = Math.max(0, Math.round((litros * preco - desc) * 100) / 100).toFixed(2);
@@ -879,7 +879,7 @@ async function salvarNotinhaPosto(){
   if(!(reg.litros > 0)) falta.push("litros");
   if(reg.valor == null || reg.valor < 0) falta.push("valor");
   if(falta.length){ frotaAvisoModal("fpn-aviso", "Preencha: " + falta.join(", ") + ".", "erro"); return; }
-  if(reg.equipamento_id && !$("fpn-placa").value.trim()) reg.placa = null;   // o banco preenche a placa pela TAG
+  if(reg.equipamento_id && !$("fpn-placa").value.trim()) reg.placa = null;
 
   const arq = $("fpn-foto").files?.[0];
   if(arq){
@@ -925,7 +925,7 @@ async function frotaPostoVerFoto(){
   window.open(data.signedUrl, "_blank", "noopener");
 }
 
-/* Fechamento do mês: soma das notinhas do posto na competência contra o(s) pedido(s) do posto ou o valor da NF */
+
 async function abrirFechamentoPosto(){
   if(!frotaPodeVerAbast()) return;
   await frotaCarregarPostos();
@@ -956,7 +956,7 @@ async function carregarFechamentoPosto(){
     sb.rpc("frota_posto_pedidos", { p_fornecedor: posto, p_competencia: ini }),
     sb.from("frota_abastecimentos_posto_fechamento").select("*").eq("fornecedor_id", posto).eq("competencia", ini).maybeSingle()
   ]);
-  if(($("ffc-posto").value !== posto) || ($("ffc-mes").value !== mes)) return;   // mudou durante a leitura
+  if(($("ffc-posto").value !== posto) || ($("ffc-mes").value !== mes)) return;
   if(no.error || pe.error || fe.error){ corpo.innerHTML = `<p class="vazio">Erro: ${esc((no.error || pe.error || fe.error).message)}</p>`; return; }
   const notinhas = no.data || [];
   _frotaFechPedidos = pe.data || [];
@@ -1015,7 +1015,7 @@ async function salvarFechamentoPosto(concluir){
   await carregarFechamentoPosto();
 }
 
-/* ---------- ligação ---------- */
+
 function ligarFrota(){
   document.querySelectorAll("#sec-frota .serv-view-btn[data-view]").forEach(b => b.addEventListener("click", () => { _frotaView = b.dataset.view; _frotaTipoFiltro = ""; renderFrota(); }));
   document.querySelectorAll("#frota-modos .serv-view-btn").forEach(b => b.addEventListener("click", () => { _frotaModo = b.dataset.modo; renderFrota(); }));
@@ -1026,7 +1026,7 @@ function ligarFrota(){
   $("btn-frota-nova-viagem")?.addEventListener("click", () => { if(typeof novaViagem === "function") novaViagem(); });
   $("btn-frota-novo-veic")?.addEventListener("click", () => abrirVeiculo(null));
   $("frota-kpi-card-transito")?.addEventListener("click", () => { _frotaView = "viagens"; const s = $("frota-f-status"); if(s) s.value = s.value === "em_transito" ? "" : "em_transito"; renderFrota(); });
-  $("frota-kpi-card-notas")?.addEventListener("click", () => { _frotaView = _frotaView === "documentos" ? "viagens" : "documentos"; _frotaTipoFiltro = ""; renderFrota(); });   // lote S46 (#95): de novo volta
+  $("frota-kpi-card-notas")?.addEventListener("click", () => { _frotaView = _frotaView === "documentos" ? "viagens" : "documentos"; _frotaTipoFiltro = ""; renderFrota(); });
   $("frota-kpi-card-caminhoes")?.addEventListener("click", () => frotaFiltrarTipo("caminhao"));
   $("frota-kpi-card-veiculos")?.addEventListener("click", () => frotaFiltrarTipo("veiculo"));
   $("frota-conteudo")?.addEventListener("click", e => {
@@ -1035,7 +1035,7 @@ function ligarFrota(){
     const tp = e.target.closest("tr[data-abposto]"); if(tp){ if(frotaPodeOperarPosto()) abrirNotinhaPosto(tp.dataset.abposto); return; }
     const tr = e.target.closest("tr[data-veic]"); if(tr) abrirVeiculo(tr.dataset.veic);
   });
-  // fase 186c: notinha do posto e fechamento do mês
+
   $("frota-a-origem")?.addEventListener("change", renderFrota);
   $("btn-frota-posto-nova")?.addEventListener("click", () => abrirNotinhaPosto(null));
   $("btn-frota-posto-fech")?.addEventListener("click", abrirFechamentoPosto);
@@ -1053,7 +1053,7 @@ function ligarFrota(){
   $("btn-ffc-concluir")?.addEventListener("click", () => comBotaoTravado("btn-ffc-concluir", () => salvarFechamentoPosto(true)));
   $("btn-fveic-fechar")?.addEventListener("click", fecharVeiculo);
   $("btn-fveic-salvar")?.addEventListener("click", () => comBotaoTravado("btn-fveic-salvar", salvarVeiculo));
-  $("btn-fveic-vender")?.addEventListener("click", () => {   // fase 96
+  $("btn-fveic-vender")?.addEventListener("click", () => {
     const v = _frotaVeic.find(x => x.id === _frotaVeicEditId);
     if(!v || typeof vbAbrirRegistro !== "function") return;
     fecharVeiculo();

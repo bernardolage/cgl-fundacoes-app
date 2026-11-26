@@ -1,14 +1,14 @@
-/* ====================================================================
-   Fase 151 (#253 e #131): linha do tempo do funcionário.
-   Movimentar (func-mov-), baixada feita ou comprada (func-bx-), aba Linha do tempo e
-   correção de período (func-lt-) e visão Conferir alocação (func-lot-; desde a fase 187a, desenhada no rhh-conteudo de
-   Horas e alocação). A aba Linha do tempo também mostra os períodos do RDO (vw_rh_alocacao_periodos, fase 187a).
-   A logística lança a obra; o diário só confere. Período errado se corrige, nunca se cancela:
-   fn_apropriar_competencia lê alocacoes sem olhar status. Nada aqui gera título: a baixada comprada
-   e a feita só guardam a decisão, o título é da fase seguinte.
-   ==================================================================== */
-const FUNC_LOT_CARGOS  = ["diretor", "admin", "logistica", "rh"];        // lotacao_pode_operar() no banco
-const FUNC_AVAL_CARGOS = ["diretor", "logistica", "rh", "auditor"];      // pode_ler_avaliacao() no banco
+
+
+
+
+
+
+
+
+
+const FUNC_LOT_CARGOS  = ["diretor", "admin", "logistica", "rh"];
+const FUNC_AVAL_CARGOS = ["diretor", "logistica", "rh", "auditor"];
 const FUNC_MOV_MOTIVO = { inicio: "Início", transferencia: "Transferência", retorno: "Retorno à obra", troca_tag: "Troca de TAG", correcao: "Correção", conferencia: "Conferência" };
 const FUNC_LOT_SITUACAO = {
   igual:             { label: "Igual ao diário",  cor: "verde" },
@@ -23,13 +23,13 @@ function funcPodeLerAvaliacao(){ return !!usuarioAtual && FUNC_AVAL_CARGOS.inclu
 
 function funcLotAplicarVisibilidade(){
   const pode = lotacaoPodeOperar();
-  // fase 187a (#296): o botão "Conferir alocação" saiu de Funcionários; o de Horas e alocação é tratado em rhhMarcarView
+
   const acoes = $("func-lt-acoes"); if(acoes) acoes.style.display = pode ? "" : "none";
   const lista = $("func-lt-lista"); if(lista) lista.innerHTML = "";
   const cont = $("func-lt-cont"); if(cont) cont.textContent = "";
 }
 
-/* ---------- opções de obra e TAG ---------- */
+
 let _funcLotOpcoes = null;
 async function funcLotCarregarOpcoes(){
   if(_funcLotOpcoes) return _funcLotOpcoes;
@@ -45,7 +45,7 @@ async function funcLotCarregarOpcoes(){
   };
   return _funcLotOpcoes;
 }
-/* preenche o select e garante a opção atual, mesmo de obra já encerrada ou TAG inativa */
+
 function funcLotPreencher(sel, itens, vazio, atualId, atualTxt){
   const lista = atualId && !itens.some(i => i.id === atualId) ? [{ id: atualId, txt: atualTxt || "(atual)" }].concat(itens) : itens;
   preencherSelect(sel, lista, "id", "txt", vazio);
@@ -61,7 +61,7 @@ function funcLotSomarDias(iso, n){
   return dataLocalISO(d);
 }
 function funcLotFichaAberta(id){ return funcEditId === id && $("func-ficha")?.style.display !== "none"; }
-/* depois de gravar: as duas visões recarregam; com a ficha aberta, a linha do tempo volta a ser lida */
+
 async function funcLotAposGravar(id, recarregarFicha){
   _funcLog = null; _funcLotConf = null;
   if(recarregarFicha){
@@ -69,10 +69,10 @@ async function funcLotAposGravar(id, recarregarFicha){
     if(funcLotFichaAberta(id)){ await abrirFuncionario(id); ativarTabFunc("linhatempo"); }
   }
   if(funcLotFichaAberta(id)) await funcLtCarregar(id);
-  else if(funcLotConferirVisivel()) await renderFuncLotacao();   // fase 187a: Movimentar a partir de Horas e alocação
+  else if(funcLotConferirVisivel()) await renderFuncLotacao();
   else renderFuncionarios();
 }
-/* fase 187a (#296): a visão Conferir alocação mora em Horas e alocação (sec-rhh, visão "conferir") */
+
 function funcLotConferirVisivel(){ return typeof _rhhView !== "undefined" && _rhhView === "conferir" && !!$("sec-rhh")?.classList.contains("ativa"); }
 function funcLotLimparCache(){ _funcLotConf = null; }
 function funcLotDefinirFiltro(filtro){
@@ -80,7 +80,7 @@ function funcLotDefinirFiltro(filtro){
   _funcLotFiltro = filtro === "lotacao_ausente" ? "sem_lotacao" : filtro === "lotacao_diferente" ? "diferente" : "a_conferir";
 }
 
-/* ---------- Movimentar ---------- */
+
 let _funcMov = null;
 async function funcMovAbrir(id, nome, preset){
   if(!lotacaoPodeOperar()) return;
@@ -126,14 +126,14 @@ async function funcMovSalvar(){
   await funcLotAposGravar(m.id);
 }
 
-/* ---------- Baixada: feita ou comprada ---------- */
+
 let _funcBx = null;
 function funcBxModo(){
   const feita = $("func-bx-decisao").value === "feita";
   $("func-bx-feita").style.display = feita ? "" : "none";
   $("func-bx-comprada").style.display = feita ? "none" : "";
 }
-/* baixada = linha existente: aberta registra o retorno; com corrigir = true, altera com motivo */
+
 async function funcBxAbrir(id, nome, baixadaId, corrigir){
   if(!lotacaoPodeOperar()) return;
   const [op, at, bx] = await Promise.all([
@@ -155,7 +155,7 @@ async function funcBxAbrir(id, nome, baixadaId, corrigir){
   $("func-bx-obs").value = b?.observacoes || "";
   $("func-bx-motivo").value = "";
   $("func-bx-motivo-campo").style.display = corrigir ? "" : "none";
-  // no retorno só a data do retorno muda
+
   ["func-bx-decisao", "func-bx-saida", "func-bx-prevista", "func-bx-origem"].forEach(x => { $(x).disabled = retorno; });
   aviso("func-bx-aviso", "", "");
   funcBxModo();
@@ -192,9 +192,9 @@ async function funcBxSalvar(){
   await funcLotAposGravar(x.id);
 }
 
-/* ---------- Lote S61 (#269): próxima baixada acordada ----------
-   Só insert em funcionario_baixada_acordos (lotacao_pode_operar() no banco, auditor fora): o último acordo lançado depois da última baixada
-   vale em vw_funcionarios_logistica; data vazia desfaz (volta ao ciclo); baixada lançada depois encerra o acordo. */
+
+
+
 let _funcAc = null;
 async function funcAcAbrir(f){
   if(!lotacaoPodeOperar() || !f) return;
@@ -223,7 +223,7 @@ async function funcAcSalvar(){
   await funcLotAposGravar(x.id);
 }
 
-/* ---------- Avaliação, situação e observação (quem não tem funcionarios_write também grava) ---------- */
+
 let _funcUpd = null;
 async function funcUpdAbrir(id, nome){
   if(!lotacaoPodeOperar()) return;
@@ -258,7 +258,7 @@ async function funcUpdSalvar(){
   await funcLotAposGravar(u.id, true);
 }
 
-/* ---------- Corrigir período: motivo obrigatório, vai para registros_log ---------- */
+
 let _funcCor = null;
 async function funcCorAbrir(periodoId, presetFim, presetMotivo){
   if(!lotacaoPodeOperar()) return;
@@ -295,7 +295,7 @@ async function funcCorSalvar(){
   await funcLotAposGravar(c.funcionario_id);
 }
 
-/* ---------- aba Linha do tempo ---------- */
+
 async function funcLtCarregar(id){
   const cont = $("func-lt-lista"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
@@ -306,7 +306,7 @@ async function funcLtCarregar(id){
     sb.from("funcionario_funcoes").select("id,funcao,data_inicio,data_fim,motivo,observacoes,created_at").eq("funcionario_id", id),
     le ? sb.from("funcionario_historico").select("*").eq("funcionario_id", id) : Promise.resolve({ data: [] }),
     le ? sb.from("funcionario_avaliacoes").select("*").eq("funcionario_id", id) : Promise.resolve({ data: [] }),
-    // fase 187a (#131): períodos do RDO (a view só devolve linhas a quem lê horas: rh_pode_ler_horas no banco)
+
     sb.from("vw_rh_alocacao_periodos").select("obra_codigo,obra_nome,cno,equipamento_codigo,data_inicio,data_fim,hora_entrada,hora_saida,dias")
       .eq("funcionario_id", id).eq("origem", "rdo").order("data_inicio")
   ]);
@@ -350,7 +350,7 @@ async function funcLtCarregar(id){
   (aval.data || []).forEach(v => ev.push({
     data: v.data_efeito, em: v.created_at, tipo: "Avaliação", cor: "cinza", o_que: FUNC_AVAL_LBL[v.avaliacao] || "(sem avaliação)", atual: false, detalhe: v.observacao || "", acao: ""
   }));
-  // mais recente primeiro; no mesmo dia, pela hora em que foi lançado (Date, porque as colunas vêm em formatos ISO diferentes)
+
   ev.sort((a, b) => String(b.data || "").localeCompare(String(a.data || "")) || (new Date(b.em || 0) - new Date(a.em || 0)));
   $("func-lt-cont").textContent = ev.length ? `${ev.length}` : "";
   cont.innerHTML = ev.length
@@ -359,7 +359,7 @@ async function funcLtCarregar(id){
         <tbody>${ev.map(e => `<tr>
           <td>${dataBR(e.data)}</td><td><span class="tag ${esc(e.cor)}">${esc(e.tipo)}</span></td>
           <td><strong>${esc(e.o_que)}</strong>${e.atual ? ' <span class="tag verde">atual</span>' : ""}</td>
-          <td class="meta">${esc(e.detalhe)}</td><td>${/* html */ e.acao}</td>
+          <td class="meta">${esc(e.detalhe)}</td><td>${  e.acao}</td>
         </tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Sem lançamentos: nenhuma obra, baixada ou mudança registrada.</p>`;
   const nome = $("func-ficha-nome")?.textContent || "";
@@ -367,7 +367,7 @@ async function funcLtCarregar(id){
   cont.querySelectorAll(".func-lt-bx").forEach(b => b.addEventListener("click", () => funcBxAbrir(id, nome, b.dataset.id, true)));
 }
 
-/* ---------- visão Conferir alocação: sugestão do último diário, conferida pela logística ---------- */
+
 let _funcLotConf = null;
 let _funcLotFiltro = "a_conferir";
 const _funcLotSel = new Set();
@@ -380,7 +380,7 @@ function funcLotPassaFiltro(r){
   if(f === "sem_lotacao") return !r.alocacao_id && r.situacao === "diferente";
   return r.situacao === f;
 }
-/* o que "confirmar" faz nesta linha; nulo = a pessoa escolhe em Movimentar */
+
 function funcLotAcao(r){
   if(r.conferida_em) return null;
   if(r.situacao === "diferente") return "diario";
@@ -394,7 +394,7 @@ function funcLotUsarDiario(r){
   });
 }
 async function renderFuncLotacao(){
-  const cont = $("rhh-conteudo"); if(!cont) return;   // fase 187a (#296): mora em Horas e alocação › Conferir alocação
+  const cont = $("rhh-conteudo"); if(!cont) return;
   if(!lotacaoPodeOperar()){ cont.innerHTML = `<p class="vazio">Sem acesso à conferência de alocação.</p>`; return; }
   if(!_funcLotConf){
     cont.innerHTML = `<p class="vazio">Carregando conferência…</p>`;
@@ -469,7 +469,7 @@ async function funcLotManter(r){
   _funcLog = null; _funcLotConf = null;
   renderFuncLotacao();
 }
-/* uma linha por vez: "diferente" abre período pelo diário e "igual" ou "sem diário" só confirma */
+
 async function funcLotGravar(linhas){
   let ok = 0; const erros = [];
   const manter = linhas.filter(r => funcLotAcao(r) === "manter");
@@ -494,7 +494,7 @@ async function funcLotConfirmarSelecionadas(){
   await funcLotGravar(linhas);
 }
 
-/* Sala de Comando → Logística (Funcionários) ou Conferir alocação (Horas e alocação, fase 187a) já filtradas */
+
 function funcAbrirLogisticaPreset(filtro){
   if(/^lotacao_/.test(filtro || "")){ if(typeof rhhAbrirConferir === "function") rhhAbrirConferir(filtro); return; }
   _funcView = "logistica";
@@ -504,7 +504,7 @@ function funcAbrirLogisticaPreset(filtro){
   renderFuncionarios();
 }
 
-/* ---------- listeners ---------- */
+
 function ligarFuncLotacao(){
   ["func-mov-modal", "func-bx-modal", "func-ac-modal", "func-lt-upd-modal", "func-lt-cor-modal"].forEach(id => {
     $(id)?.querySelector(".modal-topo button")?.addEventListener("click", () => { $(id).style.display = "none"; });
@@ -513,10 +513,10 @@ function ligarFuncLotacao(){
   $("btn-func-mov-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-mov-salvar", funcMovSalvar));
   $("func-bx-decisao")?.addEventListener("change", funcBxModo);
   $("func-bx-saida")?.addEventListener("change", e => {
-    if(e.target.value && !$("func-bx-prevista").disabled) $("func-bx-prevista").value = funcLotSomarDias(e.target.value, 7);   // 7 dias corridos, editável
+    if(e.target.value && !$("func-bx-prevista").disabled) $("func-bx-prevista").value = funcLotSomarDias(e.target.value, 7);
   });
   $("btn-func-bx-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-bx-salvar", funcBxSalvar));
-  $("btn-func-ac-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-ac-salvar", funcAcSalvar));   // lote S61 (#269)
+  $("btn-func-ac-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-ac-salvar", funcAcSalvar));
   $("btn-func-lt-upd-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-lt-upd-salvar", funcUpdSalvar));
   $("btn-func-lt-cor-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-lt-cor-salvar", funcCorSalvar));
   const nomeFicha = () => $("func-ficha-nome")?.textContent || "";

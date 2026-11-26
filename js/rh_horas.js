@@ -1,51 +1,51 @@
-/* ====================================================================
-   RH · HORAS E ALOCAÇÃO (fase 93c, 20/10/2026) — chamados #73, #74 e #76 da Jucirlene.
-   Duas seções:
-     sec-rhh "Horas e alocação" (prefixo rhh-): A liberar · Fechamento do mês · Alocação por obra
-     sec-rhv "Minhas horas de viagem" (prefixo rhv-): o próprio funcionário lança (celular); o RH lança por ele
-   Tudo que é regra nasce no banco (migration 20261020_fase93c_b_horas_alocacao.sql):
-     rdo_equipe.horas_noturnas (gatilho, 22h–5h), liberado_em/liberado_por (RPCs rh_liberar_horas /
-     rh_estornar_liberacao, quem pode = rh_horas_liberar(obra): engenheiro responsável, gestor do serviço,
-     diretoria), horas_viagem (horas no gatilho; RPCs rh_liberar_horas_viagem / rh_estornar_liberacao_viagem),
-     vw_rh_horas_mes (só liberadas; rh e diretor), rh_lancar_horas_folha (rh com MFA), vw_rh_alocacao_mes +
-     rh_alocacoes (rh_alocacoes_materializar / rh_alocacoes_conferir).
-   Aqui só leitura, seleção, chamada de RPC e exportação (.xlsx pelo SheetJS).
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 let _rhhView = "liberar";
-let _rhhEquipe = [];        // rdo_equipe do período (rdo e funcionário embutidos)
-let _rhhViagens = [];       // horas_viagem do período
-let _rhhMes = [];           // vw_rh_horas_mes da competência
-let _rhhAloc = [];          // vw_rh_alocacao_mes + vw_rh_alocacao_lancada_mes (so_alocacao: true) da competência
-let _rhhPer = [];           // fase 187a (#131): vw_rh_alocacao_periodos da competência (modo Períodos)
-let _rhhAlocModo = "periodos";   // fase 187a: "periodos" (padrão) ou "mensal"
-let _rhhPendMes = 0;        // linhas do RDO do mês ainda sem liberação (aviso no fechamento)
-let _rhhCnoDoc = {};        // lote S48 (#122): obra_id → { storage_path, nome } do PDF do CNO mais recente (vw_obra_cno_documento)
-let _rhhPodeLiberar = {};   // obra_id → boolean (rh_horas_liberar no banco)
-let _rhhSel = new Set();    // "e:<id>" (rdo_equipe) · "v:<id>" (horas_viagem) · "a:<alocacao_id ou func|obra>"
-let _rhhPreset = null;      // vindo da Sala de Comando (rhhAbrirPreset)
+let _rhhEquipe = [];
+let _rhhViagens = [];
+let _rhhMes = [];
+let _rhhAloc = [];
+let _rhhPer = [];
+let _rhhAlocModo = "periodos";
+let _rhhPendMes = 0;
+let _rhhCnoDoc = {};
+let _rhhPodeLiberar = {};
+let _rhhSel = new Set();
+let _rhhPreset = null;
 let _rhhCarregando = false;
 
-const RHH_LIBERAR_CARGOS = ["diretor", "admin", "engenheiro", "assistente_engenharia"];  // candidatos; a obra decide (rh_horas_liberar)
+const RHH_LIBERAR_CARGOS = ["diretor", "admin", "engenheiro", "assistente_engenharia"];
 const RHH_CONFERIR_CARGOS = ["diretor", "admin", "rh", "logistica", "engenheiro", "assistente_engenharia"];
-const RHH_FOLHA_CARGOS = ["diretor", "rh"];                                               // rh_lancar_horas_folha exige has_role('rh') + MFA
+const RHH_FOLHA_CARGOS = ["diretor", "rh"];
 const RHV_RASTREIO_CARGOS = ["diretor", "admin", "rh", "logistica", "gestor_frota"];
 
 function rhhCargo(){ return usuarioAtual?.cargo || ""; }
 function rhhEhRhOuAdmin(){ return ["diretor", "admin", "rh"].includes(rhhCargo()); }
-function rhhH(n){ return horasHM(n); }   // lote S65-a (#297): duração em h:min; o export (rhhExportar) continua decimal
+function rhhH(n){ return horasHM(n); }
 function rhhHz(n){ return horasHM(n, { zero: true }); }
 function rhhHHMM(t){ return t ? String(t).slice(0, 5) : ""; }
 function rhhMesAtual(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function rhhObraTxt(id, cod, nome){ return cod ? `${cod}${nome ? " — " + nome : ""}` : (id ? (mapaObras?.[id] || "obra") : "sem obra"); }
 
-/* Fase 103 (#23): status do funcionário no dia do RDO (rdo_equipe.status_dia; nulo = presente), com rótulo curto e o que a
-   regra do banco faz com as horas (gatilho trg_rdo_equipe_status_dia + vw_rh_horas_mes): ausência = sem horas; viagem =
-   horas do dia pagas como horas de viagem (salvo hora de viagem da 93c já liberada no mesmo dia), sem HE nem noturnas;
-   treinamento sem HE; "Revisar informação" = rh_liberar_horas recusa até alguém corrigir no RDO.
-   Lote S54 (#178): "Folga ½" (folga_meio_periodo) é presença com as horas trabalhadas da linha e débito de meia jornada; o
-   treinamento só perde a HE em dia útil não feriado (sábado, domingo e feriado pagam HE), por isso aqui a linha mostra a HE
-   como gravada e a view decide. */
+
+
+
+
+
+
+
 const RHH_STATUS_DIA = {
   atestado:            { l: "Atestado",     aus: true },
   dsr:                 { l: "DSR",          aus: true },
@@ -59,15 +59,15 @@ const RHH_STATUS_DIA = {
   noturno:             { l: "Noturno" },
   revisar_informacao:  { l: "Revisar",      revisar: true }
 };
-/* Lote S54 (#178): sábado, domingo ou feriado (toda hora trabalhada é HE 100 %; o treinamento mantém a HE nesses dias) */
+
 function rhhDiaExtra(dataISO, feriado){
   const m = String(dataISO || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
   if(!m) return false;
   const dow = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getDay();
   return dow === 0 || dow === 6 || !!feriado;
 }
-/* Horas do dia da linha (saída − entrada − intervalo; vazio = 60 min, piso 30; saída antes da entrada vira o dia): é o que
-   vw_rh_horas_mes paga como horas de viagem quando o status é de viagem (fn_horas_equipe: normais + HE) */
+
+
 function rhhHorasDia(e){
   const m = (t) => { const x = String(t || "").match(/^(\d{1,2}):(\d{2})/); return x ? Number(x[1]) * 60 + Number(x[2]) : null; };
   const a = m(e.hora_entrada), b = m(e.hora_saida);
@@ -76,11 +76,11 @@ function rhhHorasDia(e){
   const iv = e.intervalo_minutos == null ? 60 : Math.max(30, Number(e.intervalo_minutos) || 0);
   return Math.round(Math.max(0, bruto - iv) / 60 * 100) / 100;
 }
-/* Sem a migration da fase 103 a coluna status_dia não existe: a consulta cai para a lista antiga de colunas */
+
 function rhhSemColunaStatus(err){ return /status_dia/i.test(String(err?.message || "")) || err?.code === "42703"; }
 
-/* lote S48 (#122): PDF do CNO anexado em Obra › Documentos (categoria cno). A view só expõe essa categoria; sem a
-   migration 20261022_loteS48_b (view ausente) o mapa fica vazio e a tag continua só com o número de obras.cno. */
+
+
 async function rhhCarregarCno(obraIds){
   _rhhCnoDoc = {};
   const ids = [...new Set((obraIds || []).filter(Boolean))];
@@ -91,7 +91,7 @@ async function rhhCarregarCno(obraIds){
     (data || []).forEach(d => { _rhhCnoDoc[d.obra_id] = d; });
   }
 }
-/* tag do CNO: com PDF = link que abre o documento; sem PDF = o número (título "sem PDF anexado"); sem os dois = "sem CNO" */
+
 function rhhCnoHTML(obraId, cno, forte){
   if(!obraId) return "—";
   const doc = _rhhCnoDoc[obraId];
@@ -112,7 +112,7 @@ function rhhLigarCno(cont){
   cont.querySelectorAll(".rhh-cno").forEach(a => a.addEventListener("click", e => { e.preventDefault(); rhhAbrirCno(a.dataset.obra); }));
 }
 
-/* Período dos filtros: mês + quinzena (ou últimos 60 dias). Devolve { ini, fim, mesIni } em ISO. */
+
 function rhhPeriodo(){
   const q = $("rhh-f-quinzena")?.value || "";
   if(q === "60"){
@@ -128,7 +128,7 @@ function rhhPeriodo(){
   return { ini: dd(1), fim: dd(ultimo), mesIni: dd(1) };
 }
 
-/* PostgREST pagina em 1.000 linhas: lê tudo em páginas. ajustar(q) recebe sb.from(tabela) e devolve a consulta. */
+
 async function rhhLerTudo(tabela, ajustar, passo = 1000){
   const tudo = [];
   for(let de = 0; ; de += passo){
@@ -140,7 +140,7 @@ async function rhhLerTudo(tabela, ajustar, passo = 1000){
   return tudo;
 }
 
-/* ---------- filtros ---------- */
+
 function rhhPreencherObras(){
   const sel = $("rhh-f-obra"); if(!sel) return;
   const atual = sel.value;
@@ -151,9 +151,9 @@ function rhhPreencherObras(){
   if(atual) sel.value = atual;
 }
 
-/* Atalho da Sala de Comando ("Horas aguardando liberação há mais de 15 dias"): últimos 60 dias, só pendentes, a obra do aviso.
-   Fase 103: o aviso "Equipe do RDO com 'Revisar informação'" (filtro revisar_informacao) abre a mesma visão, sem o filtro
-   de extras e com a busca "revisar", que acha o status da linha. */
+
+
+
 function rhhAbrirPreset(p){ _rhhPreset = p || null; }
 function rhhAplicarPreset(){
   if(!_rhhPreset) return;
@@ -171,13 +171,13 @@ function rhhMarcarView(){
   document.querySelectorAll("#rhh-painel .serv-view-btn[data-view]").forEach(b => b.classList.toggle("ativo", b.dataset.view === _rhhView));
   const mostra = (id, sim) => { const el = $(id); if(el) el.style.display = sim ? "" : "none"; };
   const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
-  // fase 187a (#296): "Conferir alocação" veio de Funcionários; só quem opera a alocação (lotacaoPodeOperar)
+
   const podeConf = typeof lotacaoPodeOperar === "function" && lotacaoPodeOperar();
   const bConf = document.querySelector('#rhh-painel .serv-view-btn[data-view="conferir"]'); if(bConf) bConf.style.display = podeConf ? "" : "none";
   if(_rhhView === "conferir" && !podeConf) _rhhView = "liberar";
   document.querySelectorAll("#rhh-painel .serv-view-btn[data-view]").forEach(b => b.classList.toggle("ativo", b.dataset.view === _rhhView));
   const liberar = _rhhView === "liberar", aloc = _rhhView === "alocacao", fech = _rhhView === "fechamento", conf = _rhhView === "conferir";
-  const mensal = aloc && _rhhAlocModo === "mensal";   // fase 187a: a conferência por obra e mês fica no modo Mensal
+  const mensal = aloc && _rhhAlocModo === "mensal";
   mostra("btn-rhh-liberar", liberar && !leitura);
   mostra("btn-rhh-estornar", liberar && !leitura);
   mostra("btn-rhh-materializar", mensal && !leitura && RHH_CONFERIR_CARGOS.includes(rhhCargo()));
@@ -188,13 +188,13 @@ function rhhMarcarView(){
   mostra("rhh-f-aloc-modo", aloc);
   const modo = $("rhh-f-aloc-modo"); if(modo) modo.value = _rhhAlocModo;
   ["rhh-f-mes", "rhh-f-obra"].forEach(id => { const el = $(id); if(el) el.disabled = conf; });
-  // quinzena só faz sentido em "A liberar"; fechamento e alocação são por competência
+
   const q = $("rhh-f-quinzena"); if(q){ q.disabled = !liberar; if(!liberar && q.value) q.value = ""; }
   const s = $("rhh-f-situacao"); if(s) s.disabled = !liberar;
   const x = $("rhh-f-extras"); if(x) x.disabled = !liberar;
 }
 
-/* ---------- carga ---------- */
+
 async function carregarRhh(){
   if(_rhhCarregando) return;
   _rhhCarregando = true;
@@ -219,7 +219,7 @@ async function carregarRhh(){
 async function rhhCarregarLiberar(){
   const { ini, fim } = rhhPeriodo();
   const obraId = $("rhh-f-obra")?.value || "";
-  // fase 103: status_dia lido direto de rdo_equipe (sem a migration, a consulta repete sem a coluna)
+
   const lerEquipe = (comStatus) => rhhLerTudo("rdo_equipe", q => {
     let x = q.select(`id,funcionario_id,funcao_no_dia,hora_entrada,hora_saida,intervalo_minutos,horas_normais,horas_100,horas_noturnas,horas_noturnas_manual,liberado_em,liberado_por,${comStatus ? "status_dia," : ""}rdo:rdo!inner(id,data,obra_id,feriado,tipo_servico),funcionario:funcionarios(nome,matricula,funcao)`)
       .gte("rdo.data", ini).lte("rdo.data", fim).not("funcionario_id", "is", null).order("id");
@@ -236,7 +236,7 @@ async function rhhCarregarLiberar(){
     })
   ]);
   _rhhEquipe = eq; _rhhViagens = vg;
-  // quem pode liberar em cada obra do período (uma pergunta ao banco por obra, guardada)
+
   const obras = [...new Set(eq.map(e => e.rdo?.obra_id).concat(vg.map(v => v.obra_id)).filter(Boolean))];
   await Promise.all(obras.filter(o => _rhhPodeLiberar[o] === undefined).map(async o => {
     const { data } = await sb.rpc("rh_horas_liberar", { p_obra: o });
@@ -245,15 +245,15 @@ async function rhhCarregarLiberar(){
   renderRhhLiberar();
 }
 
-/* Linhas unificadas (RDO + viagem) do período, já filtradas pela tela */
+
 function rhhLinhas(){
   const busca = ($("rhh-busca")?.value || "").trim().toLowerCase();
   const sit = $("rhh-f-situacao")?.value || "";
   const soExtras = !!$("rhh-f-extras")?.checked;
-  // fase 103: hora de viagem da 93c já liberada no mesmo dia → a view paga essa, não as horas do RDO em viagem
+
   const viagemLiberada = new Set(_rhhViagens.filter(v => v.liberado_em).map(v => `${v.funcionario_id}|${v.data}`));
   const linhas = _rhhEquipe.map(e => {
-    const st = RHH_STATUS_DIA[e.status_dia] || null;   // fase 103
+    const st = RHH_STATUS_DIA[e.status_dia] || null;
     const aus = !!st?.aus, emViagem = !!st?.viagem;
     const viagemDup = emViagem && viagemLiberada.has(`${e.funcionario_id}|${e.rdo?.data}`);
     return {
@@ -263,7 +263,7 @@ function rhhLinhas(){
       horario: aus ? "ausência"
         : e.hora_entrada && e.hora_saida ? `${rhhHHMM(e.hora_entrada)}–${rhhHHMM(e.hora_saida)}${rhhHHMM(e.hora_saida) <= rhhHHMM(e.hora_entrada) ? " (+1 dia)" : ""}` : "—",
       normais: aus || emViagem ? 0 : Number(e.horas_normais || 0),
-      // lote S54 (#178): treinamento em sábado, domingo ou feriado mantém a HE (o gatilho só zera em dia útil)
+
       he: aus || emViagem || (st?.semHE && !rhhDiaExtra(e.rdo?.data, e.rdo?.feriado)) ? 0 : Number(e.horas_100 || 0),
       noturnas: aus || emViagem ? 0 : Number(e.horas_noturnas || 0),
       viagem: emViagem && !viagemDup ? rhhHorasDia(e) : 0,
@@ -283,7 +283,7 @@ function rhhLinhas(){
   return linhas.filter(l => {
     if(sit === "pendente" && l.liberado_em) return false;
     if(sit === "liberada" && !l.liberado_em) return false;
-    // fase 103: "Revisar informação" fica visível mesmo em "só extras" (é ela que segura a liberação)
+
     if(soExtras && !(l.he > 0 || l.noturnas > 0 || l.viagem > 0 || l.revisar)) return false;
     if(busca){
       const alvo = `${l.nome} ${l.matricula} ${l.funcao} ${mapaObras?.[l.obra_id] || ""} ${l.horario} ${l.statusTxt || ""}`.toLowerCase();
@@ -295,7 +295,7 @@ function rhhLinhas(){
 
 function rhhSituacaoTag(l){
   if(l.liberado_em) return `<span class="tag verde" title="Liberada para a folha">liberada ${esc(dataBR(String(l.liberado_em).slice(0, 10)))}</span>`;
-  // fase 103: "Revisar informação" não libera (o banco recusa); o atalho abre o RDO para corrigir e trocar o status
+
   if(l.revisar) return `<span class="tag ambar" title="Status do dia &quot;Revisar informação&quot;: a liberação fica bloqueada até alguém corrigir a linha no RDO e trocar o status">bloqueada · revisar</span>${l.rdo_id ? ` <a href="#" class="rhh-abrir-rdo meta" data-rdo="${esc(l.rdo_id)}" title="Abrir o Diário de Obra deste dia">abrir RDO</a>` : ""}`;
   const dias = Math.floor((new Date(hojeISO() + "T12:00:00") - new Date(l.data + "T12:00:00")) / 86400000);
   return `<span class="tag ${dias > 15 ? "vermelho" : "ambar"}" title="${dias > 15 ? "Há mais de 15 dias sem liberação" : "Aguardando liberação"}">a liberar${dias > 15 ? " · " + dias + " d" : ""}</span>`;
@@ -316,7 +316,7 @@ function renderRhhLiberar(){
   if(!linhas.length){ cont.innerHTML = `<p class="vazio">Nenhuma hora no período com esses filtros. As horas vêm da equipe do Diário de Obra (entrada e saída) e de "Minhas horas de viagem".</p>`; return; }
   const leitura = typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
   const semPermissao = linhas.some(l => !l.podeLiberar);
-  // agrupado por funcionário, com subtotal e caixa que seleciona o grupo
+
   const grupos = new Map();
   linhas.forEach(l => { if(!grupos.has(l.funcionario_id)) grupos.set(l.funcionario_id, []); grupos.get(l.funcionario_id).push(l); });
   let html = `<div class="tabela-rola"><table><thead><tr>
@@ -332,7 +332,7 @@ function renderRhhLiberar(){
       <td class="num"><strong>${rhhH(ls.reduce((s, l) => s + l.normais, 0))}</strong></td><td class="num"><strong>${rhhH(ls.reduce((s, l) => s + l.he, 0))}</strong></td>
       <td class="num"><strong>${rhhH(ls.reduce((s, l) => s + l.noturnas, 0))}</strong></td><td class="num"><strong>${rhhH(ls.reduce((s, l) => s + l.viagem, 0))}</strong></td><td></td></tr>`;
     ls.forEach(l => {
-      // fase 103: linha "Revisar informação" ainda a liberar fica amarela (mesma classe do RDO)
+
       const classe = l.liberado_em ? "rhh-liberada" : (l.revisar ? "con-vencendo" : "");
       const corStatus = l.revisar ? "ambar" : (RHH_STATUS_DIA[l.status]?.viagem ? "azul" : "cinza");
       const tagStatus = l.statusTxt ? ` <span class="tag ${corStatus}" title="Status do dia no RDO">${esc(l.statusTxt)}</span>` : "";
@@ -349,7 +349,7 @@ function renderRhhLiberar(){
   html += `</tbody></table></div>`;
   if(semPermissao && !leitura) html += `<p class="nota">Linhas com "·" são de obras que você não libera: só o engenheiro responsável da obra, o gestor do serviço (Sergio para raiz; Pedro para hélice, secante e trado) ou a diretoria liberam.</p>`;
   cont.innerHTML = html;
-  // seleção
+
   cont.querySelectorAll(".rhh-sel").forEach(cb => cb.addEventListener("change", () => { if(cb.checked) _rhhSel.add(cb.dataset.k); else _rhhSel.delete(cb.dataset.k); rhhAtualizarBotoes(); }));
   cont.querySelectorAll(".rhh-sel-grupo").forEach(cb => cb.addEventListener("change", () => {
     cont.querySelectorAll(`.rhh-sel[data-fid="${cb.dataset.fid}"]`).forEach(x => { x.checked = cb.checked; if(cb.checked) _rhhSel.add(x.dataset.k); else _rhhSel.delete(x.dataset.k); });
@@ -360,7 +360,7 @@ function renderRhhLiberar(){
     cont.querySelectorAll(".rhh-sel-grupo").forEach(x => x.checked = e.target.checked);
     rhhAtualizarBotoes();
   });
-  // fase 103: "abrir RDO" da linha bloqueada por "Revisar informação"
+
   cont.querySelectorAll(".rhh-abrir-rdo").forEach(a => a.addEventListener("click", e => {
     e.preventDefault();
     if(irParaSecao("rdo") && typeof abrirRDO === "function") abrirRDO(a.dataset.rdo);
@@ -372,7 +372,7 @@ function rhhAtualizarBotoes(){
   const linhas = _rhhView === "liberar" ? rhhLinhas() : [];
   const sel = linhas.filter(l => _rhhSel.has(l.k));
   const pend = sel.filter(l => !l.liberado_em).length, lib = sel.filter(l => l.liberado_em).length;
-  const bloq = sel.filter(l => !l.liberado_em && l.revisar).length;   // fase 103: ficam de fora do lote
+  const bloq = sel.filter(l => !l.liberado_em && l.revisar).length;
   const b1 = $("btn-rhh-liberar"), b2 = $("btn-rhh-estornar");
   if(b1){
     b1.disabled = !pend;
@@ -388,11 +388,11 @@ function rhhAtualizarBotoes(){
   }
 }
 
-/* Libera (ou estorna) as linhas selecionadas: RPCs do RDO e das viagens, cada uma com sua checagem no banco */
+
 async function rhhLiberar(estornar){
   const selecionadas = rhhLinhas().filter(l => _rhhSel.has(l.k) && (estornar ? !!l.liberado_em : !l.liberado_em));
   if(!selecionadas.length){ aviso("app-aviso", estornar ? "Selecione linhas já liberadas para estornar." : "Selecione linhas pendentes para liberar.", "erro"); return; }
-  // fase 103: "Revisar informação" sai do lote (o banco recusaria a RPC inteira); o resto libera e o aviso diz quantas ficaram
+
   const bloqueadas = estornar ? [] : selecionadas.filter(l => l.revisar);
   const linhas = selecionadas.filter(l => !bloqueadas.includes(l));
   const foraTxt = bloqueadas.length ? `${bloqueadas.length} linha(s) com "Revisar informação" ficaram de fora: corrija no RDO e troque o status do dia antes de liberar.` : "";
@@ -418,11 +418,11 @@ async function rhhLiberar(estornar){
   if(typeof carregarDashPendencias === "function") carregarDashPendencias().catch(() => {});
 }
 
-/* ---------- Fechamento do mês (vw_rh_horas_mes: só liberadas) ---------- */
+
 async function rhhCarregarFechamento(){
   const { mesIni } = rhhPeriodo();
   const obraId = $("rhh-f-obra")?.value || "";
-  if(!["diretor", "rh"].includes(rhhCargo())){   // vw_rh_horas_mes é has_role('rh'): diretor e rh (o auditor não lê folha)
+  if(!["diretor", "rh"].includes(rhhCargo())){
     _rhhMes = [];
     $("rhh-conteudo").innerHTML = `<p class="vazio">O fechamento do mês (horas liberadas por funcionário e obra) é do RH e da diretoria. Use "A liberar" para ver e liberar as horas das suas obras.</p>`;
     if($("rhh-contador")) $("rhh-contador").textContent = "";
@@ -438,7 +438,7 @@ async function rhhCarregarFechamento(){
     })()
   ]);
   _rhhMes = mes; _rhhPendMes = pend;
-  await rhhCarregarCno(mes.map(r => r.obra_id));   // lote S48 (#122)
+  await rhhCarregarCno(mes.map(r => r.obra_id));
   renderRhhFechamento();
 }
 
@@ -448,10 +448,10 @@ function rhhMesFiltrado(){
     .sort((a, b) => String(a.funcionario).localeCompare(String(b.funcionario), "pt-BR") || String(a.obra_codigo || "").localeCompare(String(b.obra_codigo || ""), "pt-BR", { numeric: true }));
 }
 
-/* Fase 103: colunas novas de vw_rh_horas_mes, no fim da tabela e da planilha (dias por status, débito de folga do #31 e
-   saldo de HE). Só linhas liberadas, como o resto da view. Somem enquanto a view não as tiver (migration não aplicada).
-   Lote S54 (#178): "Folga ½" (dias_folga_meio_periodo; opc = só quando a view já tem a coluna) e o débito passa a virar a
-   rubrica debito_folga em "Lançar na folha" (valor negativo), em vez de só informar. */
+
+
+
+
 const RHH_COLS_STATUS = [
   { c: "dias_falta",              l: "Faltas",           t: "Dias com status Falta" },
   { c: "dias_folga",              l: "Folgas",           t: "Dias com status Folga" },
@@ -477,7 +477,7 @@ function rhhCelStatus(col, v){
 function renderRhhFechamento(){
   const cont = $("rhh-conteudo"); if(!cont) return;
   const linhas = rhhMesFiltrado();
-  const cols = rhhColsStatus();   // fase 103 / lote S54
+  const cols = rhhColsStatus();
   if($("rhh-contador")) $("rhh-contador").textContent = `${linhas.length} de ${_rhhMes.length}`;
   const soma = (c) => linhas.reduce((s, r) => s + Number(r[c] || 0), 0);
   const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
@@ -499,9 +499,9 @@ function renderRhhFechamento(){
   rhhLigarCno(cont);
 }
 
-/* "Lançar na folha": rh_lancar_horas_folha(competência) grava he_100, adicional_noturno, horas_viagem e, lote S54 (#178),
-   debito_folga (horas de folga, falta e meio período; valor negativo = desconto; a HE sai bruta) em folha_lancamentos
-   (origem rh_horas, substituído a cada clique; lançamento manual não é tocado). Exige rh com MFA na sessão. */
+
+
+
 async function rhhLancarFolha(){
   const { mesIni } = rhhPeriodo();
   const comp = new Date(mesIni + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -521,11 +521,11 @@ async function rhhLancarFolha(){
   });
 }
 
-/* ---------- Alocação por obra (vw_rh_alocacao_mes + rh_alocacoes; fase 151d: vw_rh_alocacao_lancada_mes, só para ver) ---------- */
+
 async function rhhCarregarAlocacao(){
   const { mesIni } = rhhPeriodo();
   const obraId = $("rhh-f-obra")?.value || "";
-  if(_rhhAlocModo === "periodos"){   // fase 187a (#131 e #296)
+  if(_rhhAlocModo === "periodos"){
     _rhhPer = await rhhLerTudo("vw_rh_alocacao_periodos", q => { let x = q.select("*").eq("competencia", mesIni).order("funcionario").order("funcionario_id").order("data_inicio").order("obra_codigo"); if(obraId) x = x.eq("obra_id", obraId); return x; });
     await rhhCarregarCno(_rhhPer.map(r => r.obra_id));
     renderRhhPeriodos();
@@ -536,7 +536,7 @@ async function rhhCarregarAlocacao(){
     rhhLerTudo("vw_rh_alocacao_lancada_mes", q => { let x = q.select("*").eq("competencia", mesIni).order("obra_codigo").order("funcionario").order("funcionario_id").order("obra_id"); if(obraId) x = x.eq("obra_id", obraId); return x; })
   ]);
   _rhhAloc = doDiario.concat(lancadas.map(r => ({ ...r, so_alocacao: true })));
-  await rhhCarregarCno(_rhhAloc.map(r => r.obra_id));   // lote S48 (#122)
+  await rhhCarregarCno(_rhhAloc.map(r => r.obra_id));
   renderRhhAlocacao();
 }
 
@@ -548,14 +548,14 @@ function rhhAlocFiltrada(){
 }
 function rhhDivergencias(r){
   const t = [];
-  if(r.so_alocacao){   // fase 151d
+  if(r.so_alocacao){
     t.push(`<span class="tag cinza" title="Alocação lançada na Logística, sem presença em diário nesta obra no mês">sem diário no mês</span>`);
     if(!r.conferida) t.push(`<span class="tag ambar" title="A Logística ainda não conferiu esta alocação">alocação a conferir</span>`);
-    return /* html */ t.join(" ");
+    return   t.join(" ");
   }
   if(Number(r.dias_duas_obras) > 0) t.push(`<span class="tag ambar" title="Dias do mês em que o funcionário aparece em diários de duas obras">${esc(r.dias_duas_obras)} dia(s) em 2 obras</span>`);
   if(Number(r.dias_uteis_sem_diario) > 0) t.push(`<span class="tag cinza" title="Dias úteis entre o primeiro e o último diário do mês sem presença em nenhum diário">${esc(r.dias_uteis_sem_diario)} dia(s) útil(eis) sem diário</span>`);
-  return /* html */ t.join(" ") || "—";
+  return   t.join(" ") || "—";
 }
 
 function renderRhhAlocacao(){
@@ -588,14 +588,14 @@ function renderRhhAlocacao(){
       html += `<tr data-k="${esc(k)}">
         <td>${podeConferir && !r.so_alocacao ? `<input type="checkbox" class="rhh-sel" data-k="${esc(k)}" data-fid="${esc(oid)}" ${_rhhSel.has(k) ? "checked" : ""} />` : ""}</td>
         <td><strong>${esc(r.funcionario)}</strong></td><td class="meta">${esc(r.matricula || "")}</td><td class="meta">${esc(r.funcao || "")}</td>
-        <td>${/* html */ rhhPeriodosHTML(r)}</td>
+        <td>${  rhhPeriodosHTML(r)}</td>
         <td class="num">${r.so_alocacao ? "—" : esc(r.dias)}</td><td>${esc(r.equipamento_codigo || "—")}</td><td>${rhhDivergencias(r)}</td>
         <td>${r.so_alocacao ? "—" : r.conferido_em ? `<span class="tag verde" title="${esc(r.conferido_por_nome || "")}">conferida ${esc(dataBR(String(r.conferido_em).slice(0, 10)))}</span>` : '<span class="tag cinza">a conferir</span>'}</td></tr>`;
     });
   }
   html += `</tbody></table></div>`;
   cont.innerHTML = html;
-  rhhLigarCno(cont);   // lote S48 (#122)
+  rhhLigarCno(cont);
   cont.querySelectorAll(".rhh-sel").forEach(cb => cb.addEventListener("change", () => { if(cb.checked) _rhhSel.add(cb.dataset.k); else _rhhSel.delete(cb.dataset.k); rhhAtualizarBotoes(); }));
   cont.querySelectorAll(".rhh-sel-grupo").forEach(cb => cb.addEventListener("change", () => {
     cont.querySelectorAll(`.rhh-sel[data-fid="${cb.dataset.fid}"]`).forEach(x => { x.checked = cb.checked; if(cb.checked) _rhhSel.add(x.dataset.k); else _rhhSel.delete(x.dataset.k); });
@@ -609,9 +609,9 @@ function renderRhhAlocacao(){
   rhhAtualizarBotoes();
 }
 
-/* ---------- fase 187a (#131 e #296): modo Períodos, um período por linha, do RDO (vw_rh_alocacao_periodos) ----------
-   O RDO manda; a alocação lançada só aparece para quem não tem diário no mês (origem "lancada"). Fim de semana e
-   feriado sem diário não quebram o período; dia útil sem presença ou dia em outra obra fecha. Nada é gravado aqui. */
+
+
+
 const RHH_PER_ORIGEM = { rdo: { label: "RDO", cor: "verde", title: "Período montado a partir dos diários de obra" },
   lancada: { label: "Lançada", cor: "cinza", title: "Alocação lançada pela Logística; a pessoa não tem diário no mês" } };
 function rhhPerFiltrada(){
@@ -656,21 +656,21 @@ function renderRhhPeriodos(){
   rhhLigarCno(cont);
 }
 
-/* ---------- fase 187a (#296): visão Conferir alocação (render em js/funcionarios_lotacao.js, no rhh-conteudo) ---------- */
+
 async function rhhCarregarConferir(){
   const kpi = (id, v) => { const el = $(id); if(el) el.textContent = v; };
   ["rhh-kpi-linhas", "rhh-kpi-he", "rhh-kpi-not", "rhh-kpi-viag", "rhh-kpi-pend"].forEach(id => kpi(id, "—"));
   if($("rhh-contador")) $("rhh-contador").textContent = "";
   if(typeof renderFuncLotacao === "function") await renderFuncLotacao();
 }
-/* Sala de Comando (lotacao_diferente, lotacao_ausente) → Horas e alocação › Conferir alocação já filtrada */
+
 function rhhAbrirConferir(filtro){
   if(typeof funcLotDefinirFiltro === "function") funcLotDefinirFiltro(filtro);
   _rhhView = "conferir";
   if(!irParaSecao("rhh")) return;
 }
 
-/* fase 151 (#131): vai, sai e volta aparece como períodos separados, um por linha da célula */
+
 function rhhPeriodoTxt(p){ return dataBR(p.ini) + (p.fim !== p.ini ? " – " + dataBR(p.fim) : ""); }
 function rhhPeriodosHTML(r){
   if(Array.isArray(r.periodos) && r.periodos.length > 1) return r.periodos.map(p => `<div>${rhhPeriodoTxt(p)}</div>`).join("");
@@ -685,7 +685,7 @@ async function rhhMaterializar(silencioso){
   return data;
 }
 
-/* Conferir (ou desfazer) as linhas selecionadas; linhas ainda não materializadas são gravadas antes */
+
 async function rhhConferir(desfazer){
   const sel = rhhAlocFiltrada().filter(r => _rhhSel.has(rhhAlocKey(r)));
   if(!sel.length){ aviso("app-aviso", "Selecione as linhas da alocação.", "erro"); return; }
@@ -706,7 +706,7 @@ async function rhhConferir(desfazer){
   await carregarRhh();
 }
 
-/* ---------- exportação (.xlsx) ---------- */
+
 function rhhExportar(){
   if(typeof XLSX === "undefined"){ aviso("app-aviso", "Biblioteca de planilha não carregada.", "erro"); return; }
   const { ini, fim, mesIni } = rhhPeriodo();
@@ -716,18 +716,18 @@ function rhhExportar(){
   if(_rhhView === "liberar"){
     const linhas = rhhLinhas();
     if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
-    // fase 103: "Status do dia" no fim (vazio = presente; "Revisar" = bloqueada)
+
     aoa = [["Funcionário", "Matrícula", "Função", "Dia", "Obra", "Origem", "Horário / trajeto", "Normais", "HE 100 %", "Noturnas", "Viagem", "Situação", "Liberada em", "Status do dia"]]
       .concat(linhas.map(l => [l.nome, l.matricula, l.funcao, dataBR(l.data), l.obra_id ? (mapaObras?.[l.obra_id] || "") : "", l.tipo === "viagem" ? "Viagem" : "RDO", l.horario, num(l.normais), num(l.he), num(l.noturnas), num(l.viagem), l.liberado_em ? "liberada" : (l.revisar ? "bloqueada (revisar)" : "a liberar"), l.liberado_em ? dataBR(String(l.liberado_em).slice(0, 10)) : "", l.statusTxt || ""]));
     nome = `horas-a-liberar-${ini}-a-${fim}.xlsx`; aba = "HORAS";
   } else if(_rhhView === "fechamento"){
     const linhas = rhhMesFiltrado();
     if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
-    const cols = rhhColsStatus();   // fase 103 / lote S54: colunas novas no fim
+    const cols = rhhColsStatus();
     aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "Dias", "Normais", "HE 100 %", "Noturnas", "Viagem"].concat(cols.map(c => c.l))]
       .concat(linhas.map(r => [mes, r.matricula || "", r.funcionario, r.funcao || "", rhhObraTxt(r.obra_id, r.obra_codigo, r.obra_nome), r.cno || "", num(r.dias), num(r.horas_normais), num(r.horas_100), num(r.horas_noturnas), num(r.horas_viagem)].concat(cols.map(c => num(r[c.c])))));
     nome = `fechamento-horas-${mes}.xlsx`; aba = "FECHAMENTO";
-  } else if(_rhhAlocModo === "periodos"){   // fase 187a: as mesmas colunas da tela, um período por linha
+  } else if(_rhhAlocModo === "periodos"){
     const linhas = rhhPerFiltrada();
     if(!linhas.length){ aviso("app-aviso", "Nada para exportar.", "erro"); return; }
     aoa = [["Competência", "Matrícula", "Funcionário", "Função", "Obra", "CNO", "De", "Até", "Entrada", "Saída", "Dias", "Equipamento", "Origem"]]
@@ -746,13 +746,13 @@ function rhhExportar(){
   XLSX.writeFile(wb, nome);
 }
 
-/* ---------- ligação ---------- */
+
 function ligarRhh(){
   if(!$("rhh-painel")) return;
   document.querySelector('nav button[data-secao="rhh"]')?.addEventListener("click", () => carregarRhh());
   document.querySelectorAll("#rhh-painel .serv-view-btn[data-view]").forEach(b => b.addEventListener("click", () => { _rhhView = b.dataset.view; carregarRhh(); }));
   $("btn-rhh-atualizar")?.addEventListener("click", () => { _rhhPodeLiberar = {}; if(typeof funcLotLimparCache === "function") funcLotLimparCache(); carregarRhh(); });
-  $("rhh-f-aloc-modo")?.addEventListener("change", e => { _rhhAlocModo = e.target.value === "mensal" ? "mensal" : "periodos"; carregarRhh(); });   // fase 187a
+  $("rhh-f-aloc-modo")?.addEventListener("change", e => { _rhhAlocModo = e.target.value === "mensal" ? "mensal" : "periodos"; carregarRhh(); });
   $("btn-rhh-xlsx")?.addEventListener("click", rhhExportar);
   $("btn-rhh-liberar")?.addEventListener("click", () => comBotaoTravado("btn-rhh-liberar", () => rhhLiberar(false)));
   $("btn-rhh-estornar")?.addEventListener("click", () => comBotaoTravado("btn-rhh-estornar", () => rhhLiberar(true)));
@@ -761,10 +761,10 @@ function ligarRhh(){
   $("btn-rhh-desconferir")?.addEventListener("click", () => comBotaoTravado("btn-rhh-desconferir", () => rhhConferir(true)));
   $("btn-rhh-folha")?.addEventListener("click", rhhLancarFolha);
   ["rhh-f-mes", "rhh-f-quinzena", "rhh-f-obra"].forEach(id => $(id)?.addEventListener("change", () => carregarRhh()));
-  // situação, extras e busca filtram o que já está na memória
+
   const refiltrar = () => {
     if(_rhhView === "liberar") renderRhhLiberar(); else if(_rhhView === "fechamento") renderRhhFechamento();
-    else if(_rhhView === "conferir"){ if(typeof renderFuncLotacao === "function") renderFuncLotacao(); }   // fase 187a
+    else if(_rhhView === "conferir"){ if(typeof renderFuncLotacao === "function") renderFuncLotacao(); }
     else if(_rhhAlocModo === "periodos") renderRhhPeriodos(); else renderRhhAlocacao();
   };
   ["rhh-f-situacao", "rhh-f-extras"].forEach(id => $(id)?.addEventListener("change", refiltrar));
@@ -772,13 +772,13 @@ function ligarRhh(){
   $("rhh-kpi-card-pend")?.addEventListener("click", () => { if(_rhhView !== "liberar") return; const s = $("rhh-f-situacao"); if(s){ s.value = s.value === "pendente" ? "" : "pendente"; refiltrar(); } });
 }
 
-/* ====================================================================
-   MINHAS HORAS DE VIAGEM (sec-rhv) — o funcionário logado lança as próprias (profiles.funcionario_id, 93b, ou
-   funcionarios.profile_id); RH, diretoria e admin escolhem o funcionário. Funciona no celular (campos empilham).
-   ==================================================================== */
-let _rhvMeuFunc = null;      // funcionário do login
-let _rhvFuncs = [];          // lista para o RH escolher
-let _rhvLista = [];          // viagens carregadas
+
+
+
+
+let _rhvMeuFunc = null;
+let _rhvFuncs = [];
+let _rhvLista = [];
 let _rhvEditId = null;
 let _rhvPronto = false;
 
@@ -947,7 +947,7 @@ function ligarRhv(){
   $("rhv-func")?.addEventListener("change", () => { rhvLimpar(); carregarRhv(); });
   ["rhv-saida", "rhv-chegada"].forEach(id => $(id)?.addEventListener("change", rhvHorasPrev));
   $("rhv-obra")?.addEventListener("change", () => { const d = $("rhv-destino"); if(d && !d.value && $("rhv-obra").value) d.value = mapaObras?.[$("rhv-obra").value] || ""; });
-  // fase 86: formulário mexido segura a atualização automática do app até salvar/limpar
+
   document.querySelectorAll("#rhv-form-card input, #rhv-form-card select").forEach(el => el.addEventListener("input", () => { if(typeof appMarcarSujo === "function") appMarcarSujo(); }));
 }
 

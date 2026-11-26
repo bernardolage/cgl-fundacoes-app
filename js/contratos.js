@@ -1,35 +1,35 @@
-/* ====================================================================
-   Módulo: Contratos (Receita e Despesa)
-   Layout: padrão Serviços + Odoo. Prefixo de IDs: con-.
-   Fluxo: em_elaboração → aguardando_assinatura → vigente → encerrado / rescindido / cancelado.
 
-   Fase 21: o contrato do CLIENTE passou a ser editado na aba "Contrato" da obra (obra_abas.js / obras.js).
-   Fase 55: a seção virou "Contratos & Contas a pagar".
-   Fase 180a (16/11/2026, D1, D6 e D7): a seção volta a ser só de contratos, com dois lados:
-     Receita = natureza 'cliente' (nasce do orçamento aprovado; venda de bem a partir da 180c), lido por quem tem
-               pode_ler_comercial() no banco (podeVerContratosReceita no core.js);
-     Despesa = natureza 'fornecedor' (fornecedor, material, serviço, assinatura de sistema), lido por quem tem
-               pode_ler_contas_pagar() (podeVerContratosDespesa).
-   Contas a pagar (A pagar, Lançamentos avulsos, Exportações) foi para a seção própria sec-contaspagar (js/contas_pagar.js).
-   O contrato de cliente continua nascendo do orçamento aprovado e ligado à obra por obras.contrato_id; a aba Contrato
-   da obra mostra o resumo e o link para cá. Cliente, vigência, valor e responsável do contrato ligado a uma obra vêm da
-   obra (salvarContratoDaObra espelha ao salvar a obra) e ficam travados aqui.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 let _contratos = [];
 let _conView   = "lista";
-let _conLado   = "todos";        // fase 180a: receita | despesa | todos
+let _conLado   = "todos";
 let conEditId  = null;
-let _conObrasPorContrato = {};   // fase 180a: contrato_id → [{id,codigo,nome}] (obras.contrato_id, lado Receita)
-let _conObrasLista = [];         // obras para o filtro (id, codigo, nome)
-let _conEquipMap = {};           // equipamento_id → "código — nome", só dos equipamentos ligados a contratos
+let _conObrasPorContrato = {};
+let _conObrasLista = [];
+let _conEquipMap = {};
 
 const CON_STAGES = ["em_elaboracao","aguardando_assinatura","vigente","encerrado"];
 const CON_LADO_LBL = { cliente: "Receita", fornecedor: "Despesa" };
-/* meses por período, para o custo mensal das assinaturas */
+
 const CON_MESES_RECORRENCIA = { mensal: 1, trimestral: 3, semestral: 6, anual: 12 };
 
-/* Categorias dos anexos de contrato (tabela contratos_documentos) */
+
 const CON_DOC_CATEGORIAS = {
   contrato_assinado: "Contrato assinado",
   aditivo:           "Aditivo",
@@ -38,18 +38,18 @@ const CON_DOC_CATEGORIAS = {
   outro:             "Outro"
 };
 
-/* ---------- Permissões (fase 180a) ----------
-   Escrita espelha a policy contratos_write: admin, financeiro e comprador em qualquer contrato (diretor por has_role) e
-   comercial no contrato de cliente. O lado só é oferecido a quem também o lê. Auditor não grava.
-   Fase 180d (D2): o jurídico grava nos dois lados, menos a parcela do contrato de despesa (recorrência, valor da parcela,
-   dia de vencimento e geração de títulos: gatilho fn_contratos_juridico_parcela) e sem excluir contrato. */
+
+
+
+
+
 function conPodeEditar(natureza){
   if(!usuarioAtual || ehSomenteLeitura()) return false;
   const c = usuarioAtual.cargo;
   if(natureza === "cliente") return podeVerContratosReceita() && ["diretor","admin","financeiro","comprador","comercial","juridico"].includes(c);
   return podeVerContratosDespesa() && ["diretor","admin","financeiro","comprador","juridico"].includes(c);
 }
-/* fase 180d: campos que viram título a pagar ficam travados para o jurídico (o financeiro completa) */
+
 const CON_CAMPOS_PARCELA = ["con-recorrencia", "con-valor-rec", "con-dia-venc", "con-gera-titulos"];
 function conTravarParcelaJuridico(){
   const travar = ehJuridico();
@@ -66,7 +66,7 @@ function conContraparte(c){
   if(!c) return "";
   return c.natureza === "cliente" ? (mapaClientes[c.cliente_id] || "") : (mapaFornecedores[c.fornecedor_id] || "");
 }
-/* obras do contrato: as ligadas por obras.contrato_id (Receita) ou a obra que recebe o custo (Despesa) */
+
 function conObrasDe(c){
   if(!c) return [];
   if(c.natureza === "cliente") return _conObrasPorContrato[c.id] || [];
@@ -78,14 +78,14 @@ function conObrasHTML(c){
   const obras = conObrasDe(c);
   return obras.length ? obras.map(o => linkObra(o.id, o.codigo)).join(", ") : "—";
 }
-/* custo mensal de um contrato recorrente (assinatura de sistema): valor da parcela ÷ meses do período */
+
 function conCustoMensal(c){
   const m = CON_MESES_RECORRENCIA[c.forma_recorrencia];
   return m ? Number(c.valor_recorrente || 0) / m : null;
 }
 
-/* ---------- Vencimento ---------- */
-/* Dias até o fim da vigência (negativo = já venceu; null = sem data) */
+
+
 function diasParaVencer(c){
   if(!c || !c.data_fim_prevista) return null;
   const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -93,7 +93,7 @@ function diasParaVencer(c){
   return Math.round((fim - hoje) / 86400000);
 }
 
-/* Contrato está dentro da janela de aviso configurada nele mesmo? */
+
 function contratoEmAlerta(c){
   if(c.status !== "vigente") return false;
   const dias = diasParaVencer(c);
@@ -102,7 +102,7 @@ function contratoEmAlerta(c){
   return dias <= janela;
 }
 
-/* Usado pelo dashboard (js/dashboard.js) para as ações pendentes */
+
 async function contratosVencendo(){
   const { data } = await sb.from("contratos")
     .select("id,numero,fornecedor_id,status,data_fim_prevista,aviso_vencimento_dias,renovacao_automatica")
@@ -113,11 +113,11 @@ async function contratosVencendo(){
     .sort((a,b) => diasParaVencer(a) - diasParaVencer(b));
 }
 
-/* ---------- Carga ---------- */
+
 let _conGerouTitulos = false;
 async function carregarContratos(){
-  // fase 56: completa o horizonte de títulos (3 meses) uma vez por sessão; o pg_cron faz o mesmo todo dia.
-  // Lote S43 (L4): só quem gera títulos no banco (has_role admin/financeiro/comprador + diretor) chama a RPC.
+
+
   const geraTitulos = !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador"].includes(usuarioAtual.cargo)
     && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura());
   if(!_conGerouTitulos && geraTitulos){
@@ -145,7 +145,7 @@ async function carregarContratos(){
   renderContratos();
 }
 
-/* ---------- Filtros ---------- */
+
 function conFiltrados(){
   const termo = ($("con-busca")?.value || "").trim().toLowerCase();
   const fStat = $("con-f-status")?.value || "";
@@ -176,7 +176,7 @@ function conFiltrados(){
   });
 }
 
-/* repõe as opções de um select mantendo a escolha, se ela ainda existir */
+
 function conRepor(sel, html){
   if(!sel) return;
   const v = sel.value;
@@ -194,7 +194,7 @@ function preencherFiltrosCon(){
     selCat.innerHTML = `<option value="">Todas as categorias</option>` +
       Object.entries(CONTRATO_CATEGORIA).map(([v,l]) => `<option value="${esc(v)}">${esc(v === "assinatura" ? "Assinaturas (custo mensal)" : l)}</option>`).join("");
   }
-  // contraparte, obra e equipamento: só os que aparecem nos contratos do lado escolhido
+
   const doLado = _contratos.filter(c => _conLado === "todos" || (_conLado === "receita") === (c.natureza === "cliente"));
   const cps = new Map();
   doLado.forEach(c => {
@@ -213,7 +213,7 @@ function preencherFiltrosCon(){
       .map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join(""));
 }
 
-/* toggle Receita | Despesa | Todos: some o lado que o cargo não lê; com um lado só, ele fica fixo */
+
 function conAjustarLados(){
   const lados = conLadosVisiveis();
   const rec = lados.includes("cliente"), des = lados.includes("fornecedor");
@@ -227,7 +227,7 @@ function conAjustarLados(){
   if(bNovo) bNovo.style.display = (conPodeEditar("cliente") || conPodeEditar("fornecedor")) ? "" : "none";
 }
 
-/* ---------- Render ---------- */
+
 function renderContratos(){
   conAjustarLados();
   preencherFiltrosCon();
@@ -244,7 +244,7 @@ function renderContratos(){
   else                       renderConLista(dados);
 }
 
-/* Filtro "Assinaturas": custo mensal de cada contrato na lista; a soma só para quem lê contas a pagar (nunca o jurídico, D2) */
+
 function renderResumoAssinaturas(dados){
   const box = $("con-assin-resumo");
   if(!box) return;
@@ -253,10 +253,10 @@ function renderResumoAssinaturas(dados){
   const soma = podeVerContasPagar() && podeVerSomaContratos()
     ? ` Custo mensal das vigentes: <strong data-val-sens>${brl(vigentes.reduce((s, c) => s + (conCustoMensal(c) || 0), 0))}</strong>.`
     : "";
-  box.innerHTML = `<p class="meta">${vigentes.length} assinatura(s) vigente(s).${/* html */ soma} O custo mensal de cada uma é a parcela dividida pelos meses do período.</p>`;
+  box.innerHTML = `<p class="meta">${vigentes.length} assinatura(s) vigente(s).${  soma} O custo mensal de cada uma é a parcela dividida pelos meses do período.</p>`;
 }
 
-/* Faixa de alerta no topo do painel */
+
 function renderAlertaVencimento(){
   const cont = $("con-alerta-venc");
   if(!cont) return;
@@ -290,7 +290,7 @@ function renderAlertaVencimento(){
   });
 }
 
-/* Tag de dias restantes ao lado da data de fim */
+
 function tagDias(c){
   if(c.status !== "vigente") return "";
   const dias = diasParaVencer(c);
@@ -325,7 +325,7 @@ function renderConLista(dados){
       ${comLado ? `<td>${tagLado(c)}</td>` : ""}
       <td>${esc(conContraparte(c) || "—")}</td>
       <td>${esc(CONTRATO_CATEGORIA[c.categoria] || c.categoria || "—")}</td>
-      <td>${/* html */ conObrasHTML(c)}</td>
+      <td>${  conObrasHTML(c)}</td>
       <td>${dataBR(c.data_inicio)}</td>
       <td>${dataBR(c.data_fim_prevista)}${tagDias(c)}</td>
       <td>${tagStatus("contrato", c.status)}</td>
@@ -373,16 +373,16 @@ function renderConKanban(dados){
   });
 }
 
-/* ---------- Painel <-> Ficha ---------- */
+
 function mostrarPainelCon(){
   $("con-painel").style.display = "";
   $("con-ficha").style.display = "none";
   conEditId = null;
 }
 
-/* Próximo número CT- livre.
-   contratos.numero é UNIQUE na tabela inteira, então a sugestão precisa
-   olhar também os contratos de cliente (que nascem na ficha da obra). */
+
+
+
 async function proximoNumeroContrato(){
   const { data } = await sb.from("contratos").select("numero").like("numero","CT-%");
   const usados = (data || [])
@@ -393,7 +393,7 @@ async function proximoNumeroContrato(){
   return "CT-" + String(proximo).padStart(4, "0");
 }
 
-/* fase 180a: mostra o campo de contraparte e os campos do lado (Despesa: recorrência, títulos e destino do custo) */
+
 function conAplicarNatureza(natureza){
   const cli = natureza === "cliente";
   $("con-campo-cliente").style.display = cli ? "" : "none";
@@ -406,7 +406,7 @@ function conAplicarNatureza(natureza){
   $("con-ficha-contraparte-lbl").textContent = cli ? "Cliente" : "Fornecedor";
 }
 
-/* fase 180a (D7): contrato de cliente ligado a obra — cliente, vigência, valor e responsável vêm da obra */
+
 function conTravarCamposDaObra(c){
   const obras = c && c.id && c.natureza === "cliente" ? conObrasDe(c) : [];
   const travar = obras.length > 0;
@@ -428,7 +428,7 @@ async function novoContrato(){
   const lados = ["cliente","fornecedor"].filter(conPodeEditar);
   if(!lados.length) return;
   conLimparCampos();
-  // lado inicial: o do toggle, se o cargo grava nele
+
   const natureza = _conLado === "receita" && lados.includes("cliente") ? "cliente"
     : _conLado === "despesa" && lados.includes("fornecedor") ? "fornecedor" : lados[lados.length - 1];
   const selNat = $("con-natureza");
@@ -444,7 +444,7 @@ async function novoContrato(){
   $("con-valor-rec").value = 0;
   $("con-dia-venc").value = "";
   $("con-valor").value = 0;
-  await conPreencherDestinos(); // fase 56
+  await conPreencherDestinos();
   $("con-obra").value = ""; $("con-equip").value = ""; $("con-cat-custo").value = ""; $("con-gera-titulos").checked = true;
   abrirFichaConVisual({ numero: $("con-numero").value, natureza, status: "em_elaboracao", valor_total: 0, categoria: $("con-categoria").value });
 }
@@ -452,13 +452,13 @@ async function novoContrato(){
 async function abrirContrato(id){
   conEditId = id;
   const { data:c, error } = await sb.from("contratos").select("*").eq("id",id).single();
-  if(conEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
+  if(conEditId !== id) return;
   if(error){ aviso("app-aviso","Erro ao abrir contrato: "+error.message,"erro"); return; }
   conLimparCampos();
   const selNat = $("con-natureza");
   [...selNat.options].forEach(o => { o.hidden = false; o.disabled = false; });
   selNat.value = c.natureza || "fornecedor";
-  selNat.disabled = true;   // o lado não muda depois de salvo (policy de escrita e títulos dependem dele)
+  selNat.disabled = true;
   $("con-numero").value = c.numero || "";
   $("con-fornecedor").value = c.fornecedor_id || "";
   $("con-cliente").value = c.cliente_id || "";
@@ -471,34 +471,34 @@ async function abrirContrato(id){
   $("con-fim").value = c.data_fim_prevista || "";
   $("con-renovacao").checked = c.renovacao_automatica === true;
   $("con-aviso").value = c.aviso_vencimento_dias != null ? c.aviso_vencimento_dias : 30;
-  $("con-venc-antecipado").value = c.regra_vencimento_antecipado || "";   // fase 180b
+  $("con-venc-antecipado").value = c.regra_vencimento_antecipado || "";
   $("con-recorrencia").value = c.forma_recorrencia || "unica";
   $("con-valor-rec").value = c.valor_recorrente || 0;
   $("con-dia-venc").value = c.dia_vencimento || "";
   $("con-valor").value = c.valor_total || 0;
   $("con-indice").value = c.indice_reajuste || "";
   $("con-obs").value = c.observacoes || "";
-  await conPreencherDestinos(); // fase 56: destino do custo e geração de títulos
+  await conPreencherDestinos();
   $("con-obra").value = c.obra_id || ""; $("con-equip").value = c.equipamento_id || "";
   $("con-cat-custo").value = c.categoria_custo || ""; $("con-gera-titulos").checked = c.gera_titulos !== false;
   abrirFichaConVisual(c);
 }
 
-let _conAtual = null; // registro completo do contrato aberto (usado pela assinatura)
+let _conAtual = null;
 
 function abrirFichaConVisual(c){
   _conAtual = c;
-  if(typeof prcFechar === "function") prcFechar();   // fase 180f: a ficha pode abrir a partir da tela de processos
+  if(typeof prcFechar === "function") prcFechar();
   $("con-painel").style.display = "none";
   $("con-ficha").style.display = "";
   conAplicarNatureza(c.natureza);
   conTravarCamposDaObra(c);
 
-  // gravação conforme o lado e o cargo (fase 180a); o contrato ligado a obra só se exclui pela obra
+
   const podeEditar = conPodeEditar(c.natureza);
   $("btn-salvar-con").style.display = podeEditar ? "" : "none";
   $("con-ficha-mais").style.display = podeEditar && conEditId && !conObrasDe(c).length ? "" : "none";
-  $("btn-excluir-con").style.display = conEditId && !ehJuridico() ? "" : "none";   // fase 180d: o jurídico não exclui
+  $("btn-excluir-con").style.display = conEditId && !ehJuridico() ? "" : "none";
   conTravarParcelaJuridico();
 
   $("con-ficha-numero").textContent = c.numero || "(novo)";
@@ -511,10 +511,10 @@ function abrirFichaConVisual(c){
   $("con-ficha-equip-box").style.display = c.equipamento_id ? "" : "none";
   $("con-ficha-equip-chip").textContent = c.equipamento_id ? (_conEquipMap[c.equipamento_id] || (typeof cmpEq === "function" && cmpEq(c.equipamento_id)) || "equipamento") : "—";
   $("con-ficha-valor-chip").textContent = brl(c.valor_total || 0);
-  conCarregarTitulos(c.natureza === "fornecedor" ? (c.id || null) : null); // fase 56
-  conCarregarParcelas(c.natureza === "cliente" ? c : null);                 // fase 180a
-  conCarregarAditivos(c.id || null);                                        // fase 180a
-  conCarregarPartes(c);                                                     // fase 180b
+  conCarregarTitulos(c.natureza === "fornecedor" ? (c.id || null) : null);
+  conCarregarParcelas(c.natureza === "cliente" ? c : null);
+  conCarregarAditivos(c.id || null);
+  conCarregarPartes(c);
   conCarregarGarantias(c);
   conCarregarObrigacoes(c);
   const dias = diasParaVencer(c);
@@ -560,12 +560,12 @@ function ativarTabCon(nome){
   });
 }
 
-/* ---------- Salvar / excluir ---------- */
+
 async function salvarContrato(novoStatus){
   const natureza = conEditId ? (_conAtual?.natureza || "fornecedor") : $("con-natureza").value;
   if(!conPodeEditar(natureza)){ aviso("app-aviso","Seu cargo não grava contratos deste lado.","erro"); return; }
   const cli = natureza === "cliente";
-  const travado = cli && !!conEditId && conObrasDe(_conAtual).length > 0;   // D7: campos que vêm da obra
+  const travado = cli && !!conEditId && conObrasDe(_conAtual).length > 0;
   const cliente_id = $("con-cliente").value || null;
   const fornecedor_id = $("con-fornecedor").value || null;
   if(cli && !cliente_id && !travado){ aviso("app-aviso","Selecione o cliente.","erro"); ativarTabCon("geral"); return; }
@@ -581,7 +581,7 @@ async function salvarContrato(novoStatus){
     data_assinatura: $("con-assinatura").value || null,
     renovacao_automatica: $("con-renovacao").checked,
     aviso_vencimento_dias: Number($("con-aviso").value || 0),
-    regra_vencimento_antecipado: $("con-venc-antecipado").value ? Number($("con-venc-antecipado").value) : null,   // fase 180b
+    regra_vencimento_antecipado: $("con-venc-antecipado").value ? Number($("con-venc-antecipado").value) : null,
     indice_reajuste: $("con-indice").value.trim() || null,
     equipamento_id: $("con-equip").value || null,
     observacoes: $("con-obs").value.trim() || null
@@ -607,12 +607,12 @@ async function salvarContrato(novoStatus){
       forma_recorrencia: $("con-recorrencia").value,
       valor_recorrente: Number($("con-valor-rec").value || 0),
       dia_vencimento: dia ? Number(dia) : null,
-      // fase 56: destino do custo (aba Custos da obra/TAG) e geração dos títulos a pagar (gatilho no banco)
+
       obra_id: $("con-obra").value || null,
       categoria_custo: $("con-cat-custo").value || null,
       gera_titulos: $("con-gera-titulos").checked
     });
-    // fase 180d: o jurídico não grava a parcela; contrato novo dele nasce sem recorrência e sem títulos
+
     if(ehJuridico()){
       ["forma_recorrencia", "valor_recorrente", "dia_vencimento", "gera_titulos"].forEach(k => delete reg[k]);
       if(!conEditId) reg.gera_titulos = false;
@@ -636,7 +636,7 @@ async function salvarContrato(novoStatus){
     return;
   }
   conEditId = result.data.id;
-  if(typeof _cmpContratosForn !== "undefined") _cmpContratosForn = null; // fase 57: lista de contratos do recebimento
+  if(typeof _cmpContratosForn !== "undefined") _cmpContratosForn = null;
   aviso("app-aviso","Contrato salvo.","ok");
   await carregarContratos();
   await abrirContrato(conEditId);
@@ -648,7 +648,7 @@ async function excluirContrato(){
     aviso("app-aviso","Contrato ligado a obra: o vínculo é desfeito na ficha da obra.","erro"); return;
   }
   if(!confirm("Excluir este contrato? Os anexos enviados também serão removidos.")) return;
-  // Remove os arquivos do Storage antes (o delete em cascata só apaga os metadados)
+
   const { data: docs } = await sb.from("contratos_documentos")
     .select("storage_path").eq("contrato_id", conEditId);
   if(docs && docs.length){
@@ -661,29 +661,29 @@ async function excluirContrato(){
   mostrarPainelCon();
 }
 
-/* ====================================================================
-   ABA DOCUMENTOS — anexos do contrato (bucket contratos-docs)
 
-   Serve duas fichas: a do contrato de fornecedor (padrão) e a aba
-   Contrato da obra, que passa outro container/prefixo em `opts`.
-   ==================================================================== */
+
+
+
+
+
 const CON_DOC_PADRAO = {
   container:  "con-doc-conteudo",
   prefixo:    "con-doc",
   smartBtn:   "sb-con-documentos",
   msgSemPai:  "Salve o contrato primeiro para anexar arquivos.",
-  natureza:   "fornecedor",   // hotfix 98: a aba Contrato da obra passa "cliente" (OBR_CON_DOC_CONF em obras.js)
-  aditivos:   false           // hotfix 98: a aba Contrato da obra lista os aditivos (só leitura)
+  natureza:   "fornecedor",
+  aditivos:   false
 };
 
-/* Hotfix 98 (#98, 21/10/2026): quem anexa documento de contrato. Espelha as policies de contratos_documentos e do bucket
-   contratos-docs: admin, financeiro e comercial em qualquer contrato (diretor por has_role); engenheiro e assistente de
-   engenharia só no contrato de cliente (o contrato assinado e o aditivo chegam por eles, em campo). Excluir anexo e
-   cadastrar aditivo (contrato_aditivos: valor e prazo) continuam com admin, financeiro e comercial. */
-const CON_DOC_CARGOS_GESTAO = ["diretor", "admin", "financeiro", "comercial", "juridico"];   // fase 180d: + juridico
+
+
+
+
+const CON_DOC_CARGOS_GESTAO = ["diretor", "admin", "financeiro", "comercial", "juridico"];
 const CON_DOC_CARGOS_ENGENHARIA = ["engenheiro", "assistente_engenharia"];
-const CON_DOC_EXTENSOES = ["pdf", "doc", "docx", "jpg", "jpeg", "png"];   // = allowed_mime_types do bucket contratos-docs
-const CON_DOC_LIMITE_BYTES = 20971520;                                    // = file_size_limit do bucket (20 MB)
+const CON_DOC_EXTENSOES = ["pdf", "doc", "docx", "jpg", "jpeg", "png"];
+const CON_DOC_LIMITE_BYTES = 20971520;
 function conCargoAtual(){ return (usuarioAtual && !ehSomenteLeitura()) ? usuarioAtual.cargo : null; }
 function conPodeAnexar(natureza){
   const c = conCargoAtual();
@@ -692,8 +692,8 @@ function conPodeAnexar(natureza){
 function conPodeExcluirAnexo(){ return CON_DOC_CARGOS_GESTAO.includes(conCargoAtual()); }
 function conPodeCadastrarAditivo(){ return CON_DOC_CARGOS_GESTAO.includes(conCargoAtual()); }
 
-/* Hotfix 98: aditivos do contrato de cliente, só leitura, na aba Contrato da obra. Quem lê é pode_ler_financeiro()
-   (engenharia inclusive); erro de leitura some com o bloco. */
+
+
 const ADITIVO_TIPO = {
   valor: "Valor", prazo: "Prazo", valor_prazo: "Valor e prazo", escopo: "Escopo", reajuste: "Reajuste",
   supressao: "Supressão", distrato: "Distrato", outro: "Outro"
@@ -704,10 +704,10 @@ async function conAditivosHTML(contratoId, comValorArg){
     .eq("contrato_id", contratoId)
     .order("ordem");
   if(error) return "";
-  // quem lê aditivo e não cadastra (engenheiro e assistente; o auditor só lê e não precisa do aviso)
+
   const avisoCargo = (conPodeCadastrarAditivo() || ehSomenteLeitura()) ? ""
     : `<p class="meta">Aditivo é cadastrado pelo financeiro ou comercial. Aqui você anexa o PDF assinado (tipo "Aditivo").</p>`;
-  const comValor = comValorArg === undefined ? podeVerValorObra() : comValorArg;   // fase 180a: no módulo, quem lê contas a pagar também vê
+  const comValor = comValorArg === undefined ? podeVerValorObra() : comValorArg;
   if(!data || !data.length){
     return `<div style="margin-bottom:14px;"><h4 class="sub-titulo">Aditivos cadastrados (0)</h4>${avisoCargo}
       <p class="vazio">Nenhum aditivo cadastrado neste contrato.</p></div>`;
@@ -759,7 +759,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
   const px   = conf.prefixo;
   const cats = Object.entries(CON_DOC_CATEGORIAS)
     .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
-  // hotfix 98: quem não anexa vê a lista sem o formulário (antes o formulário aparecia e o envio falhava na RLS)
+
   const podeAnexar = conPodeAnexar(conf.natureza);
   const podeExcluir = conPodeExcluirAnexo();
   const uploader = !podeAnexar
@@ -786,7 +786,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
     </div>`;
 
   if(!data || !data.length){
-    cont.innerHTML = `${/* html */ aditivos}${uploader}<p class="vazio">Nenhum arquivo anexado ainda.</p>`;
+    cont.innerHTML = `${  aditivos}${uploader}<p class="vazio">Nenhum arquivo anexado ainda.</p>`;
     $(`btn-${px}-enviar`)?.addEventListener("click", () => enviarDocumentoContrato(contratoId, conf));
     return;
   }
@@ -806,7 +806,7 @@ async function carregarDocumentosDoContrato(contratoId, opts){
     </tr>`;
   }).join("");
 
-  cont.innerHTML = `${/* html */ aditivos}${uploader}<div class="tabela-rola"><table>
+  cont.innerHTML = `${  aditivos}${uploader}<div class="tabela-rola"><table>
     <thead><tr><th>Arquivo</th><th>Tipo</th><th>Descrição</th><th>Tamanho</th><th>Enviado em</th><th class="col-acao"></th></tr></thead>
     <tbody>${linhas}</tbody></table></div>`;
 
@@ -825,8 +825,8 @@ async function enviarDocumentoContrato(contratoId, opts){
   const inp  = $(`${px}-arquivo`);
   if(!inp?.files || !inp.files[0]){ aviso("app-aviso","Selecione um arquivo.","erro"); return; }
   const file = inp.files[0];
-  // hotfix 98: extensão e tamanho conferidos antes do upload, iguais ao bucket (antes o bucket recusava sem explicar)
-  const ext = extensaoArquivo(file);   // core.js: entra no caminho do storage
+
+  const ext = extensaoArquivo(file);
   if(!CON_DOC_EXTENSOES.includes(ext) || file.size > CON_DOC_LIMITE_BYTES){
     aviso("app-aviso","Só PDF, DOC/DOCX, JPG e PNG até 20 MB.","erro");
     return;
@@ -839,8 +839,8 @@ async function enviarDocumentoContrato(contratoId, opts){
 
   try {
     const nomeUnico = `${contratoId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
-    // hotfix 98: MIME pela extensão e corpo reembalado em Blob (supabase-js ignora contentType com File; PDF salvo pelo
-    // Windows chegava como application/octet-stream, que o bucket não aceita)
+
+
     const mime = mimeDoArquivo(file, ext);
     const { error: errUp } = await sb.storage.from("contratos-docs").upload(nomeUnico, corpoComMime(file, mime), {
       cacheControl: "3600", contentType: mime, upsert: false
@@ -859,15 +859,15 @@ async function enviarDocumentoContrato(contratoId, opts){
       enviado_por: user ? user.id : null
     });
     if(errIns){
-      // se falhar o metadado, remove o arquivo pra não deixar órfão (engenharia não remove do bucket: fica o arquivo
-      // sem linha, que nenhuma tela mostra; só acontece se a policy da tabela recusar depois da do bucket aceitar)
+
+
       await sb.storage.from("contratos-docs").remove([nomeUnico]);
       throw errIns;
     }
     aviso("app-aviso","Arquivo anexado.","ok");
     await carregarDocumentosDoContrato(contratoId, conf);
   } catch(err){
-    // hotfix 98: recusa de policy (tabela ou bucket) vira frase de cargo, não o texto cru do Postgres
+
     aviso("app-aviso", ehErroDePermissao(err) ? "Seu cargo não anexa documentos de contrato." : "Erro ao enviar: "+(err.message||err), "erro");
   } finally {
     btn.disabled = false;
@@ -889,8 +889,8 @@ async function baixarDocumentoContrato(path, nome){
 
 async function excluirDocumentoContrato(id, path, contratoId, opts){
   if(!confirm("Excluir este anexo?")) return;
-  // hotfix 98: a linha sai primeiro e só depois o arquivo. A RLS do delete não dá erro (apaga 0 linhas): sem a
-  // conferência o aviso dizia "excluído" para quem não exclui.
+
+
   const { data: apagadas, error } = await sb.from("contratos_documentos").delete().eq("id", id).select("id");
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   if(!apagadas || !apagadas.length){ aviso("app-aviso","Seu cargo não exclui documentos de contrato.","erro"); return; }
@@ -899,13 +899,13 @@ async function excluirDocumentoContrato(id, path, contratoId, opts){
   await carregarDocumentosDoContrato(contratoId, opts);
 }
 
-/* ====================================================================
-   ASSINATURA ELETRÔNICA (D4Sign) — fase 22
 
-   Plano básico: 10 requisições/hora. O custo de cada ação aparece na
-   tela e a Edge Function bloqueia o que não couber na cota. O bloco
-   serve duas fichas: contrato de fornecedor e aba Contrato da obra.
-   ==================================================================== */
+
+
+
+
+
+
 const ASSINATURA_META = {
   nao_iniciada: { label: "Não iniciada", cor: "cinza"    },
   enviada:      { label: "Aguardando",   cor: "ambar"    },
@@ -916,12 +916,12 @@ const ASSINATURA_META = {
 
 function tagAssinatura(st){
   const m = ASSINATURA_META[st] || ASSINATURA_META.nao_iniciada;
-  // Glifo redundante à cor (daltônicos não distinguem verde/âmbar/vermelho)
+
   const glifo = { verde: "✓ ", ambar: "◔ ", vermelho: "✕ ", azul: "→ " }[m.cor] || "○ ";
   return `<span class="tag ${esc(m.cor)}">${esc(glifo)}${esc(m.label)}</span>`;
 }
 
-/* Alvo atual do modal: contrato + como recarregar a ficha de origem */
+
 let _d4sAlvo = null;
 
 async function cotaD4SignUsada(){
@@ -929,8 +929,8 @@ async function cotaD4SignUsada(){
   return error ? null : data;
 }
 
-/* Bloco de status + ações, renderizado na aba Documentos do contrato
-   e na aba Contrato da obra. `contrato` = registro completo ou null. */
+
+
 function renderBlocoAssinatura(contrato, containerId, conf){
   const cont = $(containerId);
   if(!cont) return;
@@ -961,8 +961,8 @@ function renderBlocoAssinatura(contrato, containerId, conf){
   cont.innerHTML = `<div class="assin-bloco">
     <strong>Assinatura eletrônica</strong>
     ${tagAssinatura(st)}
-    ${/* html */ meio}
-    <div class="assin-acoes">${/* html */ acoes}</div>
+    ${  meio}
+    <div class="assin-acoes">${  acoes}</div>
   </div>`;
 
   $(`btn-d4s-abrir-${containerId}`)?.addEventListener("click", () => abrirModalAssinatura(contrato, conf));
@@ -974,7 +974,7 @@ function renderBlocoAssinatura(contrato, containerId, conf){
 async function abrirModalAssinatura(contrato, conf){
   _d4sAlvo = { contrato, conf };
 
-  // Anexos disponíveis do contrato
+
   const { data: docs } = await sb.from("contratos_documentos")
     .select("id,nome,categoria")
     .eq("contrato_id", contrato.id)
@@ -987,7 +987,7 @@ async function abrirModalAssinatura(contrato, conf){
   $("d4s-documento").innerHTML = docs.map(d =>
     `<option value="${esc(d.id)}">${esc(d.nome)} (${esc(CON_DOC_CATEGORIAS[d.categoria] || d.categoria)})</option>`).join("");
 
-  // Limpa signatários e sugere o e-mail da contraparte
+
   for(let i = 1; i <= 3; i++){ $(`d4s-nome-${i}`).value = ""; $(`d4s-email-${i}`).value = ""; }
   $("d4s-mensagem").value = "";
   try {
@@ -1000,7 +1000,7 @@ async function abrirModalAssinatura(contrato, conf){
         .select("nome,email").eq("id", contrato.cliente_id).single();
       if(c?.email){ $("d4s-email-1").value = c.email; $("d4s-nome-1").value = c.nome || ""; }
     }
-  } catch(_e){ /* sugestão é cortesia; sem e-mail o usuário digita */ }
+  } catch(_e){   }
 
   const usada = await cotaD4SignUsada();
   $("d4s-cota-nota").textContent = usada === null
@@ -1038,7 +1038,7 @@ async function enviarAssinaturaD4S(){
         mensagem: $("d4s-mensagem").value.trim() || undefined
       }
     });
-    // FunctionsHttpError: o corpo com a mensagem real vem em error.context
+
     if(error){
       let msg = error.message || "erro";
       try { const corpo = await error.context?.json(); if(corpo?.error) msg = corpo.error; } catch(_e){}
@@ -1073,12 +1073,12 @@ async function atualizarStatusAssinatura(contratoId, conf){
   if(conf?.recarregar) await conf.recarregar();
 }
 
-/* ---------- Listeners ---------- */
-/* ---------- Fase 56: destino do custo + títulos gerados pelo contrato ---------- */
+
+
 let _conDestinosOk = false;
 async function conPreencherDestinos(){
   if(_conDestinosOk) return;
-  if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false); // obras ativas, TAGs e categorias de custo (compras.js)
+  if(typeof cmpCarregarBase === "function") await cmpCarregarBase(false);
   const obra = $("con-obra"), eq = $("con-equip"), cat = $("con-cat-custo");
   if(obra) obra.innerHTML = `<option value="">— nenhuma —</option>` + (typeof _cmpObras === "object" ? _cmpObras : []).map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}</option>`).join("");
   if(eq)   eq.innerHTML   = `<option value="">— nenhuma —</option>` + (typeof _cmpEquips === "object" ? _cmpEquips : []).map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("");
@@ -1086,7 +1086,7 @@ async function conPreencherDestinos(){
   _conDestinosOk = true;
 }
 
-/* aba Títulos a pagar da ficha: o que o contrato gerou (mês corrente + 3 meses; o passado fica no Compor 90) */
+
 async function conCarregarTitulos(id){
   const cont = $("con-titulos-conteudo"), sbt = $("sb-con-titulos");
   const setSb = n => { if(sbt){ sbt.querySelector(".sb-num").textContent = n || 0; sbt.classList.toggle("zero", !n); } };
@@ -1118,16 +1118,16 @@ async function conCarregarTitulos(id){
   }));
 }
 
-/* ---------- Fase 180a: Parcelas (Receita) e Aditivos ----------
-   Parcelas do contrato de cliente = medições do contrato (medicoes.contrato_id) ou das obras ligadas a ele; cada
-   medição é uma parcela a receber. Sem soma aqui: o total da carteira fica na Carteira e nas Medições. */
+
+
+
 async function conCarregarParcelas(c){
   const cont = $("con-parcelas-conteudo"), sbp = $("sb-con-parcelas");
   const setSb = n => { if(sbp){ sbp.querySelector(".sb-num").textContent = n || 0; sbp.classList.toggle("zero", !n); } };
   if(!cont) return;
   if(!c || !c.id){ setSb(0); cont.innerHTML = uiVazio("Salve o contrato. As medições da obra ligada a ele aparecem aqui como parcelas a receber."); return; }
   const id = c.id;
-  if(c.categoria === "venda_bem") return conCarregarParcelasVenda(c, cont, setSb);   // fase 180c
+  if(c.categoria === "venda_bem") return conCarregarParcelasVenda(c, cont, setSb);
   const obraIds = conObrasDe(c).map(o => o.id);
   let q = sb.from("medicoes").select("id,numero,obra_id,status,data_medicao,periodo_inicio,periodo_fim,valor_final,nf_numero,nf_vencimento,recebido_valor,recebida_em");
   q = obraIds.length ? q.or(`contrato_id.eq.${id},obra_id.in.(${obraIds.join(",")})`) : q.eq("contrato_id", id);
@@ -1155,8 +1155,8 @@ async function conCarregarParcelas(c){
   }));
 }
 
-/* Fase 180c: contrato de venda de bem. As parcelas são as da venda (cronograma do contrato), lidas pela
-   vw_vendas_parcelas_correcao (rótulo NN/TT e vencimento útil). Recebimento, boleto e correção ficam na aba Venda do bem. */
+
+
 async function conCarregarParcelasVenda(c, cont, setSb){
   const id = c.id;
   const { data, error } = await sb.from("vw_vendas_parcelas_correcao")
@@ -1192,18 +1192,18 @@ async function conCarregarAditivos(id){
   if(conEditId !== id) return;
   if(error){ setSb(0); cont.innerHTML = uiVazio("Seu perfil não vê os aditivos deste contrato."); return; }
   setSb(count || 0);
-  const html = await conAditivosHTML(id, podeVerValorObra() || podeVerContasPagar() || ehJuridico());   // fase 180d: valor de cada aditivo
+  const html = await conAditivosHTML(id, podeVerValorObra() || podeVerContasPagar() || ehJuridico());
   if(conEditId !== id) return;
   cont.innerHTML = html || uiVazio("Seu perfil não vê os aditivos deste contrato.");
 }
 
-/* ---------- Fase 180b: Partes, Garantias e Obrigações ----------
-   Tudo grava por RPC com nome e regra própria (contrato_parte_salvar, contrato_garantia_salvar, contrato_obrigacao_salvar,
-   contrato_obrigacao_confirmar, contrato_obrigacao_dispensar e as de excluir); as tabelas não aceitam escrita direta.
-   Leitura pelo lado do contrato (Receita: pode_ler_comercial; Despesa: pode_ler_contas_pagar), decidida no banco.
-   D9: CPF, RG, estado civil e endereço da parte pessoa física ficam em contrato_partes_sensiveis e só passam por
-   fn_contrato_parte_sensivel (leitura auditada) e contrato_parte_sensivel_salvar, para diretor e financeiro com MFA
-   concluído na sessão. Nada desse dado vai para console, aviso ou log do front. */
+
+
+
+
+
+
+
 const CON_PAPEL = { contratante: "Contratante", contratada: "Contratada", compradora: "Compradora", vendedora: "Vendedora",
   fiador: "Fiador", avalista: "Avalista", testemunha: "Testemunha", representante: "Representante" };
 const CON_GARANTIA = { reserva_dominio: "Reserva de domínio", fianca: "Fiança", seguro: "Seguro", caucao: "Caução",
@@ -1212,19 +1212,19 @@ const CON_OBR_SIT = { pendente: ["Pendente", "ambar"], vencida: ["Vencida", "ver
 const CON_PRAZO_TIPO = { data: "Data fixa", dias_apos_assinatura: "Dias após a assinatura", continua: "Contínua (enquanto durar o contrato)" };
 const CON_AGENDA_TIPO = { vigencia: "Fim da vigência", obrigacao: "Obrigação", parcela_receber: "Parcela a receber",
   parcela_pagar: "Título a pagar", vencimento_antecipado: "Vencimento antecipado", parcela_venda: "Parcela de venda",
-  audiencia: "Audiência", prazo_processo: "Prazo de processo" };   // fase 180f
+  audiencia: "Audiência", prazo_processo: "Prazo de processo" };
 const CON_ESTADO_CIVIL = [["solteiro", "Solteiro(a)"], ["casado", "Casado(a)"], ["uniao_estavel", "União estável"],
   ["separado", "Separado(a)"], ["divorciado", "Divorciado(a)"], ["viuvo", "Viúvo(a)"]];
 
-/* escrita nas filhas = contrato_pode_escrever no banco (Receita: financeiro e comercial; Despesa: admin, financeiro e
-   comprador; jurídico nos dois lados, fase 180d; diretor sempre; auditor nunca) */
+
+
 function conPodeEditarFilhas(natureza){
   if(!usuarioAtual || ehSomenteLeitura()) return false;
   const lista = natureza === "cliente" ? ["diretor", "financeiro", "comercial", "juridico"] : ["diretor", "admin", "financeiro", "comprador", "juridico"];
   return lista.includes(usuarioAtual.cargo);
 }
-/* dado pessoal da parte física = contrato_pode_ler_sensivel no banco: diretor, financeiro e jurídico (fase 180d); a sessão
-   ainda precisa de MFA */
+
+
 function conPodeVerSensivel(){
   return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "financeiro", "juridico"].includes(usuarioAtual.cargo);
 }
@@ -1248,16 +1248,16 @@ function conMsgErro(error, padrao){
   return error.message || String(error);
 }
 
-/* Diálogo de formulário do módulo (mesmo molde do envio da proposta, fase 192b: uiModalHTML + uiCampo). "Salvar" chama
-   aoSalvar(valores) — valores = { id do campo: valor } — e só fecha quando ela não devolve mensagem de erro; o erro
-   aparece dentro do diálogo. */
+
+
+
 function conDialogo(titulo, camposHTML, aoSalvar, opts){
   const o = opts || {};
   const d = document.createElement("dialog");
   d.className = "ui-modal";
   d.setAttribute("aria-label", titulo);
   d.innerHTML = uiModalHTML({ titulo, largura: o.largura || "m",
-    corpoHTML: `${o.introHTML ? /* html */ o.introHTML : ""}<div class="con-form">${/* html */ camposHTML}</div><div class="con-form-msg" aria-live="polite"></div>`,
+    corpoHTML: `${o.introHTML ?   o.introHTML : ""}<div class="con-form">${  camposHTML}</div><div class="con-form-msg" aria-live="polite"></div>`,
     acoes: [{ id: "cancelar", texto: "Cancelar" }, { id: "salvar", texto: o.textoSalvar || "Salvar", primaria: !o.perigo, perigo: !!o.perigo }] });
   document.body.appendChild(d);
   let ocupado = false;
@@ -1287,7 +1287,7 @@ function conDialogo(titulo, camposHTML, aoSalvar, opts){
   if(foco) foco.focus();
 }
 
-/* documentos do contrato para escolher como comprovante */
+
 async function conDocumentosOpcoes(contratoId){
   const { data } = await sb.from("contratos_documentos").select("id,nome,categoria").eq("contrato_id", contratoId).order("created_at");
   return (data || []).map(d => [d.id, `${d.nome}${CON_DOC_CATEGORIAS[d.categoria] ? " (" + CON_DOC_CATEGORIAS[d.categoria] + ")" : ""}`]);
@@ -1299,7 +1299,7 @@ function conNomeParte(p){
   return p.nome || "—";
 }
 
-/* ---- Partes ---- */
+
 let _conPartes = [];
 async function conCarregarPartes(c){
   const cont = $("con-partes-conteudo");
@@ -1401,7 +1401,7 @@ async function conAbrirParteSensivel(parte){
   }, { introHTML: intro, largura: "g" });
 }
 
-/* ---- Garantias ---- */
+
 let _conGarantias = [];
 async function conCarregarGarantias(c){
   const cont = $("con-garantias-conteudo");
@@ -1468,7 +1468,7 @@ async function conAbrirGarantia(gar){
   });
 }
 
-/* ---- Obrigações e agenda do contrato ---- */
+
 let _conObrigacoes = [];
 function conPrazoTexto(o){
   if(o.prazo_tipo === "dias_apos_assinatura") return `${o.prazo_dias} dia(s) após a assinatura${o.data_assinatura ? "" : " (contrato sem data de assinatura)"}`;
@@ -1605,7 +1605,7 @@ function conDispensarObrigacao(o){
   }, { introHTML: `<p class="meta">${esc(o.descricao)}</p>`, textoSalvar: "Dispensar" });
 }
 
-/* exclusão com confirmação; rpc = nome da RPC, recarregar = função da aba */
+
 async function conExcluirFilha(titulo, texto, rpc, params, recarregar){
   if(!(await uiConfirmar({ titulo, texto, confirmar: "Excluir", perigo: true }))) return;
   const { error } = await sb.rpc(rpc, params);
@@ -1614,7 +1614,7 @@ async function conExcluirFilha(titulo, texto, rpc, params, recarregar){
   recarregar(_conAtual);
 }
 
-/* um só ouvinte por aba: os botões só marcam data-con-acao e data-id */
+
 function ligarContratosFilhas(){
   const acha = (lista, id) => lista.find(x => x.id === id);
   const tratar = ev => {
@@ -1639,7 +1639,7 @@ function ligarContratosFilhas(){
   ["con-partes-conteudo", "con-garantias-conteudo", "con-obrigacoes-conteudo"].forEach(k => $(k)?.addEventListener("click", tratar));
 }
 
-/* Para regularizar → "Obrigação de contrato vencida": abre a ficha (um contrato) na aba Obrigações, ou a lista */
+
 async function conAbrirObrigacoesVencidas(a){
   if(!irParaSecao("contratos")) return;
   if(!_contratos.length) await carregarContratos();
@@ -1650,10 +1650,10 @@ async function conAbrirObrigacoesVencidas(a){
 }
 
 function ligarContratos(){
-  ligarContratosFilhas();   // fase 180b
+  ligarContratosFilhas();
   $("btn-d4s-enviar")?.addEventListener("click", enviarAssinaturaD4S);
   $("btn-d4s-cancelar")?.addEventListener("click", fecharModalAssinatura);
-  // fase 180a: lado (Receita | Despesa | Todos) e visão (Lista | Kanban)
+
   document.querySelectorAll("#con-lados [data-lado]").forEach(b => {
     b.addEventListener("click", () => { _conLado = b.dataset.lado; renderContratos(); });
   });
@@ -1669,7 +1669,7 @@ function ligarContratos(){
     if(el) el.addEventListener(id === "con-busca" ? "input" : "change", id === "con-busca" ? debounce(renderContratos) : renderContratos);
   });
   $("con-conteudo")?.addEventListener("click", (e) => {
-    if(e.target.closest("a")) return;   // link da obra abre a obra
+    if(e.target.closest("a")) return;
     const tr = e.target.closest(".linha-clicavel");
     if(tr && tr.dataset.id) abrirContrato(tr.dataset.id);
   });

@@ -1,24 +1,24 @@
-/* ====================================================================
-   Módulo: perfil e replay da estaca do Geodigitus — fase 162 (prefixo epf-)
-   Carregado depois de js/geodigitus.js. Só leitura: uma linha de geodigitus_estacas por vez, pelo id.
-   - abrirPerfilEstaca(geoEstacaId): abre a janela #epf-modal com o cabeçalho, o resumo, o gráfico por profundidade
-     (SVG, dois painéis: perfuração e concretagem) e o replay (tocar/pausar, barra de arrastar, 1×, 4× e 16×).
-   - Entradas: ação "Perfil" de cada estaca em Chegadas (geoAcoesHTML) e o selo "Geodigitus" da execução no RDO
-     (geoBadgeExec), os dois em js/geodigitus.js.
-   - epfLinhaDoTempo, epfResumo, epfSeries, epfAvancar e epfQuadro são puras (sem tela nem banco) e testadas por
-     scripts/testar-fase162.mjs; epfTetoRobusto, epfFracao e epfRotuloSerie, por scripts/testar-lote-ajustes-maya-1.mjs.
-   Unidades como o computador de bordo grava (saci.mjs): torque e pressão em bar, uma fatia a cada 8 cm. Nada é
-   inventado: sem volume da fatia ou sem diâmetro, o sobreconsumo fica nulo e a tela diz "não medido".
-   O SVG é montado por createElementNS e a cor de token entra só por elemento.style (regra do checar-paleta).
-   ==================================================================== */
 
-const EPF_FATIA_M = 0.08;   // espessura da fatia do computador de bordo (SACI.FATIA_M)
+
+
+
+
+
+
+
+
+
+
+
+
+
+const EPF_FATIA_M = 0.08;
 const EPF_COLUNAS = "id,numero_txt,refuro,diametro_mm,profundidade_m,volume_concreto_m3,volume_teorico_m3,sobreconsumo_pct," +
   "torque_max_bar,torque_medio_bar,rotacao_media_rpm,pressao_media_bar,tempo_perfuracao_s,tempo_concretagem_s,inclinacao_x,inclinacao_y," +
   "perfuracao_inicio,perfuracao_fim,concretagem_inicio,concretagem_fim,obra_id,equipamento_id,perfil,situacao," +
   "equipamento:equipamentos(codigo),obra:obras!geodigitus_estacas_obra_id_fkey(codigo,nome)";
-// curvas do gráfico: cada uma na escala do máximo da própria estaca. Cor por token de texto (vale nos dois temas).
-// tetoRobusto (só a velocidade): uma fatia de tempo muito curto dá um pico isolado que achataria a curva; ver epfTetoRobusto.
+
+
 const EPF_SERIES = [
   { chave: "torque_bar", fase: "perfuracao", nome: "Torque", unidade: "bar", casas: 0, cor: "var(--info-txt)" },
   { chave: "velocidade_m_h", fase: "perfuracao", nome: "Velocidade de avanço", unidade: "m/h", casas: 0, cor: "var(--sucesso-txt)", tetoRobusto: true },
@@ -28,22 +28,22 @@ const EPF_SERIES = [
 ];
 const EPF_FASE_LBL = { perfuracao: "Perfuração", concretagem: "Concretagem" };
 const EPF_VELOCIDADES = [1, 4, 16];
-const EPF_TETO_PCT = 0.95;     // percentil de referência do teto robusto da escala
-const EPF_TETO_FOLGA = 1.5;    // o teto fica no máximo 1,5 vez acima da referência
+const EPF_TETO_PCT = 0.95;
+const EPF_TETO_FOLGA = 1.5;
 
-/* ---------- funções puras ---------- */
+
 function epfN(v){
   if(v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
-/* volume teórico de uma fatia, em litros: π × (Ø ÷ 2)² × 0,08 m. Sem diâmetro, nulo. */
+
 function epfTeoricoFatiaL(diametroMm){
   const d = epfN(diametroMm);
   return d != null && d > 0 ? Math.PI * (d / 2000) ** 2 * EPF_FATIA_M * 1000 : null;
 }
-/* Passos na ordem da execução: a perfuração do topo ao fundo e depois a concretagem do fundo ao topo.
-   tempo_s é o acumulado ao fim do passo (segue o tempo de cada fatia; a espera entre as duas fases não está no perfil). */
+
+
 function epfLinhaDoTempo(perfil, diametroMm){
   let p = perfil;
   if(typeof p === "string"){ try { p = JSON.parse(p); } catch(_){ p = null; } }
@@ -80,7 +80,7 @@ function epfLinhaDoTempo(perfil, diametroMm){
   });
   return passos;
 }
-/* Resumo da estaca: o que a linha traz no cabeçalho vale; o que faltar sai dos passos; o que não foi medido fica nulo. */
+
 function epfResumo(linha, passos){
   const l = linha || {}, ps = passos || [];
   const perf = ps.filter(p => p.fase === "perfuracao"), conc = ps.filter(p => p.fase === "concretagem");
@@ -109,9 +109,9 @@ function epfResumo(linha, passos){
     passos_perfuracao: perf.length, passos_concretagem: conc.length
   };
 }
-/* Teto robusto de uma escala: 1,5 vez o percentil 95 dos valores (posto mais próximo; de 3 a 19 valores, o segundo maior),
-   nunca acima do maior valor. Sem pico isolado (maior valor até 1,5 vez a referência) o teto é o próprio máximo e nada é
-   cortado. Com menos de 3 valores não dá para saber qual é o pico: fica o máximo. Sem valor acima de zero, nulo. */
+
+
+
 function epfTetoRobusto(valores){
   const v = (Array.isArray(valores) ? valores : []).map(epfN).filter(x => x != null && x > 0).sort((a, b) => a - b);
   const n = v.length;
@@ -120,9 +120,9 @@ function epfTetoRobusto(valores){
   const referencia = v[Math.min(Math.ceil(EPF_TETO_PCT * n), n - 1) - 1];
   return Math.min(v[n - 1], referencia * EPF_TETO_FOLGA);
 }
-/* Curvas que a estaca tem (rotação e sobreconsumo podem não ter sido medidos), com a faixa de cada uma: de zero ao máximo
-   da própria estaca; valor abaixo de zero (sobreconsumo negativo) estica a faixa para baixo. Na curva de tetoRobusto (a
-   velocidade), max é o teto da escala e pico guarda o maior valor real quando ele passa do teto; nas outras, pico é nulo. */
+
+
+
 function epfSeries(passos){
   return EPF_SERIES.map(s => {
     const v = (passos || []).filter(p => p.fase === s.fase).map(p => p[s.chave]).filter(x => x != null);
@@ -132,14 +132,14 @@ function epfSeries(passos){
     return { ...s, min: Math.min(0, ...v), max: cortada ? teto : max, pico: cortada ? max : null };
   }).filter(Boolean);
 }
-/* Posição do valor na escala da curva, de 0 a 1: o que passa do teto é desenhado no limite do painel. */
+
 function epfFracao(v, s){
   const n = epfN(v);
   if(n == null || !s || !(s.max > s.min)) return 0;
   return Math.max(0, Math.min(1, (n - s.min) / (s.max - s.min)));
 }
-/* Replay: com t segundos decorridos, a partir do passo i, em que passo a execução está e se chegou ao fim.
-   O passo vale enquanto t está antes do fim dele; fatia de tempo zero é atravessada na hora. */
+
+
 function epfAvancar(passos, i, t){
   const n = (passos || []).length;
   if(!n) return { i: 0, fim: true };
@@ -155,7 +155,7 @@ function epfTempo(s){
   const t = Math.round(n), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), seg = t % 60;
   return h ? h + " h " + m + " min" : m ? m + " min " + seg + " s" : seg + " s";
 }
-/* Texto de cada campo do quadro do replay no passo atual. Grandeza de outra fase sai "—"; a que o computador não mediu, "não medido". */
+
 function epfQuadro(p, totalS){
   if(!p) return { fase: "—", prof: "—", tempo: "—", torque: "—", rot: "—", vel: "—", pressao: "—", vol: "—", sobre: "—" };
   const perf = p.fase === "perfuracao";
@@ -173,22 +173,22 @@ function epfQuadro(p, totalS){
   };
 }
 
-/* ---------- tela ---------- */
-let _epf = null;        // { linha, passos, resumo, series, i, t, vel, tocando, timer, ultimo, y, profMax, profFuro, el: {...} }
-let _epfPedido = 0;     // descarta a leitura que voltar depois de fechar ou de abrir outra estaca
-let _epfFocoAntes = null;
-let _epfSujoAntes = false;   // "formulário alterado" (core.js) de quando a janela abriu
 
-/* A janela só lê e pode abrir por cima de um diário em edição. O core marca "alterado" a cada input dentro de modal (a barra do
-   replay) e limpa a marca quando um modal fecha; aqui a marca volta ao que era quando a janela abriu, para a atualização
-   automática do app não recarregar um diário com alteração por salvar nem segurar a recarga por causa da barra. */
+let _epf = null;
+let _epfPedido = 0;
+let _epfFocoAntes = null;
+let _epfSujoAntes = false;
+
+
+
+
 function epfRestaurarSujo(){
   if(typeof appFormSujo !== "function") return;
   if(_epfSujoAntes && !appFormSujo()) appMarcarSujo();
   else if(!_epfSujoAntes && appFormSujo()) appLimparSujo();
 }
 
-// o horário do Geodigitus é hora de Brasília: exibe como o geodigitus.js (geoHora, geoDia)
+
 const epfHora = (ts) => ts ? new Date(ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "—";
 const epfData = (ts) => ts ? new Date(ts).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "";
 
@@ -204,21 +204,21 @@ function epfCabecalhoHTML(l){
 }
 function epfResumoHTML(r, l){
   const un = (v, casas, u, semValor) => esc(v == null ? semValor : epfNum(v, casas) + " " + u);
-  const grau = (v) => v == null ? "—" : epfNum(Number(v) / 10, 1) + "°";   // a linha guarda décimos de grau
+  const grau = (v) => v == null ? "—" : epfNum(Number(v) / 10, 1) + "°";
   const sobre = r.sobreconsumo_pct == null ? "não medido" : geoTagSobre(r.sobreconsumo_pct, r.volume_m3);
   return `<div class="epf-resumo">
-    ${/* html */ uiRotuloValor("Ø", un(r.diametro_mm, 0, "mm", "—"))}
-    ${/* html */ uiRotuloValor("Profundidade", un(r.profundidade_m, 2, "m", "—"))}
-    ${/* html */ uiRotuloValor("Perfuração", esc(epfTempo(r.tempo_perfuracao_s)))}
-    ${/* html */ uiRotuloValor("Concretagem", esc(epfTempo(r.tempo_concretagem_s)))}
-    ${/* html */ uiRotuloValor("Vol. executado", un(r.volume_m3, 3, "m³", "não medido"))}
-    ${/* html */ uiRotuloValor("Vol. teórico", un(r.volume_teorico_m3, 3, "m³", "—"))}
-    ${/* html */ uiRotuloValor("Sobreconsumo", sobre)}
-    ${/* html */ uiRotuloValor("Torque máx.", un(r.torque_max_bar, 1, "bar", "—"))}
-    ${/* html */ uiRotuloValor("Inclinação X / Y", esc(l.inclinacao_x == null && l.inclinacao_y == null ? "—" : grau(l.inclinacao_x) + " / " + grau(l.inclinacao_y)))}
+    ${  uiRotuloValor("Ø", un(r.diametro_mm, 0, "mm", "—"))}
+    ${  uiRotuloValor("Profundidade", un(r.profundidade_m, 2, "m", "—"))}
+    ${  uiRotuloValor("Perfuração", esc(epfTempo(r.tempo_perfuracao_s)))}
+    ${  uiRotuloValor("Concretagem", esc(epfTempo(r.tempo_concretagem_s)))}
+    ${  uiRotuloValor("Vol. executado", un(r.volume_m3, 3, "m³", "não medido"))}
+    ${  uiRotuloValor("Vol. teórico", un(r.volume_teorico_m3, 3, "m³", "—"))}
+    ${  uiRotuloValor("Sobreconsumo", sobre)}
+    ${  uiRotuloValor("Torque máx.", un(r.torque_max_bar, 1, "bar", "—"))}
+    ${  uiRotuloValor("Inclinação X / Y", esc(l.inclinacao_x == null && l.inclinacao_y == null ? "—" : grau(l.inclinacao_x) + " / " + grau(l.inclinacao_y)))}
   </div>`;
 }
-/* Texto da curva na legenda: a faixa da escala; na curva cortada, o maior valor real e até onde a escala vai. */
+
 function epfRotuloSerie(s){
   const faixa = s.pico != null ? "máx. " + epfNum(s.pico, s.casas) + ", escala até " + epfNum(s.max, s.casas)
     : s.min < 0 ? "de " + epfNum(s.min, s.casas) + " a " + epfNum(s.max, s.casas) : "máx. " + epfNum(s.max, s.casas);
@@ -236,7 +236,7 @@ function epfAreaHTML(e){
   const campo = (rotulo, id) => uiRotuloValor(rotulo, `<span id="epf-v-${esc(id)}">—</span>`);
   return `<div class="epf-area">
     <div class="epf-col">
-      <div class="epf-legendas">${/* html */ legenda("perfuracao")}${/* html */ legenda("concretagem")}</div>
+      <div class="epf-legendas">${  legenda("perfuracao")}${  legenda("concretagem")}</div>
       <div class="epf-grafico" id="epf-grafico"></div>
     </div>
     <div class="epf-replay">
@@ -247,21 +247,21 @@ function epfAreaHTML(e){
       <input type="range" class="epf-barra" id="epf-barra" min="0" max="${esc(e.passos.length - 1)}" step="1" value="0" aria-label="Posição do replay" title="Arraste para ir a qualquer ponto da execução" />
       <div class="epf-pos" id="epf-pos"></div>
       <div class="epf-quadro">
-        ${/* html */ campo("Fase", "fase")}
-        ${/* html */ campo("Profundidade", "prof")}
-        ${/* html */ campo("Tempo decorrido", "tempo")}
-        ${/* html */ campo("Velocidade", "vel")}
-        ${/* html */ campo("Torque", "torque")}
-        ${/* html */ campo("Rotação", "rot")}
-        ${/* html */ campo("Pressão", "pressao")}
-        ${/* html */ campo("Volume acumulado", "vol")}
-        ${/* html */ campo("Sobreconsumo da fatia", "sobre")}
+        ${  campo("Fase", "fase")}
+        ${  campo("Profundidade", "prof")}
+        ${  campo("Tempo decorrido", "tempo")}
+        ${  campo("Velocidade", "vel")}
+        ${  campo("Torque", "torque")}
+        ${  campo("Rotação", "rot")}
+        ${  campo("Pressão", "pressao")}
+        ${  campo("Volume acumulado", "vol")}
+        ${  campo("Sobreconsumo da fatia", "sobre")}
       </div>
     </div>
   </div>`;
 }
 
-/* ---------- gráfico (SVG por DOM; cor só por style) ---------- */
+
 const EPF_NS = "http://www.w3.org/2000/svg";
 const EPF_GEO = { larg: 860, esq: 34, dir: 6, vao: 42, furo: 16, topo: 8, base: 8, altMin: 216, pxPorM: 24 };
 function epfSvg(tag, attrs, estilo){
@@ -283,7 +283,7 @@ function epfDesenharGrafico(e){
     fundos[fase] = svg.appendChild(epfSvg("rect", { x: x0[fase], y: G.topo, width: painel, height: altura }, { fill: "transparent", stroke: "var(--borda)" }));
     [0.25, 0.5, 0.75].forEach(f => svg.appendChild(epfSvg("line", { x1: x0[fase] + f * painel, x2: x0[fase] + f * painel, y1: G.topo, y2: G.topo + altura }, { stroke: "var(--borda)", strokeDasharray: "2 4" })));
   });
-  // eixo da profundidade: 0 no topo; uma linha a cada meio metro, 1, 2 ou 5 m conforme o comprimento
+
   const passoM = e.profMax <= 6 ? 0.5 : e.profMax <= 14 ? 1 : e.profMax <= 30 ? 2 : 5;
   for(let k = 0; k * passoM <= e.profMax + 1e-9; k++){
     const d = k * passoM, yy = y(d);
@@ -291,12 +291,12 @@ function epfDesenharGrafico(e){
     const t = svg.appendChild(epfSvg("text", { x: G.esq - 5, y: yy, "text-anchor": "end", "dominant-baseline": "middle", "font-size": 10 }, { fill: "var(--txt-fraco)" }));
     t.textContent = epfNum(d, 1) + (k ? "" : " m");
   }
-  // o furo, entre os dois painéis: no replay enche de cima para baixo (perfuração) e de baixo para cima (concreto)
+
   const xf = G.esq + painel + (G.vao - G.furo) / 2;
   svg.appendChild(epfSvg("rect", { x: xf, y: G.topo, width: G.furo, height: altura }, { fill: "var(--sup-2)", stroke: "var(--borda-forte)" }));
   const furo = svg.appendChild(epfSvg("rect", { x: xf, y: G.topo, width: G.furo, height: 0 }, { fill: "var(--sup-3)" }));
   const concreto = svg.appendChild(epfSvg("rect", { x: xf, y: G.topo + altura, width: G.furo, height: 0 }, { fill: "var(--txt-fraco)" }));
-  // curvas
+
   ["perfuracao", "concretagem"].forEach(fase => {
     const ps = e.passos.filter(p => p.fase === fase);
     if(!ps.length){
@@ -322,7 +322,7 @@ function epfDesenharGrafico(e){
   Object.assign(e, { y, altSvg: H, el: { svg, alvo, fundos, furo, concreto, marcador } });
 }
 
-/* ---------- replay ---------- */
+
 function epfDesenharPasso(){
   const e = _epf; if(!e || !e.passos.length || !e.el) return;
   const p = e.passos[e.i], perf = p.fase === "perfuracao", G = EPF_GEO;
@@ -337,7 +337,7 @@ function epfDesenharPasso(){
   Object.keys(q).forEach(k => { const el = $("epf-v-" + k); if(el) el.textContent = q[k]; });
   const barra = $("epf-barra"); if(barra && Number(barra.value) !== e.i) barra.value = e.i;
   const pos = $("epf-pos"); if(pos) pos.textContent = "Fatia " + (e.i + 1) + " de " + e.passos.length;
-  // gráfico de estaca funda rola: mantém o marcador à vista
+
   const cx = e.el.alvo, escala = e.el.svg.clientWidth / G.larg, px = yy * escala;
   if(escala > 0 && cx.scrollHeight > cx.clientHeight && (px < cx.scrollTop + 16 || px > cx.scrollTop + cx.clientHeight - 16)) cx.scrollTop = Math.max(0, px - cx.clientHeight / 2);
 }
@@ -358,16 +358,16 @@ function epfTique(){
   const e = _epf;
   if(!e || !e.tocando || $("epf-modal")?.style.display === "none") return epfPararReplay();
   const agora = performance.now();
-  e.t += Math.min(0.5, (agora - e.ultimo) / 1000) * e.vel;   // aba em segundo plano não faz o replay saltar
+  e.t += Math.min(0.5, (agora - e.ultimo) / 1000) * e.vel;
   e.ultimo = agora;
   const r = epfAvancar(e.passos, e.i, e.t);
   if(r.i !== e.i){ e.i = r.i; epfDesenharPasso(); }
-  if(r.fim) epfPararReplay();   // chegou ao fim: para na última fatia
+  if(r.fim) epfPararReplay();
 }
 function epfTocarPausar(){
   const e = _epf; if(!e || !e.passos.length) return;
   if(e.tocando) return epfPararReplay();
-  if(e.i >= e.passos.length - 1){ e.i = 0; e.t = 0; epfDesenharPasso(); }   // do fim, recomeça
+  if(e.i >= e.passos.length - 1){ e.i = 0; e.t = 0; epfDesenharPasso(); }
   e.tocando = true; e.ultimo = performance.now();
   e.timer = setInterval(epfTique, 60);
   epfAtualizarControles();
@@ -375,12 +375,12 @@ function epfTocarPausar(){
 function epfIrPara(i){
   const e = _epf; if(!e || !e.passos.length) return;
   e.i = Math.max(0, Math.min(e.passos.length - 1, Number(i) || 0));
-  e.t = e.passos[e.i].tempo_s - e.passos[e.i].duracao_s;   // começo da fatia
+  e.t = e.passos[e.i].tempo_s - e.passos[e.i].duracao_s;
   e.ultimo = performance.now();
   epfDesenharPasso();
 }
 
-/* ---------- abrir e fechar ---------- */
+
 async function abrirPerfilEstaca(geoEstacaId){
   const modal = $("epf-modal"), corpo = $("epf-corpo");
   if(!geoEstacaId || !modal || !corpo) return;
@@ -406,9 +406,9 @@ async function abrirPerfilEstaca(geoEstacaId){
   _epf = { linha: data, passos, resumo, series: epfSeries(passos), i: 0, t: 0, vel: 16, tocando: false, timer: null, ultimo: 0,
     profMax, profFuro: profFuro || profMax, el: null };
   const area = passos.length ? epfAreaHTML(_epf) : uiVazio("O computador de bordo não mandou o perfil desta estaca: sem as fatias não há gráfico nem replay.");
-  // fase 171a: leitura automática (js/estaca_parecer.js) entre o resumo e o gráfico
+
   const leitura = typeof eppMostrarLeitura === "function" ? `<div id="epp-leitura"></div>` : "";
-  corpo.innerHTML = `${/* html */ epfCabecalhoHTML(data)}${/* html */ epfResumoHTML(resumo, data)}${/* html */ leitura}${/* html */ area}`;
+  corpo.innerHTML = `${  epfCabecalhoHTML(data)}${  epfResumoHTML(resumo, data)}${  leitura}${  area}`;
   if(leitura) eppMostrarLeitura(data, passos);
   if(!passos.length) return;
   corpo.querySelectorAll("[data-epf-cor]").forEach(el => { const s = _epf.series.find(x => x.chave === el.dataset.epfCor); if(s) el.style.background = s.cor; });
@@ -421,15 +421,15 @@ function epfFechar(){
   const modal = $("epf-modal"); if(!modal || modal.style.display === "none") return;
   modal.style.display = "none";
   $("epf-corpo").replaceChildren();
-  setTimeout(epfRestaurarSujo, 0);   // depois de o core reagir ao fechamento do modal
+  setTimeout(epfRestaurarSujo, 0);
   if(_epfFocoAntes && document.contains(_epfFocoAntes)) _epfFocoAntes.focus();
   _epfFocoAntes = null;
 }
 
-/* ---------- eventos ---------- */
+
 function ligarEstacaPerfil(){
   $("btn-epf-fechar")?.addEventListener("click", epfFechar);
-  $("epf-modal")?.addEventListener("click", (ev) => { if(ev.target === ev.currentTarget) epfFechar(); });   // clique no fundo fecha: a janela só lê
+  $("epf-modal")?.addEventListener("click", (ev) => { if(ev.target === ev.currentTarget) epfFechar(); });
   document.addEventListener("keydown", (ev) => { if(ev.key === "Escape" && $("epf-modal") && $("epf-modal").style.display !== "none") epfFechar(); });
   $("epf-corpo")?.addEventListener("click", (ev) => {
     if(ev.target.closest("#btn-epf-tocar")) return epfTocarPausar();
@@ -437,7 +437,7 @@ function ligarEstacaPerfil(){
     if(v && _epf){ _epf.vel = Number(v.dataset.epfVel) || 1; epfAtualizarControles(); }
   });
   $("epf-corpo")?.addEventListener("input", (ev) => { if(ev.target.id === "epf-barra"){ epfIrPara(ev.target.value); epfRestaurarSujo(); } });
-  // RDO: o selo "Geodigitus" da execução (geoBadgeExec) abre o perfil
+
   $("rdo-execs")?.addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-epf-perfil]");
     if(b){ ev.preventDefault(); abrirPerfilEstaca(b.dataset.epfPerfil); }
@@ -448,7 +448,7 @@ if(typeof document !== "undefined"){
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarEstacaPerfil);
   else ligarEstacaPerfil();
 }
-// teste em Node (scripts/testar-fase162.mjs): as funções puras também saem por module.exports
+
 if(typeof module === "object" && module && module.exports){
   module.exports = { EPF_FATIA_M, epfTeoricoFatiaL, epfLinhaDoTempo, epfResumo, epfSeries, epfAvancar, epfQuadro, epfTempo,
     epfTetoRobusto, epfFracao, epfRotuloSerie };

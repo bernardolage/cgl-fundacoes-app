@@ -1,22 +1,22 @@
-/* ====================================================================
-   Módulo: Abas extras da ficha de Obra
-   Equipamentos, Medições, RDOs, Documentos, Timeline.
-   Cada função é chamada quando a aba correspondente é ativada na ficha.
-   Depende de obraEditId (id da obra aberta) — set em obras.js.
-   ==================================================================== */
+
+
+
+
+
+
 
 let _obrAbasContagens = { estacas: 0, equipamentos: 0, mobilizacoes: 0, rdos: 0, raiz: 0, medicoes: 0, documentos: 0 };
-let _obrRdoFiltroMaq = "";   // fase 94 (#77): filtro de máquina da aba RDOs ("" todas · "sem" sem máquina · uuid); o Início define "sem"
-let _obrRdoFiltroObra = null; // obra a que o filtro pertence: trocar de obra zera o filtro (salvo o preset do Início para a mesma obra)
-let _obrRdoFiltroTurno = "";  // fase 134b: filtro de período da aba RDOs ("" todos · diurno · noturno)
+let _obrRdoFiltroMaq = "";
+let _obrRdoFiltroObra = null;
+let _obrRdoFiltroTurno = "";
 
-/* ---------- Despachante: carrega tudo quando a obra abre ---------- */
-let _obrEstacasDesatualizadas = false;   // hotfix carga do banco: a aba Estacas recarrega no próximo clique
+
+let _obrEstacasDesatualizadas = false;
 async function carregarAbasObra(obraId){
   if(!obraId) return;
-  // Em paralelo, busca as contagens pra smart-buttons.
-  // Estacas: contamos APENAS pela tabela `estacas` (literal, sem dedup — BB são nomes legítimos).
-  // Execuções órfãs aparecem no badge separado "🔗 Reconciliar".
+
+
+
   const [eq, med, rdoG, doc, estsTotal, estsExec, mob, ace, orf, maq] = await Promise.all([
     sb.from("equipamentos").select("id", { count: "exact", head: true }).eq("localizacao_obra_id", obraId).eq("ativo", true),
     sb.from("medicoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
@@ -25,13 +25,13 @@ async function carregarAbasObra(obraId){
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId),
     sb.from("estacas").select("id", { count: "exact", head: true }).eq("obra_id", obraId).eq("status", "executada"),
     sb.from("mobilizacoes").select("id", { count: "exact", head: true }).eq("obra_id", obraId).neq("status", "cancelada"),
-    sb.from("acessorios").select("id", { count: "exact", head: true }).eq("local_obra_id", obraId).eq("local_tipo", "obra").eq("ativo", true),   // fase 80
-    sb.from("vw_rdo_execucoes_obra").select("id", { count: "exact", head: true }).is("estaca_id", null).eq("obra_id", obraId),   // fase 94: execuções do campo sem par
-    sb.from("vw_obra_equipamentos").select("equipamento_id,vigente").eq("obra_id", obraId)   // fase 101: máquinas da obra (erro = migration ainda não aplicada)
+    sb.from("acessorios").select("id", { count: "exact", head: true }).eq("local_obra_id", obraId).eq("local_tipo", "obra").eq("ativo", true),
+    sb.from("vw_rdo_execucoes_obra").select("id", { count: "exact", head: true }).is("estaca_id", null).eq("obra_id", obraId),
+    sb.from("vw_obra_equipamentos").select("equipamento_id,vigente").eq("obra_id", obraId)
   ]);
-  // Guarda de corrida: outra obra foi aberta enquanto esta carregava → descarta
+
   if(obraId !== obraEditId) return;
-  const bdV = $("obr-estv-badge");   // fase 94 (#80): badge da aba "Vincular estacas"
+  const bdV = $("obr-estv-badge");
   if(bdV){ bdV.textContent = orf.count || ""; bdV.classList.toggle("alerta", !!orf.count); }
   _obrAbasContagens = {
     estacas: estsTotal.count || 0,
@@ -46,22 +46,22 @@ async function carregarAbasObra(obraId){
     maquinas: maq.error ? null : new Set((maq.data || []).filter(m => m.vigente !== false).map(m => m.equipamento_id)).size
   };
   atualizarSmartButtons();
-  if(typeof obrPmCarregar === "function") obrPmCarregar(obraId);   // fase 98: bloco Permuta da aba Contrato
-  renderEscopoContratado($("obr-escopo-bloco"), obraId, () => obraId === obraEditId);   // lote S65-g (#318)
-  if(typeof sstObraSmartButton === "function") sstObraSmartButton(obraId);   // fase 109a: smart-button "programas legais" (js/sesmt.js)
+  if(typeof obrPmCarregar === "function") obrPmCarregar(obraId);
+  renderEscopoContratado($("obr-escopo-bloco"), obraId, () => obraId === obraEditId);
+  if(typeof sstObraSmartButton === "function") sstObraSmartButton(obraId);
 }
 
 function atualizarSmartButtons(){
   const c = _obrAbasContagens;
-  // Texto especial das estacas: "X executadas / Y total" se diferentes
+
   const estacasNum = c.estacas;
   const estacasLbl = (c.estacas_executadas != null && c.estacas_executadas !== c.estacas)
     ? `${c.estacas_executadas} exec. / ${c.estacas} total`
     : "estacas";
   const map = {
     "sb-estacas": [estacasNum, "🔧", estacasLbl],
-    "sb-equipamentos": [(c.equipamentos || 0) + (c.acessorios || 0), "🚜", `bens · ${c.equipamentos || 0} TAG${c.equipamentos === 1 ? "" : "s"}`],   // fase 80: TAGs + peças na obra agora
-    "sb-maquinas": [c.maquinas ?? "—", "🛠️", c.maquinas === 1 ? "máquina" : "máquinas"],   // fase 101
+    "sb-equipamentos": [(c.equipamentos || 0) + (c.acessorios || 0), "🚜", `bens · ${c.equipamentos || 0} TAG${c.equipamentos === 1 ? "" : "s"}`],
+    "sb-maquinas": [c.maquinas ?? "—", "🛠️", c.maquinas === 1 ? "máquina" : "máquinas"],
     "sb-rdos": [c.rdos, "📋", "RDOs"],
     "sb-medicoes": [c.medicoes, "💰", "medições"],
     "sb-documentos": [c.documentos, "📎", "documentos"]
@@ -74,16 +74,16 @@ function atualizarSmartButtons(){
   });
 }
 
-/* ====================================================================
-   ABA MOBILIZAÇÃO & EQUIPAMENTOS (15/09/2026, pedido do Bernardo)
-   Em cima: as mobilizações da obra (processo — status, máquina e apoio, datas
-   prevista/real, pendências abertas por setor e atrasos), lidas das mesmas views
-   do quadro de Mobilizações. Embaixo: os equipamentos fisicamente na obra (TAGs
-   alocadas via Movimentações), que continuam aqui porque 7 dos 27 equipamentos em
-   obra hoje não pertencem a mobilização nenhuma (apoio, remessa direta).
-   ==================================================================== */
 
-// Garante o módulo Mobilizações carregado antes de abrir o drawer/modal dele a partir da obra
+
+
+
+
+
+
+
+
+
 async function _obrMobPronto(){
   if(typeof carregarMobilizacoes === "function" && typeof _mobCarregado !== "undefined" && !_mobCarregado) await carregarMobilizacoes();
 }
@@ -130,11 +130,11 @@ async function carregarEquipamentosDaObra(obraId){
     sb.from("vw_equipamentos_localizacao").select("*").eq("localizacao_obra_id", obraId),
     sb.from("vw_mobilizacoes_quadro").select("*").eq("obra_id", obraId).order("data_mobilizacao_prev", { ascending: true, nullsFirst: false }),
     sb.from("vw_mobilizacao_pendencias_setor").select("*").eq("obra_id", obraId),
-    // fase 89: viagens que atenderam a obra (origem, destino ou obra principal), com as notas de cada uma
+
     sb.from("viagens").select("id,numero,data,status,finalidade,km_total,valor_total,caminhao:equipamentos!caminhao_id(codigo),funcionario:funcionarios(nome),notas:movimentacoes_ativos(id,numero,nf_numero,status,interna)")
       .or(`obra_id.eq.${obraId},origem_obra_id.eq.${obraId},destino_obra_id.eq.${obraId}`).order("data", { ascending: false }).limit(60)
   ]);
-  if(obraId !== obraEditId) return; // trocou de obra enquanto carregava
+  if(obraId !== obraEditId) return;
   if(eqRes.error){
     cont.innerHTML = `<p class="vazio">Erro: ${esc(eqRes.error.message)}</p>`;
     return;
@@ -143,7 +143,7 @@ async function carregarEquipamentosDaObra(obraId){
   const mobs = mobRes.error ? [] : (mobRes.data || []);
   const pends = pendRes.error ? [] : (pendRes.data || []);
 
-  // ---- bloco 1: mobilizações da obra ----
+
   const cardsMob = mobs.map(c => _obrMobCardHTML(c, pends.filter(p => p.mobilizacao_id === c.id))).join("");
   const blocoMob = `
     <div class="lista-topo" style="border:none;padding:0;margin-bottom:10px;">
@@ -160,7 +160,7 @@ async function carregarEquipamentosDaObra(obraId){
     cont.querySelectorAll(".obr-mob-card").forEach(el => {
       const abrir = async () => {
         await _obrMobPronto();
-        // quadro em cache sem esta mobilização (criada depois) → recarrega antes de abrir
+
         if(typeof _mobCards !== "undefined" && !_mobCards.some(c => c.id === el.dataset.id) && typeof carregarMobilizacoes === "function") await carregarMobilizacoes(true);
         if(typeof abrirMobilizacao === "function") abrirMobilizacao(el.dataset.id);
       };
@@ -169,7 +169,7 @@ async function carregarEquipamentosDaObra(obraId){
     });
   };
 
-  // ---- fase 89: viagens da obra (a viagem ao lado da nota; o custo já cai na aba Custos por vw_custos) ----
+
   const vgs = vgRes.error ? [] : (vgRes.data || []);
   const vgFin = (typeof VG_FINALIDADES === "object" && VG_FINALIDADES) || {};
   const blocoViagens = `
@@ -187,7 +187,7 @@ async function carregarEquipamentosDaObra(obraId){
       : `<p class="vazio" style="padding:10px 0;">Nenhuma viagem registrada para esta obra.</p>`}
     <hr style="border:none;border-top:1px solid var(--borda);margin:14px 0;">`;
 
-  // ---- fase 80: bens do contrato (equipamentos e acessórios que passaram pela obra) ----
+
   cont.innerHTML = blocoMob + blocoViagens + `<div id="obr-bens-equip"><p class="vazio">Carregando equipamentos do contrato…</p></div>
     <hr style="border:none;border-top:1px solid var(--borda);margin:14px 0;">
     <div id="obr-bens-ace"><p class="vazio">Carregando acessórios do contrato…</p></div>`;
@@ -200,16 +200,16 @@ async function carregarEquipamentosDaObra(obraId){
   await Promise.all([obrRenderBensEquip(obraId, data || []), obrRenderBensAce(obraId)]);
 }
 
-/* ====================================================================
-   ABA MÁQUINAS (fase 101, #85 e #109): quais máquinas e veículos TRABALHAM na obra — mobilização ativa,
-   RDO/execução dos últimos 60 dias e vínculo manual (obra_equipamentos, com condutor para o veículo leve).
-   Localização continua vindo da mobilização (regra fixa): o vínculo manual não muda onde a máquina está.
-   Cadastrar máquina nova é em Equipamentos; a busca é a mesma das TAGs de apoio da mobilização (mobLigarApoio).
-   ==================================================================== */
-const OBR_MAQ_CARGOS = ["diretor", "admin", "engenheiro", "assistente_engenharia", "gestor_frota", "logistica"];   // = policy obra_equipamentos_write
+
+
+
+
+
+
+const OBR_MAQ_CARGOS = ["diretor", "admin", "engenheiro", "assistente_engenharia", "gestor_frota", "logistica"];
 const OBR_MAQ_VEICULOS = ["veiculo", "caminhao"];
 function obrMaqPodeEditar(){ return !!usuarioAtual && OBR_MAQ_CARGOS.includes(usuarioAtual.cargo) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
-function obrMaqPodeExigir(){ return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia"].includes(usuarioAtual.cargo); }   // = obras_write sem o comercial
+function obrMaqPodeExigir(){ return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia"].includes(usuarioAtual.cargo); }
 let _obrMaqFuncs = null;
 
 async function carregarMaquinasDaObra(obraId){
@@ -219,7 +219,7 @@ async function carregarMaquinasDaObra(obraId){
   const [vRes, oRes, rRes] = await Promise.all([
     sb.from("vw_obra_equipamentos").select("*").eq("obra_id", obraId),
     sb.from("obras").select("rdo_exige_equipamento").eq("id", obraId).maybeSingle(),
-    sb.from("vw_mobilizacoes_regularizar").select("tipo").eq("obra_id", obraId).eq("tipo", "obra_sem_mobilizacao")   // fase 157a
+    sb.from("vw_mobilizacoes_regularizar").select("tipo").eq("obra_id", obraId).eq("tipo", "obra_sem_mobilizacao")
   ]);
   const semMob = !rRes.error && (rRes.data || []).length > 0;
   const podeMob = typeof mobPodeEditar === "function" && mobPodeEditar();
@@ -230,7 +230,7 @@ async function carregarMaquinasDaObra(obraId){
   }
   const linhas = vRes.data || [];
   const exige = oRes.error ? null : !!oRes.data?.rdo_exige_equipamento;
-  // agrupa por máquina: uma linha por TAG, com as origens em chips
+
   const porEq = new Map();
   linhas.forEach(l => {
     const g = porEq.get(l.equipamento_id) || { id: l.equipamento_id, codigo: l.codigo, nome: l.nome, tipo: l.tipo, placa: l.placa, origens: [] };
@@ -290,7 +290,7 @@ async function carregarMaquinasDaObra(obraId){
     if(irParaSecao("equipamentos") && typeof abrirEquipamento === "function") abrirEquipamento(a.dataset.eqp);
   }));
   $("obr-maq-ir-eqp")?.addEventListener("click", ev => { ev.preventDefault(); irParaSecao("equipamentos"); });
-  $("btn-obr-maq-mobilizar")?.addEventListener("click", async () => {   // fase 157a
+  $("btn-obr-maq-mobilizar")?.addEventListener("click", async () => {
     if(!irParaSecao("mobilizacoes")) return;
     await carregarMobilizacoes(false);
     abrirNovaMobilizacao(obraId);
@@ -312,7 +312,7 @@ async function carregarMaquinasDaObra(obraId){
     await carregarMaquinasDaObra(obraId); carregarAbasObra(obraId);
   }));
   if(!pode) return;
-  // busca de TAG reaproveitada da mobilização (fase 80): todas as categorias, várias TAGs de uma vez
+
   await _obrMobPronto();
   if(obraId !== obraEditId || typeof mobLigarApoio !== "function") return;
   _mobApoioSel.obrmaq = [];
@@ -338,10 +338,10 @@ async function carregarMaquinasDaObra(obraId){
   }));
 }
 
-/* ====================================================================
-   BENS DO CONTRATO (fase 80): toda TAG e toda peça que passou pela obra, com período e custo direto.
-   vw_obra_equipamentos_contrato / vw_obra_acessorios_contrato; perdas e reparos vêm de acessorio_eventos.
-   ==================================================================== */
+
+
+
+
 let _obrBensNaObraAgora = false;
 let _obrBensEquip = [];
 function obrCsv(nome, linhas){
@@ -396,7 +396,7 @@ async function obrRenderBensEquip(obraId, naObraLoc){
         : `<p class="vazio">${_obrBensNaObraAgora ? "Nenhum equipamento na obra agora." : "Nenhum equipamento passou por esta obra."}</p>`}`;
     box.querySelectorAll("#obr-bens-eq-views .serv-view-btn").forEach(b => b.addEventListener("click", () => { _obrBensNaObraAgora = b.dataset.f === "agora"; render(); }));
     $("btn-equip-mov-nova")?.addEventListener("click", () => abrirMovimentacaoPraObra());
-    $("btn-obr-pedir-material")?.addEventListener("click", () => { if(typeof abrirPedidoMaterial === "function") abrirPedidoMaterial({ obra_id: obraId }); });   // fase 83
+    $("btn-obr-pedir-material")?.addEventListener("click", () => { if(typeof abrirPedidoMaterial === "function") abrirPedidoMaterial({ obra_id: obraId }); });
     box.querySelectorAll(".btn-equip-devolver").forEach(b => b.addEventListener("click", () => abrirMovimentacaoPraObra("retorno", b.dataset.id)));
     $("btn-obr-bens-eq-csv")?.addEventListener("click", () => obrCsv("equipamentos_contrato", _obrBensEquip.map(r => ({
       TAG: r.codigo, Nome: r.nome || "", Tipo: OBR_EQ_TIPO[r.tipo] || r.tipo || "", Chegada: r.chegada ? dataBR(r.chegada) : "", "Saída": r.saida ? dataBR(r.saida) : "",
@@ -423,7 +423,7 @@ async function obrRenderBensAce(obraId){
   const desc = r => modDesc[r.modelo_id] || [(typeof ACE_TIPO_LBL !== "undefined" && ACE_TIPO_LBL[r.tipo]) || r.tipo, r.diametro_mm ? "Ø" + r.diametro_mm : ""].filter(Boolean).join(" ");
   const agora = lst.filter(r => r.na_obra_agora), transito = lst.filter(r => r.em_transito), passaram = lst.filter(r => r.saida);
   const perdas = evs.error ? [] : (evs.data || []);
-  // (a) na obra agora, por família → descrição, lista expansível
+
   const porFam = {};
   agora.forEach(r => { const f = famLbl(r.familia); porFam[f] = porFam[f] || {}; const d = desc(r); (porFam[f][d] = porFam[f][d] || []).push(r); });
   const blocoAgora = Object.keys(porFam).sort().map(f => { const grupos = porFam[f]; const n = Object.values(grupos).reduce((t, g) => t + g.length, 0);
@@ -460,15 +460,15 @@ function tagStatusEquip(st){
   return `<span class="tag ${esc(cores[st]||"cinza")}">${esc(lbls[st]||st)}</span>`;
 }
 
-/* Atalho: abre o módulo Movimentações com obra pré-preenchida */
+
 function abrirMovimentacaoPraObra(tipo = "remessa", equipamentoIdPreSelecionado = null){
-  // Muda pra seção Movimentações
-  if(!irParaSecao("movimentacoes")) return; // fase 53: barra quem não tem o módulo no menu
-  // Aguarda render e abre nova movimentação
+
+  if(!irParaSecao("movimentacoes")) return;
+
   setTimeout(() => {
     if(typeof novaMovimentacao === "function"){
       novaMovimentacao();
-      // Pré-preenche destino = esta obra
+
       const o = (_obrRegistros || []).find(x => x.id === obraEditId);
       const obraTxt = o ? `${o.codigo} — ${o.nome}` : "";
       if(tipo === "retorno"){
@@ -484,7 +484,7 @@ function abrirMovimentacaoPraObra(tipo = "remessa", equipamentoIdPreSelecionado 
         $("mov-destino-descricao").value = obraTxt;
         if(typeof movDefinirObra === "function") movDefinirObra("destino", obraEditId);
       }
-      // Pré-seleciona equipamento se passado
+
       if(equipamentoIdPreSelecionado && typeof adicionarEquipamento === "function"){
         const sel = $("mov-add-equip");
         if(sel){ sel.value = equipamentoIdPreSelecionado; adicionarEquipamento(); }
@@ -494,9 +494,9 @@ function abrirMovimentacaoPraObra(tipo = "remessa", equipamentoIdPreSelecionado 
   }, 250);
 }
 
-/* ====================================================================
-   ABA MEDIÇÕES — read-only + atalho pra criar nova
-   ==================================================================== */
+
+
+
 
 async function carregarMedicoesDaObra(obraId){
   const cont = $("obr-medic-conteudo");
@@ -507,7 +507,7 @@ async function carregarMedicoesDaObra(obraId){
   }
   const [{ data, error }, sinal] = await Promise.all([
     sb.from("medicoes")
-      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes,origem,nf_numero,doc_tipo,em_revisao,em_revisao_motivo,nf_vencimento,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em")   // lote S46 (#104): NF/RR; lote S65-b: recebimento
+      .select("id,numero,data_medicao,percentual,valor_medido,valor_final,tipo_medicao,desconto_sinal,status,observacoes,origem,nf_numero,doc_tipo,em_revisao,em_revisao_motivo,nf_vencimento,retencao_valor,iss_valor,iss_retido_fonte,recebido_valor,recebida_em")
       .eq("obra_id", obraId)
       .order("data_medicao", { ascending: false }),
     typeof calcularSaldoSinalObra === "function" ? calcularSaldoSinalObra(obraId, null) : Promise.resolve(null)
@@ -522,7 +522,7 @@ async function carregarMedicoesDaObra(obraId){
   const saldo = valorContratado - totalMedido;
   const pctTotal = valorContratado > 0 ? (totalMedido / valorContratado * 100) : 0;
 
-  // Painel do sinal contratual: recebido, abatido nas medições seguintes e o que falta abater
+
   let blocoSinal = "";
   if(sinal && sinal.recebido > 0){
     const modeloLbl = (typeof SINAL_MODELOS !== "undefined" && SINAL_MODELOS[sinal.modelo]) || sinal.modelo;
@@ -540,7 +540,7 @@ async function carregarMedicoesDaObra(obraId){
     </div>`;
   }
 
-  const stats = `${/* html */ blocoSinal}
+  const stats = `${  blocoSinal}
     <div class="indicadores" style="margin-bottom:14px;">
       <div class="ind"><div class="num">${data.length}</div><div class="rot">Medições</div></div>
       <div class="ind"><div class="num">${brl(totalMedido)}</div><div class="rot">Total medido</div></div>
@@ -549,7 +549,7 @@ async function carregarMedicoesDaObra(obraId){
     </div>
     <div id="obr-medic-maq"></div>`;
 
-  // fase 88 (#54): boletim já emitido (PDF do Maya ou da planilha) entra conferido e nasce aprovado
+
   const podeImportar = typeof medImpPodeImportar === "function" && medImpPodeImportar();
   const btnImportar = podeImportar
     ? `<button type="button" class="btn-sec" id="btn-medic-importar" title="Lê o PDF do boletim que a CGL enviou ao cliente (Maya ou planilha), você confere contra a cascata de preço e a medição nasce aprovada com o PDF anexado">Importar boletim (PDF)</button>`
@@ -579,9 +579,9 @@ async function carregarMedicoesDaObra(obraId){
     </div>
     <div class="tabela-rola"><table>
       <thead><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>%</th><th>Status</th><th title="Documento fiscal da medição (aba Geral)">NF/RR</th><th class="num" title="Abatimento do sinal contratual nesta medição">Sinal abatido</th><th class="num">Valor</th></tr></thead>
-      <tbody>${/* html */ linhas}</tbody></table></div>
+      <tbody>${  linhas}</tbody></table></div>
   `;
-  obrMedPorMaquina(obraId);   // fase 101 (#94); depois do innerHTML: lê #obr-medic-maq, que nasce nele
+  obrMedPorMaquina(obraId);
   $("btn-medic-nova")?.addEventListener("click", abrirMedicaoPraObra);
   $("btn-medic-importar")?.addEventListener("click", () => abrirImportBoletimPDF(obraId));
   cont.querySelectorAll(".linha-clicavel").forEach(tr => {
@@ -589,14 +589,14 @@ async function carregarMedicoesDaObra(obraId){
   });
 }
 
-/* fase 101 (#94): resumo "por máquina" da aba Medições — receita medida por TAG (vw_equipamento_receita, só quem lê
-   financeiro: decisão do Bernardo de 21/10) ao lado do custo da TAG na obra (vw_custos). Item sem TAG usa a máquina da
-   medição; sem nenhuma, fica em "sem máquina". Sem a migration aplicada o bloco não aparece. */
+
+
+
 async function obrMedPorMaquina(obraId){
   const box = $("obr-medic-maq");
   if(!box || !(typeof podeVerValorObra === "function" && podeVerValorObra())) return;
   const [rec, cus] = await Promise.all([
-    lerTudo(() => sb.from("vw_equipamento_receita").select("equipamento_id,equipamento_codigo,valor,medicao_id").eq("obra_id", obraId), ["medicao_id", "item_id"]),   // a view não tem id; medição + item é único
+    lerTudo(() => sb.from("vw_equipamento_receita").select("equipamento_id,equipamento_codigo,valor,medicao_id").eq("obra_id", obraId), ["medicao_id", "item_id"]),
     sb.from("vw_custos").select("equipamento_id,valor").eq("obra_id", obraId).not("equipamento_id", "is", null)
   ]);
   if(obraId !== obraEditId || rec.error) return;
@@ -643,9 +643,9 @@ function abrirMedicaoExistente(medId){
   }, 250);
 }
 
-/* ====================================================================
-   ABA RDOs — geral + raiz, read-only
-   ==================================================================== */
+
+
+
 
 async function carregarRDOsDaObra(obraId){
   const cont = $("obr-rdo-conteudo");
@@ -655,15 +655,15 @@ async function carregarRDOsDaObra(obraId){
     return;
   }
 
-  // Resumo dos RDOs + execuções por rdo (pra contar vinculadas)
+
   const [resumoRes, execsRes, injRes, paradasRes] = await Promise.all([
     sb.from("vw_rdo_resumo").select("*").eq("obra_id", obraId).order("data", { ascending: false }),
-    // hotfix carga do banco: a view parte de rdo; o !inner varria todas as execuções a cada abertura
+
     sb.from("vw_rdo_execucoes_obra").select("rdo_id, estaca_id, obra_id").eq("obra_id", obraId),
-    // fase 101 (#99): injeção do dia nos RDOs de raiz (cimento, areia, água, m³ injetado); erro = migration ainda não aplicada
+
     sb.from("vw_rdo_execucoes_obra").select("rdo_id,consumo_cimento_raiz,consumo_cimento_unidade,consumo_areia_raiz,consumo_areia_unidade,agua_l,volume_injetado_m3")
       .eq("obra_id", obraId).eq("tipo_servico", "estaca_raiz"),
-    // fase 166: horas paradas da obra, separadas pela resposta "em razão do cliente?" (poucas linhas por obra: sem lerTudo)
+
     sb.from("ocorrencias").select("horas_paradas,em_razao_cliente").eq("obra_id", obraId)
   ]);
   const injPorRdo = {};
@@ -675,7 +675,7 @@ async function carregarRDOsDaObra(obraId){
   if(resumoRes.error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(resumoRes.error.message)}</p>`; return; }
   const todos = resumoRes.data || [];
 
-  // Mapa rdo_id -> { total, vinculadas }
+
   const vincPorRdo = {};
   (execsRes.data || []).forEach(e => {
     if(e.obra_id !== obraId) return;
@@ -691,18 +691,18 @@ async function carregarRDOsDaObra(obraId){
     helice_secante: "🛡️ Hélice secante"
   };
 
-  // fase 94 (#77): um diário por máquina — filtro por máquina, coluna Máquina e aviso dos diários sem máquina
+
   if(_obrRdoFiltroObra !== obraId){ _obrRdoFiltroMaq = ""; _obrRdoFiltroTurno = ""; _obrRdoFiltroObra = obraId; }
   const maquinas = [...new Map(todos.filter(r => r.equipamento_id).map(r => [r.equipamento_id, r.maquina || "?"])).entries()]
     .sort((a, b) => String(a[1]).localeCompare(String(b[1]), "pt-BR", { numeric: true }));
   const semMaq = todos.filter(r => !r.equipamento_id).length;
   if(_obrRdoFiltroMaq && _obrRdoFiltroMaq !== "sem" && !maquinas.some(([id]) => id === _obrRdoFiltroMaq)) _obrRdoFiltroMaq = "";
-  // fase 134b: filtro de período (diário sem período conta como diurno)
+
   const turnoDe = (r) => r.turno_campo === "noturno" ? "noturno" : "diurno";
   const noturnos = todos.filter(r => turnoDe(r) === "noturno").length;
   const data = todos.filter(r => (_obrRdoFiltroMaq === "sem" ? !r.equipamento_id : (!_obrRdoFiltroMaq || r.equipamento_id === _obrRdoFiltroMaq))
     && (!_obrRdoFiltroTurno || turnoDe(r) === _obrRdoFiltroTurno));
-  // fase 101 (#85): "atribuir máquina" em lote aos diários sem máquina (RPC rdo_atribuir_maquina; mesmos cargos de rdo_write)
+
   const atribuiLote = !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado"].includes(usuarioAtual.cargo);
 
   const header = `
@@ -730,24 +730,24 @@ async function carregarRDOsDaObra(obraId){
     </div>` : ""}`;
   const ligarFiltroMaq = () => {
     $("obr-rdo-f-maq")?.addEventListener("change", (ev) => { _obrRdoFiltroMaq = ev.target.value; carregarRDOsDaObra(obraId); });
-    $("obr-rdo-f-turno")?.addEventListener("change", (ev) => { _obrRdoFiltroTurno = ev.target.value; carregarRDOsDaObra(obraId); });   // fase 134b
+    $("obr-rdo-f-turno")?.addEventListener("change", (ev) => { _obrRdoFiltroTurno = ev.target.value; carregarRDOsDaObra(obraId); });
   };
 
-  // fase 163: faixa dos últimos 14 dias no topo da aba (js/obra_faixa.js). Uma por obra; segue o filtro de máquina, não o de período.
+
   const faixaRdos = todos.filter(r => _obrRdoFiltroMaq === "sem" ? !r.equipamento_id : (!_obrRdoFiltroMaq || r.equipamento_id === _obrRdoFiltroMaq));
   const faixaFiltro = _obrRdoFiltroMaq === "sem" ? "diários sem máquina" : ((maquinas.find(([id]) => id === _obrRdoFiltroMaq) || [])[1] || "");
   const faixa = typeof obfReservaHTML === "function" ? obfReservaHTML(obraId, { semRdo: !todos.length, filtro: faixaFiltro }) : "";
   const preencherFaixa = () => { if(typeof obfPreencher === "function") obfPreencher(obraId, { rdos: faixaRdos, semRdo: !todos.length, filtroMaq: _obrRdoFiltroMaq }); };
 
-  // fase 166: uma linha com as paradas da obra inteira (não segue os filtros da aba), abaixo da faixa. Sem parada, sem linha;
-  // nulo em "em razão do cliente" é "não informado" e nunca soma nas horas da CGL. Erro de leitura não derruba a aba.
+
+
   if(paradasRes.error) console.warn("Paradas da obra não lidas:", paradasRes.error.message);
   const paradasTxt = !paradasRes.error && typeof paradaSomar === "function" ? paradaObraTxt(paradaSomar(paradasRes.data || [])) : "";
   const paradasObra = paradasTxt ? `<p class="obr-rdo-paradas" title="Soma das paradas e ocorrências de todos os diários da obra. Em razão do cliente: respondido sim; da CGL: respondido não; não informado: ninguém respondeu.">${esc(paradasTxt)}</p>` : "";
 
   if(!data || !data.length){
-    // sem nenhum diário, quem explica de onde ele nasce é o bloco da faixa; sem o js/obra_faixa.js fica a frase curta
-    cont.innerHTML = `${header}${/* html */ faixa}${/* html */ paradasObra}${todos.length ? '<p class="vazio">Nenhum RDO para esta máquina ou período. Limpe o filtro para ver os outros diários.</p>'
+
+    cont.innerHTML = `${header}${  faixa}${  paradasObra}${todos.length ? '<p class="vazio">Nenhum RDO para esta máquina ou período. Limpe o filtro para ver os outros diários.</p>'
       : (faixa ? "" : '<p class="vazio">Esta obra ainda não tem diário.</p>')}`;
     $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
     ligarFiltroMaq();
@@ -756,7 +756,7 @@ async function carregarRDOsDaObra(obraId){
     return;
   }
 
-  // Mini-gráfico de produção (últimos 30 dias). Fase 94: soma a obra no dia (todas as máquinas), o "Resumo diário"
+
   const porDia = {};
   todos.forEach(r => { porDia[r.data] = (porDia[r.data] || 0) + (Number(r.metragem_total) || 0); });
   const ultimos = Object.entries(porDia).sort((a, b) => a[0].localeCompare(b[0])).slice(-30);
@@ -777,13 +777,13 @@ async function carregarRDOsDaObra(obraId){
     const v = vincPorRdo[r.id] || { total: 0, vinculadas: 0 };
     const orf = v.total - v.vinculadas;
     const corVinc = orf === 0
-      ? "var(--sucesso)"     // tudo vinculado — verde
-      : (v.vinculadas === 0 ? "var(--perigo)" : "var(--aviso)"); // nada / parcial
+      ? "var(--sucesso)"
+      : (v.vinculadas === 0 ? "var(--perigo)" : "var(--aviso)");
     const tituloVinc = orf === 0
       ? "Todas as execuções deste RDO estão vinculadas a estacas cadastradas"
       : `${orf} execução(ões) sem vínculo (órfãs)`;
     return `<tr class="linha-clicavel" data-id="${esc(r.id)}" data-dia="${esc(r.data)}">
-      <td>${atribuiLote && !r.equipamento_id ? `<input type="checkbox" class="obr-rdo-sel" data-rdo="${esc(r.id)}" title="Marcar para atribuir máquina" /> ` : ""}${/* html */ typeof rdoCelulaData === "function" ? rdoCelulaData(r.data) : dataBR(r.data)}</td>
+      <td>${atribuiLote && !r.equipamento_id ? `<input type="checkbox" class="obr-rdo-sel" data-rdo="${esc(r.id)}" title="Marcar para atribuir máquina" /> ` : ""}${  typeof rdoCelulaData === "function" ? rdoCelulaData(r.data) : dataBR(r.data)}</td>
       <td>${r.equipamento_id ? `<span class="ui-codigo">${esc(r.maquina || "?")}</span>` : '<span class="tag ambar" title="Diário sem máquina: abra e informe a máquina no cabeçalho">sem máquina</span>'}</td>
       <td>${turnoDe(r) === "noturno" ? '<span class="tag azul" title="Diário do período noturno (fase 134b)">Noturno</span>' : "Diurno"}</td>
       <td>${esc(lblsTipo[r.tipo_servico] || r.tipo_servico)}</td>
@@ -797,14 +797,14 @@ async function carregarRDOsDaObra(obraId){
     </tr>`;
   }).join("");
 
-  cont.innerHTML = `${header}${/* html */ faixa}${/* html */ paradasObra}${grafico}
+  cont.innerHTML = `${header}${  faixa}${  paradasObra}${grafico}
     <div class="tabela-rola"><table>
       <thead><tr>
         <th>Data</th><th title="Fase 94: um diário por máquina">Máquina</th><th title="Fase 134b: diurno ou noturno; a mesma máquina pode ter os dois no mesmo dia">Período</th><th>Tipo de serviço</th><th>Estacas</th>
         <th title="Execuções vinculadas a estacas cadastradas / total de execuções">Vinculadas</th>
         <th class="num">Metragem</th><th class="num">Concreto</th><th>Status</th>
       </tr></thead>
-      <tbody>${/* html */ linhas}</tbody></table></div>`;
+      <tbody>${  linhas}</tbody></table></div>`;
 
   $("btn-rdo-novo")?.addEventListener("click", abrirRdoPraObra);
   ligarFiltroMaq();
@@ -815,7 +815,7 @@ async function carregarRDOsDaObra(obraId){
   if(semMaq && atribuiLote) obrRdoLigarAtribuir(obraId);
 }
 
-/* fase 101 (#85): select de máquinas (as da obra primeiro) e o botão do lote */
+
 async function obrRdoLigarAtribuir(obraId){
   const sel = $("obr-rdo-atrib-maq");
   if(!sel) return;
@@ -849,7 +849,7 @@ function abrirRdoPraObra(){
   setTimeout(() => {
     if(typeof novoRDO === "function"){
       const r = novoRDO();
-      // novoRDO retorna void; preenche obra após o reset
+
       if(obraIdAtual && $("rdo-obra")) $("rdo-obra").value = obraIdAtual;
     }
   }, 250);
@@ -861,14 +861,14 @@ function abrirRdoExistente(id){
   if(nav) nav.click();
   setTimeout(() => {
     if(typeof abrirRDO === "function") abrirRDO(id);
-    // chamado #8 (Isaque, 16/09/2026): o Voltar da ficha do RDO devolve para esta obra, aba RDOs
+
     if(typeof _rdoVoltarPara !== "undefined") _rdoVoltarPara = obraOrigem;
   }, 250);
 }
 
-/* ====================================================================
-   ABA DOCUMENTOS — upload Storage + lista
-   ==================================================================== */
+
+
+
 
 const DOC_CATEGORIAS = {
   art: "ART",
@@ -878,10 +878,10 @@ const DOC_CATEGORIAS = {
   remessa_nf: "Remessa (NF)",
   sondagem: "Sondagem",
   projeto: "Projeto",
-  nfs: "Nota fiscal de serviço",   /* lote S39, chamado #27 (valor do enum só na migration 20261022_loteS48_a) */
-  cno: "CNO (Cadastro Nacional de Obras)",   /* lote S48, chamado #119: o RH abre pela tag CNO em Horas e alocação (#122) */
-  seguro_garantia: "Seguro garantia",   /* lote S50, chamado #152 (Tamires): apólice; valor do enum só na migration 20261026_loteS50_a */
-  /* lote S68-g (chamado 110, planilha de obras do Vitor): enum na migration 20261124_loteS68g_categorias_documento */
+  nfs: "Nota fiscal de serviço",
+  cno: "CNO (Cadastro Nacional de Obras)",
+  seguro_garantia: "Seguro garantia",
+
   proposta: "Proposta",
   plano_execucao: "Plano de execução",
   memoria_calculo: "Memória de cálculo",
@@ -892,13 +892,13 @@ const DOC_CATEGORIAS = {
   outro: "Outro"
 };
 
-/* Lote S51 (#153, Bernardo 26/10/2026): quem anexou exclui o próprio documento (origem manual) em até 4 h; fora disso só os
-   cargos de obras_doc_delete. Espelha obras_doc_delete e obras_doc_storage_delete do banco; o relógio do navegador entra
-   com 1 min de folga para o botão sumir antes do prazo do servidor. */
+
+
+
 const OBR_DOC_CARGOS_EXCLUEM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado", "almoxarife", "comercial"];
 const OBR_DOC_PRAZO_PROPRIO_MS = 4 * 3600 * 1000;
 const OBR_DOC_FOLGA_MS = 60 * 1000;
-/* null = sem botão; senão o texto do title do 🗑️ */
+
 function obrDocExclusao(d){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return null;
   if(OBR_DOC_CARGOS_EXCLUEM.includes(usuarioAtual.cargo)) return "Excluir";
@@ -924,7 +924,7 @@ async function carregarDocumentosDaObra(obraId){
     .order("created_at", { ascending: false });
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; return; }
 
-  const cats = Object.entries(DOC_CATEGORIAS).filter(([v]) => v !== "outro")   // "Outro" já é a primeira opção (padrão)
+  const cats = Object.entries(DOC_CATEGORIAS).filter(([v]) => v !== "outro")
     .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   const uploader = `
     <div class="card" style="margin-bottom:14px;padding:12px;">
@@ -944,7 +944,7 @@ async function carregarDocumentosDaObra(obraId){
         <button type="button" class="btn" id="btn-doc-enviar">Enviar</button>
         ${typeof obrPodeEditar === "function" && !obrPodeEditar() ? `<span class="meta">O documento é gravado no Enviar.</span>` : ""}
       </div>
-    </div>`;   // lote S69-c (#355): para quem não tem o Salvar da ficha
+    </div>`;
 
   if(!data || !data.length){
     cont.innerHTML = `${uploader}<p class="vazio">Nenhum documento enviado ainda.</p>`;
@@ -952,7 +952,7 @@ async function carregarDocumentosDaObra(obraId){
     return;
   }
 
-  // Agrupa por categoria
+
   const grupos = {};
   data.forEach(d => {
     const k = DOC_CATEGORIAS[d.categoria] || d.categoria;
@@ -963,10 +963,10 @@ async function carregarDocumentosDaObra(obraId){
     const linhas = docs.map(d => {
       const isImg = (d.mime_type||"").startsWith("image/");
       const tamKB = d.tamanho_bytes ? (d.tamanho_bytes/1024).toFixed(0) + " KB" : "—";
-      // lote S45 (L8): o boletim importado (origem medicao_importada) aponta para o mesmo PDF da medição
-      // (medicoes.arquivo_origem_url): sem 🗑️ aqui, senão a medição ficaria sem o arquivo.
+
+
       const boletim = d.origem === "medicao_importada";
-      const tituloExcluir = boletim ? null : obrDocExclusao(d);   // lote S51 (#153)
+      const tituloExcluir = boletim ? null : obrDocExclusao(d);
       const origemBadge = d.origem === "movimentacao_ativa"
         ? '<span class="tag azul" style="font-size:var(--txt-xs);">auto</span>'
         : boletim ? '<span class="tag azul" style="font-size:var(--txt-xs);" title="PDF da medição importada; abre também pela ficha da medição">boletim</span>' : "";
@@ -985,7 +985,7 @@ async function carregarDocumentosDaObra(obraId){
       <h4 style="font-size:var(--txt-sm);color:var(--acao-txt);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px;">${esc(cat)} (${docs.length})</h4>
       <div class="tabela-rola"><table>
         <thead><tr><th>Arquivo</th><th>Descrição</th><th>Tamanho</th><th>Enviado em</th><th class="col-acao"></th></tr></thead>
-        <tbody>${/* html */ linhas}</tbody></table></div>
+        <tbody>${  linhas}</tbody></table></div>
     </div>`;
   }).join("");
   cont.innerHTML = `${uploader}${blocos}`;
@@ -998,8 +998,8 @@ async function carregarDocumentosDaObra(obraId){
   });
 }
 
-/* MIME por extensão e reembalagem em Blob: helpers mimeDoArquivo/corpoComMime em core.js (hotfix 98). A lista
-   MIME_POR_EXTENSAO de core.js está alinhada aos allowed_mime_types do bucket obras-documentos. */
+
+
 
 function ligarUploadDoc(obraId){
   $("btn-doc-enviar")?.addEventListener("click", () => enviarDocumento(obraId));
@@ -1016,10 +1016,10 @@ async function enviarDocumento(obraId){
   btn.textContent = "Enviando...";
 
   try {
-    const ext = extensaoArquivo(file);   // core.js: entra no caminho do storage (só letras/dígitos, senão "bin")
+    const ext = extensaoArquivo(file);
     const nomeUnico = `${obraId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const mime = mimeDoArquivo(file, ext);
-    // supabase-js ignora `contentType` quando o corpo é File/Blob (vale o type do próprio arquivo): reembala com o MIME da extensão
+
     const corpo = corpoComMime(file, mime);
     const { error: errUp } = await sb.storage.from("obras-documentos").upload(nomeUnico, corpo, {
       cacheControl: "3600", contentType: mime, upsert: false
@@ -1040,7 +1040,7 @@ async function enviarDocumento(obraId){
     };
     const { error: errIns } = await sb.from("obras_documentos").insert(reg);
     if(errIns){
-      // se falhar metadata, remove o arquivo pra não vazar
+
       await sb.storage.from("obras-documentos").remove([nomeUnico]);
       throw errIns;
     }
@@ -1050,7 +1050,7 @@ async function enviarDocumento(obraId){
     await carregarDocumentosDaObra(obraId);
     await carregarAbasObra(obraId);
   } catch(err){
-    // hotfix 98 (#120): recusa de policy (tabela ou bucket) vira frase de cargo, não o texto cru do Postgres
+
     aviso("app-aviso", ehErroDePermissao(err) ? "Seu cargo não anexa documentos da obra." : "Erro ao enviar: "+(err.message||err), "erro");
   } finally {
     btn.disabled = false;
@@ -1072,12 +1072,12 @@ async function baixarDocumento(path, nome){
 
 async function excluirDocumento(id, path, obraId){
   if(!confirm("Excluir este documento?")) return;
-  // hotfix 98 (#120): a linha sai primeiro. O financeiro anexa, mas excluir continua com os cargos de obras_doc_delete;
-  // como a RLS do delete não dá erro (apaga 0 linhas) e o bucket deixa o financeiro remover (import de boletim, fase
-  // 88b), remover o arquivo antes deixava a linha apontando para um arquivo apagado.
+
+
+
   const { data: apagadas, error } = await sb.from("obras_documentos").delete().eq("id", id).select("id");
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
-  // lote S51 (#153): o próprio documento só até 4 h depois de anexar; depois disso (ou o de outra pessoa) a RLS não apaga
+
   if(!apagadas || !apagadas.length){ aviso("app-aviso","Só quem tem permissão na obra exclui; peça à engenharia.","erro"); return; }
   await sb.storage.from("obras-documentos").remove([path]);
   aviso("app-aviso","Documento excluído.","ok");
@@ -1085,9 +1085,9 @@ async function excluirDocumento(id, path, obraId){
   await carregarAbasObra(obraId);
 }
 
-/* ====================================================================
-   ABA TIMELINE — feed unificado
-   ==================================================================== */
+
+
+
 
 const TL_EVENTOS = {
   comentario:    { icone: "💬", cor: "var(--marca-600)", lbl: "Comentário" },
@@ -1111,7 +1111,7 @@ async function carregarTimelineDaObra(obraId){
   }
   cont.innerHTML = `<p class="vazio">Carregando linha do tempo...</p>`;
 
-  // Busca tudo em paralelo (incluindo criado_por / enviado_por / alterada_por pra mostrar autoria)
+
   const [obra, movs, rdos, medicoes, ocorrencias, docs, estacasExec, comentarios, usuariosAtivos] = await Promise.all([
     sb.from("obras").select("created_at,codigo,nome,criado_por").eq("id", obraId).single(),
     sb.from("movimentacoes_ativos").select("id,numero,tipo,status,data_emissao,destino_descricao,origem_descricao,valor_total_produtos,criado_por,interna,viagem:viagens(id,numero,data,caminhao:equipamentos!caminhao_id(codigo))").or(`origem_obra_id.eq.${obraId},destino_obra_id.eq.${obraId}`).order("data_emissao", { ascending: false }),
@@ -1124,7 +1124,7 @@ async function carregarTimelineDaObra(obraId){
     sb.from("profiles").select("id,nome,email").eq("ativo", true).order("nome")
   ]);
 
-  // Coleta todos os user ids únicos pra buscar nomes em batch
+
   const userIds = new Set();
   if(obra.data?.criado_por) userIds.add(obra.data.criado_por);
   (movs.data||[]).forEach(m => { if(m.criado_por) userIds.add(m.criado_por); });
@@ -1147,7 +1147,7 @@ async function carregarTimelineDaObra(obraId){
 
   const eventos = [];
 
-  // Comentários (fase 23) — carregam dados extras pro render customizado
+
   (comentarios.data || []).forEach(c => {
     eventos.push({
       tipo: "comentario",
@@ -1165,7 +1165,7 @@ async function carregarTimelineDaObra(obraId){
     });
   });
 
-  // Obra criada
+
   if(obra.data){
     eventos.push({
       tipo: "obra",
@@ -1175,7 +1175,7 @@ async function carregarTimelineDaObra(obraId){
       autor: nomeDe(obra.data.criado_por)
     });
   }
-  // Movimentações
+
   (movs.data || []).forEach(m => {
     const lbl = m.status === "recebida" ? "Recebida" :
                 m.status === "em_transito" ? "Em trânsito" :
@@ -1184,20 +1184,20 @@ async function carregarTimelineDaObra(obraId){
       tipo: "movimentacao",
       data: m.data_emissao + "T12:00:00",
       titulo: `${m.numero} · ${m.interna ? "itens da viagem" : m.tipo} (${lbl})`,
-      // fase 89: a viagem que levou a nota (número, data e caminhão) ao lado
+
       meta: `${m.origem_descricao || "?"} → ${m.destino_descricao || "?"}${m.valor_total_produtos ? " · " + brl(m.valor_total_produtos) : ""}${m.viagem ? ` · Viagem ${m.viagem.numero} em ${dataBR(m.viagem.data)}${m.viagem.caminhao ? " (" + m.viagem.caminhao.codigo + ")" : ""}` : ""}`,
       ref_id: m.id,
       autor: nomeDe(m.criado_por)
     });
   });
-  // RDOs (com tipo de serviço)
+
   const lblsTipoRDO = {
     helice_continua: "🌀 Hélice",
     trado_mecanizado: "🔩 Trado",
     estaca_raiz: "🌱 Raiz",
     helice_secante: "🛡️ Secante"
   };
-  // Para mostrar equipe nos RDOs, busca em batch (vw_rdo_equipe_completa traz nomes prontos)
+
   const rdoIds = (rdos.data || []).map(r => r.id);
   let equipePorRdo = {};
   if(rdoIds.length){
@@ -1225,7 +1225,7 @@ async function carregarTimelineDaObra(obraId){
       autor: nomeDe(r.criado_por)
     });
   });
-  // Medições
+
   (medicoes.data || []).forEach(m => {
     eventos.push({
       tipo: "medicao",
@@ -1236,7 +1236,7 @@ async function carregarTimelineDaObra(obraId){
       autor: nomeDe(m.criado_por)
     });
   });
-  // Ocorrências
+
   (ocorrencias.data || []).forEach(o => {
     eventos.push({
       tipo: "ocorrencia",
@@ -1246,7 +1246,7 @@ async function carregarTimelineDaObra(obraId){
       autor: ""
     });
   });
-  // Documentos
+
   (docs.data || []).forEach(d => {
     eventos.push({
       tipo: "documento",
@@ -1256,7 +1256,7 @@ async function carregarTimelineDaObra(obraId){
       autor: nomeDe(d.enviado_por)
     });
   });
-  // Resolver nomes dos operadores (uuid de funcionarios → nome)
+
   const operadorIds = [...new Set((estacasExec.data||[]).map(e => e.operador_id).filter(Boolean))];
   const mapaOperadores = {};
   if(operadorIds.length){
@@ -1264,7 +1264,7 @@ async function carregarTimelineDaObra(obraId){
     (funcs||[]).forEach(f => { mapaOperadores[f.id] = f.nome; });
   }
 
-  // Estacas executadas — agrupa por data (e mostra operador(es) do dia se houver)
+
   const estacasPorData = {};
   (estacasExec.data || []).forEach(e => {
     const d = e.data_execucao;
@@ -1283,7 +1283,7 @@ async function carregarTimelineDaObra(obraId){
       autor: ""
     });
   });
-  // Estacas alteradas manualmente (vira evento separado)
+
   (estacasExec.data || []).forEach(e => {
     if(e.alterada_em){
       eventos.push({
@@ -1296,12 +1296,12 @@ async function carregarTimelineDaObra(obraId){
     }
   });
 
-  // Ordena desc por data
+
   eventos.sort((a, b) => new Date(b.data) - new Date(a.data));
 
-  // Caixa de novo comentário: registrar fatos que os eventos calculados
-  // não capturam (ex.: projeto ausente na pasta do servidor) e marcar
-  // quem providencia — o marcado vê a pendência no Início até resolver.
+
+
+
   const opcoesResp = (usuariosAtivos.data || [])
     .map(u => `<option value="${esc(u.id)}">${esc(u.nome || u.email)}</option>`).join("");
   const caixaComentario = `
@@ -1319,7 +1319,7 @@ async function carregarTimelineDaObra(obraId){
     return;
   }
 
-  // Filtros por tipo
+
   const tiposPresentes = [...new Set(eventos.map(e => e.tipo))];
   const filtros = `
     <div class="tl-filtros">
@@ -1332,7 +1332,7 @@ async function carregarTimelineDaObra(obraId){
       }).join("")}
     </div>`;
 
-  // Render eventos
+
   const renderEv = (lista) => lista.map(ev => {
     const meta = TL_EVENTOS[ev.tipo];
     const dia = new Date(ev.data);
@@ -1341,7 +1341,7 @@ async function carregarTimelineDaObra(obraId){
       ? `<span class="tl-autor" title="Responsável pelo registro">👤 ${esc(ev.autor)}</span>`
       : "";
 
-    // Comentário: mostra o responsável marcado e o estado da providência
+
     let linhaComent = "";
     if(ev.coment){
       const c = ev.coment;
@@ -1364,7 +1364,7 @@ async function carregarTimelineDaObra(obraId){
       <div class="tl-conteudo">
         <div class="tl-titulo">${esc(ev.titulo)}</div>
         ${ev.meta ? `<div class="tl-meta">${esc(ev.meta)}</div>` : ""}
-        ${/* html */ linhaComent}
+        ${  linhaComent}
         <div class="tl-data">${dataFmt}${autorTag ? " · " + autorTag : ""}</div>
       </div>
     </div>`;
@@ -1373,9 +1373,9 @@ async function carregarTimelineDaObra(obraId){
   cont.innerHTML = `${caixaComentario}${filtros}<div class="tl-lista" id="tl-lista">${renderEv(eventos)}</div>`;
   ligarNovoComentario(obraId);
 
-  // Resolver: delegation com bind único — o container persiste entre
-  // recargas da timeline, então sem a guarda cada recarga somaria um
-  // listener e um clique dispararia vários updates.
+
+
+
   if(!cont.dataset.tlResolverLigado){
     cont.dataset.tlResolverLigado = "1";
     cont.addEventListener("click", async (e) => {
@@ -1398,7 +1398,7 @@ async function carregarTimelineDaObra(obraId){
     });
   }
 
-  // Filtros listeners
+
   cont.querySelectorAll(".tl-filtro").forEach(b => {
     b.addEventListener("click", () => {
       cont.querySelectorAll(".tl-filtro").forEach(x => x.classList.remove("ativo"));
@@ -1411,8 +1411,8 @@ async function carregarTimelineDaObra(obraId){
   });
 }
 
-/* Envio de novo comentário (a caixa é recriada a cada render, então o
-   bind é refeito junto — sem risco de duplicar) */
+
+
 function ligarNovoComentario(obraId){
   $("btn-tl-comentar")?.addEventListener("click", async () => {
     const texto = ($("tl-novo-texto")?.value || "").trim();
@@ -1434,15 +1434,15 @@ function ligarNovoComentario(obraId){
     await carregarTimelineDaObra(obraId);
     if(typeof carregarDashPendencias === "function") carregarDashPendencias();
   });
-  // Enter no campo de texto envia
+
   $("tl-novo-texto")?.addEventListener("keydown", (e) => {
     if(e.key === "Enter") $("btn-tl-comentar")?.click();
   });
 }
 
-/* ====================================================================
-   Listener: troca de aba dispara load
-   ==================================================================== */
+
+
+
 
 function ligarAbasObra(){
   document.querySelectorAll("#obr-notebook button").forEach(b => {
@@ -1450,18 +1450,18 @@ function ligarAbasObra(){
       const tab = b.dataset.tab;
       if(!obraEditId) return;
       if(tab === "equipamentos") carregarEquipamentosDaObra(obraEditId);
-      else if(tab === "maquinas") carregarMaquinasDaObra(obraEditId);   // fase 101
+      else if(tab === "maquinas") carregarMaquinasDaObra(obraEditId);
       else if(tab === "medicoes") carregarMedicoesDaObra(obraEditId);
       else if(tab === "rdos") carregarRDOsDaObra(obraEditId);
-      else if(tab === "estacas" && _obrEstacasDesatualizadas){ _obrEstacasDesatualizadas = false; carregarEstacasDaObra(obraEditId); }   // hotfix carga do banco: voltou de um RDO sem reabrir a obra
-      else if(tab === "vincular" && typeof estvCarregar === "function") estvCarregar(obraEditId);   // fase 94 (#80)
-      else if(tab === "documentos"){ carregarDocumentosDaObra(obraEditId); if(typeof sstObraProgramasRender === "function") sstObraProgramasRender(obraEditId); }   // fase 109a: bloco Programas legais
+      else if(tab === "estacas" && _obrEstacasDesatualizadas){ _obrEstacasDesatualizadas = false; carregarEstacasDaObra(obraEditId); }
+      else if(tab === "vincular" && typeof estvCarregar === "function") estvCarregar(obraEditId);
+      else if(tab === "documentos"){ carregarDocumentosDaObra(obraEditId); if(typeof sstObraProgramasRender === "function") sstObraProgramasRender(obraEditId); }
       else if(tab === "timeline") carregarTimelineDaObra(obraEditId);
       else if(tab === "custos" && typeof custosRender === "function") custosRender("obr-custos", { obra_id: obraEditId });
     });
   });
 
-  // Smart-buttons: clique vai pra aba correspondente
+
   document.querySelectorAll(".sb-btn[data-goto-tab]").forEach(b => {
     b.addEventListener("click", () => {
       const tab = b.dataset.gotoTab;
@@ -1477,13 +1477,13 @@ if(document.readyState === "loading"){
   ligarAbasObra();
 }
 
-/* ====================================================================
-   FASE 98 — bloco "Permuta" da aba Contrato (21/10/2026)
-   Obra paga em imóvel: a permuta ligada (permuta_contratos), o % desta obra (próprio ou o padrão da
-   permuta), o teto, o crédito, o saldo do imóvel e o prazo (vw_permutas). Quem lê: podeVerPermutas();
-   quem grava (ligar, mudar o %, desligar): diretor, admin, financeiro. A ficha da permuta fica em
-   Medições › Permutas (medPmAbrirPorId, js/medicoes.js).
-   ==================================================================== */
+
+
+
+
+
+
+
 async function obrPmCarregar(obraId){
   const box = $("obr-pm-bloco");
   if(!box) return;
@@ -1504,7 +1504,7 @@ async function obrPmCarregar(obraId){
     box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4>
       <p class="meta">Obra sem permuta: as medições são recebidas em dinheiro.</p>
       ${podeOp ? `<div class="grade">
-        <div class="campo largo"><label>Permuta</label><select id="obr-pm-permuta"><option value="">— escolher —</option>${/* html */ opts}</select></div>
+        <div class="campo largo"><label>Permuta</label><select id="obr-pm-permuta"><option value="">— escolher —</option>${  opts}</select></div>
         <div class="campo"><label>% da medição em permuta</label><input id="obr-pm-pct" type="number" step="0.01" min="0" max="100" placeholder="vazio = padrão" /></div>
       </div>
       <div class="form-acoes compacta" style="justify-content:flex-start;"><button type="button" class="btn-sec" id="btn-obr-pm-ligar">Ligar a obra à permuta</button>
@@ -1516,7 +1516,7 @@ async function obrPmCarregar(obraId){
   if(obraId !== obraEditId) return;
   if(!p){ box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4><p class="vazio">Permuta ligada não encontrada.</p>`; return; }
   const pct = pc.percentual ?? p.percentual_padrao;
-  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
+  const chip = (lbl, val, title) => `<div class="chip"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${  val}</strong></div>`;
   const ST = { a_formalizar: ["A formalizar", "cinza"], em_execucao: ["Em execução", "azul"], quitada: ["Quitada", "verde"], excedida: ["Excedida", "vermelho"], vencida: ["Vencida", "vermelho"] };
   const st = ST[p.status] || [p.status, "cinza"];
   box.innerHTML = `<h4 class="sub-titulo">🏠 Permuta</h4>
@@ -1571,12 +1571,12 @@ async function obrPmDesligar(obraId, pc, p){
   await obrPmCarregar(obraId);
 }
 
-/* ====================================================================
-   Lote S65-g (#318): escopo do orçamento aprovado, sem preço, na aba Contrato da obra e na aba Escopo da mobilização.
-   Lê vw_obra_escopo_orcamento (definer, sem coluna de valor; o banco filtra por pode_ler_escopo_obra()). O orçamento não
-   traz número de estacas: sai metro linear por diâmetro e faixa de profundidade. Itens com quantidade 0 (opcionais do
-   orçamento) ficam fora da tabela e só são contados na nota.
-   ==================================================================== */
+
+
+
+
+
+
 const ESCOPO_OBRA_CARGOS = ["diretor", "comercial", "engenheiro", "assistente_engenharia", "logistica", "encarregado", "gestor_acessorios", "gestor_manutencao", "sesmt"];
 function podeLerEscopoObra(){
   return !!usuarioAtual && (ESCOPO_OBRA_CARGOS.includes(usuarioAtual.cargo) || (typeof podeVerOrcamentos === "function" && podeVerOrcamentos()));
@@ -1588,7 +1588,7 @@ function escopoFaixaTxt(l){
   if(mn) return `acima de ${num(mn)} m`;
   return "—";
 }
-/* box = elemento onde o bloco entra; valido() = guarda de corrida (outra ficha aberta enquanto carregava) */
+
 async function renderEscopoContratado(box, obraId, valido){
   if(!box) return;
   if(!obraId || !podeLerEscopoObra()){ box.innerHTML = ""; return; }

@@ -1,20 +1,20 @@
-/* ====================================================================
-   APROPRIAÇÕES (fase 38 · 08/09/2026) — vista "Apropriações" do módulo Funcionários.
-   O SISTEMA calcula a apropriação da folha (substitui a planilha FINANCEIRO – APROPRIAÇÕES):
-   base mensal de cada funcionário = salário contábil + salário particular + gratificação e
-   adicionais + benefícios fixos (ficha sensível) + encargos por % sobre salário contábil,
-   gratificação e adicionais (apropriacao_parametros) + lançamentos variáveis do mês
-   (folha_lancamentos). O rateio por obra usa os DIAS DE PRESENÇA NO RDO; sem RDO usa a
-   alocação vigente; sem nada vai para ADM/PÁTIO. Tudo roda em fn_apropriar_competencia().
-   Quadro do mês (hotfix quadro-competencia): presença no RDO do mês, ou admissão e demissão que caem no mês (sem data de demissão,
-   vale estar ativo hoje). Os valores são os da ficha de hoje e do mês inteiro: não há histórico de salário.
-   Competência pode ser fechada (fn_fechar_competencia); só diretor reabre.
-   A leitura da planilha antiga fica só como CARGA INICIAL da ficha (banco/salário/benefícios),
-   lida no navegador com SheetJS — dados sensíveis não passam por servidor nosso.
-   Acesso: diretor e rh (RLS + fn_funcionario_sensivel).
-   Lote S51 (#141): o admin vê só os totais por obra/centro e competência (renderFuncApropTotais, lidos por
-   fn_apropriacao_totais_obra com MFA) e roda a apuração; nada por funcionário.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 let _aprop = { comp: null, folha: [], custo: [], pres: [], lanc: [], params: [], fech: null, parse: null, res: null };
 
 const APROP_RUBRICA_LBL = {
@@ -23,32 +23,32 @@ const APROP_RUBRICA_LBL = {
   seguro_vida: "Seguro de vida", vale_transporte: "Vale-transporte", vr: "VR", flash: "Flash", inss: "INSS patronal", gps: "GPS", irrf: "IRRF", fgts: "FGTS",
   contribuicao_sindical: "Contrib. sindical", consignado: "Consignado", decimo_terceiro_1: "13º 1ª parcela", decimo_terceiro_2: "13º 2ª parcela", ferias: "Férias / provisão", rescisao: "Rescisão", outro: "Outros (HE, prêmio…)",
 };
-// Grupos iguais aos de vw_custo_mao_obra_por_obra (carga do RH, 16/10: adicionais e gratificação são salário; ajuda mensal é benefício)
+
 const APROP_GRUPO = { salario_contabil: "sal", salario_particular: "sal", gratificacao: "sal", insalubridade: "sal", periculosidade: "sal", ajuda_mensal: "ben", decimo_terceiro_1: "sal", decimo_terceiro_2: "sal", ferias: "sal", rescisao: "sal",
   unimed: "ben", unimed_empresa: "ben", unimed_copart: "ben", metlife: "ben", seguro_vida: "ben", vale_transporte: "ben", vr: "ben", flash: "ben", outro: "ben",
   inss: "enc", gps: "enc", irrf: "enc", fgts: "enc", contribuicao_sindical: "enc", consignado: "enc" };
 const APROP_SENS_BENEF = ["unimed", "metlife", "unimed_copart", "seguro_vida", "vale_transporte", "vr", "flash", "consignado"];
-// Rubricas geradas por "Lançar na folha" (fase 93c; lote S54 #178: débito de folga, valor negativo). Só rótulo de leitura: não
-// entram no select do lançamento manual (o botão do RH as regrava a cada clique).
+
+
 const APROP_RUBRICA_AUTO = { he_100: "HE 100 % (RDO)", adicional_noturno: "Adicional noturno (RDO)", horas_viagem: "Horas de viagem", debito_folga: "Débito de folga (desconto)" };
 
 function apropMoeda(v){ return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function apropNorm(s){ return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim(); }
 function apropCompLabel(c){ if(!c) return "—"; const d = new Date(Number(c.slice(0, 4)), Number(c.slice(5, 7)) - 1, 1); return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }); }
 function apropCompPadrao(){ const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
-/* <option> dos últimos 18 meses (competência), com a atual marcada */
+
 function apropOpcoesMes(){
   const opcoes = []; const d = new Date(); d.setDate(1);
   for(let i = 0; i < 18; i++){ const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; opcoes.push(`<option value="${esc(v)}" ${v === _aprop.comp ? "selected" : ""}>${apropCompLabel(v)}</option>`); d.setMonth(d.getMonth() - 1); }
-  return /* html */ opcoes.join("");
+  return   opcoes.join("");
 }
-/* linha "Último cálculo" (só contagens e o total da competência) */
+
 function apropResumoCalculo(res){
   if(!res) return "";
-  // lote S54 (#178): ausencias_rdo = linhas do RDO com Falta, Folga, DSR ou Atestado, que não contam como presença
+
   return `<p class="meta" style="margin:0 0 10px;">Último cálculo: ${esc(res.funcionarios)} funcionários · ${esc(res.com_rdo)} com presença em RDO · ${esc(res.por_alocacao)} pela alocação · ${esc(res.sem_obra)} sem obra (ADM/PÁTIO) · ${esc(res.linhas)} linhas · total ${apropMoeda(res.total)}${res.sem_ficha ? ` · <span class="txt-perigo">${esc(res.sem_ficha)} no quadro do mês sem salário na ficha</span>` : ""}${res.presencas_sem_cadastro ? ` · <span class="txt-perigo">${esc(res.presencas_sem_cadastro)} nome(s) no RDO sem cadastro</span>` : ""}${res.ausencias_rdo ? ` · ${Number(res.ausencias_rdo)} ausência(s) no RDO (Falta, Folga, DSR, Atestado) não contadas` : ""}${res.fora_admissao ? ` · ${Number(res.fora_admissao)} fora por admissão depois do mês` : ""}${res.presenca_inativos ? ` · ${Number(res.presenca_inativos)} inativo(s) incluído(s) pela presença no RDO` : ""}${res.sem_admissao ? ` · <span class="txt-perigo">${Number(res.sem_admissao)} incluído(s) sem data de admissão no cadastro</span>` : ""}${res.inativos_sem_data ? ` · <span class="txt-perigo">${Number(res.inativos_sem_data)} inativo(s) fora por falta da data de demissão no cadastro</span>` : ""}</p>`;
 }
-/* tabela "Custo de mão de obra por obra / centro de custo" (linhas de vw_custo_mao_obra_por_obra) */
+
 function apropTabelaObras(linhas, tot, obraDe){
   return `<h4 style="margin:0 0 6px;">Custo de mão de obra por obra / centro de custo</h4>
     <div class="tabela-rola" style="margin-bottom:14px;"><table>
@@ -60,12 +60,12 @@ function apropSomaObras(linhas){
   return linhas.reduce((s, r) => ({ sal: s.sal + Number(r.salarios || 0), ben: s.ben + Number(r.beneficios || 0), enc: s.enc + Number(r.encargos || 0), total: s.total + Number(r.total || 0) }), { sal: 0, ben: 0, enc: 0, total: 0 });
 }
 
-/* ---------- leitura ---------- */
+
 async function apropCarregar(comp){
   const mes = comp.slice(0, 7);
   const [f, c, p, l, pa, fe] = await Promise.all([
     lerTudo(() => sb.from("folha_apropriacoes").select("funcionario_id,obra_id,centro_custo,rubrica,valor,origem_import").eq("competencia", comp)),
-    sb.from("vw_custo_mao_obra_por_obra").select("*").eq("competencia", comp),   // fase 187b: + uma coluna por rubrica (r_*)
+    sb.from("vw_custo_mao_obra_por_obra").select("*").eq("competencia", comp),
     sb.from("vw_presencas_rdo_mes").select("funcionario_id,obra_id,dias").eq("competencia", comp),
     sb.from("folha_lancamentos").select("id,funcionario_id,rubrica,valor,obra_id,observacoes").eq("competencia", comp).order("created_at"),
     sb.from("apropriacao_parametros").select("chave,valor,descricao").order("chave"),
@@ -79,7 +79,7 @@ async function renderFuncAprop(){
   const cont = $("func-conteudo");
   if(!cont) return;
   if(!funcVeSensivel()){
-    if(typeof funcVeApropriacao === "function" && funcVeApropriacao()) return renderFuncApropTotais();   // lote S51: admin
+    if(typeof funcVeApropriacao === "function" && funcVeApropriacao()) return renderFuncApropTotais();
     cont.innerHTML = `<p class="vazio">Apropriações da folha: acesso restrito à diretoria, ao RH e à administração.</p>`; return;
   }
   if(!_aprop.comp) _aprop.comp = apropCompPadrao();
@@ -94,7 +94,7 @@ async function renderFuncAprop(){
   const funcs = new Set(_aprop.folha.map(r => r.funcionario_id));
   const semObra = _aprop.folha.filter(r => !r.obra_id).reduce((s, r) => s + Number(r.valor || 0), 0);
 
-  // por funcionário: valores + obras com dias
+
   const presPorFunc = new Map();
   _aprop.pres.forEach(p => { const a = presPorFunc.get(p.funcionario_id) || []; a.push(`${mapaObras?.[p.obra_id] || "obra"} (${p.dias}d)`); presPorFunc.set(p.funcionario_id, a); });
   const porFunc = new Map();
@@ -109,7 +109,7 @@ async function renderFuncAprop(){
   const listaFiltrada = listaFunc.filter(a => !termo || a.nome.toLowerCase().includes(termo));
   const FONTE_LBL = { rdo: "RDO", alocacao: "alocação", sem_obra: "sem obra", lancamento: "lançamento" };
 
-  // cobertura do cadastro: ativos sem ficha de folha (não entraram na apropriação)
+
   const ativos = _funcs.filter(f => f.ativo !== false && f.status !== "demitido");
   const semFicha = _aprop.folha.length ? ativos.filter(f => !funcs.has(f.id)) : [];
 
@@ -194,11 +194,11 @@ async function renderFuncAprop(){
   });
 }
 
-/* ---------- lote S51 (#141): visão do admin ----------
-   Só os totais por obra/centro de custo da competência, lidos por fn_apropriacao_totais_obra() (security definer, sem linha
-   por funcionário, exige MFA nesta sessão), e o botão Calcular apropriação (fn_apropriar_competencia, que devolve só
-   contagens e o total). Ficam com o RH e a diretoria: a tabela por funcionário, os lançamentos do mês, os parâmetros de
-   encargos, fechar/reabrir a competência e a carga inicial da ficha (que grava a ficha sensível). */
+
+
+
+
+
 async function renderFuncApropTotais(){
   const cont = $("func-conteudo");
   if(!cont) return;
@@ -249,9 +249,9 @@ async function renderFuncApropTotais(){
   });
 }
 
-/* ---------- ações ---------- */
+
 async function apropCalcular(){
-  // não há histórico de salário: mês passado é calculado com a ficha de hoje e substitui as linhas gravadas
+
   if(_aprop.comp < hojeISO().slice(0, 7) + "-01"
      && !confirm(`Os salários e benefícios usados são os de hoje, não os de ${apropCompLabel(_aprop.comp)}. As linhas atuais do mês serão substituídas. Calcular?`)) return;
   const { data, error } = await sb.rpc("fn_apropriar_competencia", { p_comp: _aprop.comp });
@@ -282,7 +282,7 @@ async function apropSalvarParams(){
   aviso("app-aviso", "Parâmetros salvos. Recalcule a apropriação para aplicar.", "ok");
 }
 
-/* ---------- carga inicial: leitura da planilha antiga (só ficha sensível) ---------- */
+
 function apropNum(v){
   if(v == null || v === "" || v === " ") return null;
   if(typeof v === "number") return isFinite(v) ? v : null;
@@ -356,14 +356,14 @@ async function apropConfirmarFicha(){
   await renderFuncAprop();
 }
 
-/* ---------- fase 187b (#291): importação dos relatórios do mês e apropriação por rubrica ----------
-   A Jucirlene sobe os relatórios da folha do mês (.xlsx, .xls ou .csv). A leitura é toda no navegador (SheetJS): nome,
-   CPF e salário não passam por servidor nosso nem pelo chat. O app acha o cabeçalho (coluna de nome do funcionário),
-   sugere a rubrica de cada coluna pelo título (dá para trocar), casa cada pessoa com o cadastro pela matrícula ou pelo
-   nome e mostra a conferência antes de gravar: total por rubrica do arquivo, total que será gravado e quem ficou sem
-   casamento. Os totais da empresa (GPS, contribuição sindical patronal, seguro de vida) são digitados e o banco divide
-   pela proporção do salário de cada pessoa (folha_importar_competencia, RH/diretoria em aal2). A competência fica
-   aberta: o app não fecha. Depois de gravar, "Calcular apropriação" rateia pelos dias de RDO, como sempre (D6). */
+
+
+
+
+
+
+
+
 const APROP_IMP_SUGESTAO = [
   [/SALARIO.*PARTICULAR/, "salario_particular"], [/GRATIFICA/, "gratificacao"], [/INSALUBR/, "insalubridade"],
   [/PERICULOS/, "periculosidade"], [/^(SALARIO|SAL\.? BASE|VENCIMENTO)/, "salario_contabil"],
@@ -373,7 +373,7 @@ const APROP_IMP_SUGESTAO = [
   [/^VR\b|VALE.?REFEI/, "vr"], [/FLASH/, "flash"], [/SINDICA/, "contribuicao_sindical"], [/CONSIGNADO/, "consignado"],
   [/RESCIS/, "rescisao"],
 ];
-// rubricas que o relatório traz só como total da empresa (D7): digitadas, divididas pela proporção do salário
+
 const APROP_IMP_EMPRESA = [["gps", "GPS (total da guia)"], ["contribuicao_sindical", "Contribuição sindical patronal"], ["seguro_vida", "Seguro de vida (total da apólice)"]];
 const APROP_IMP_NOME = /^(NOME|FUNCIONARIO|EMPREGADO|COLABORADOR)/;
 const APROP_IMP_MAT = /^(MATRIC|CHAPA|COD(IGO)?\b|COD\.)/;
@@ -396,7 +396,7 @@ function apropImportarBloco(fechada){
       <p class="meta" style="margin:6px 0 0;">Agora clique em <strong>Calcular apropriação</strong> para ratear pelos dias de RDO. A competência continua aberta.</p></div>` : "";
   return `<details style="margin-bottom:12px;" ${res ? "open" : ""}><summary style="cursor:pointer;"><strong>Importar relatórios do mês</strong> <span class="meta">— os valores de cada rubrica vêm da folha do mês, não da ficha</span></summary>
       <p class="meta" style="margin:8px 0;">${fechada ? "Competência fechada: não se importa em mês fechado." : `<label class="btn-sec btn-sm" style="cursor:pointer;" title="Relatórios da folha do mês em .xlsx, .xls ou .csv; pode escolher vários">Escolher relatórios (.xlsx, .xls, .csv)<input type="file" id="aprop-imp-arquivo" accept=".xlsx,.xls,.xlsm,.csv" multiple style="display:none;" /></label> A leitura é feita no seu navegador. Reimportar substitui a importação anterior desta competência.`}</p>
-      ${/* html */ conf}
+      ${  conf}
       <div id="aprop-imp-area"></div>
     </details>`;
 }
@@ -427,7 +427,7 @@ async function apropImpLer(files){
   apropImpRender();
 }
 
-/* monta as linhas da RPC e a conferência; nada sai do navegador até "Gravar importação" */
+
 function apropImpLinhas(){
   const imp = _aprop.imp; const porMat = new Map(); const porNome = new Map();
   _funcs.forEach(f => { if(f.matricula) porMat.set(apropImpMat(f.matricula), f.id); porNome.set(apropNorm(f.nome), f.id); });
@@ -497,7 +497,7 @@ async function apropImpGravar(){
   await renderFuncAprop();
 }
 
-/* tabela obra × rubrica (colunas r_* de vw_custo_mao_obra_por_obra) e exportação .xlsx */
+
 function apropRubricasPresentes(linhas){
   const rotulos = { ...APROP_RUBRICA_LBL, ...APROP_RUBRICA_AUTO };
   return Object.keys(rotulos).filter(k => linhas.some(r => Number(r["r_" + k] || 0) !== 0)).map(k => [k, rotulos[k]]);

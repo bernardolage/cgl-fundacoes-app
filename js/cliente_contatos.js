@@ -1,16 +1,16 @@
-/* ====================================================================
-   Fase 183a: contatos do cliente por papel (spec docs/specs/fase-183-contatos-signatarios-cliente.md).
-   Prefixo cli-ct- no DOM e cct nas funções. Tabelas cliente_contatos e cliente_contato_obras; o banco espelha o principal
-   Comercial em clientes.contato_nome/email/telefone e o principal Financeiro em clientes.email_nf (gatilho).
-   Onde aparece:
-     - ficha do cliente, aba Contatos: lista densa, incluir e editar na própria aba, principal por papel, obras;
-     - aba Fiscal do cliente: o e-mail da nota sugere os contatos Financeiro;
-     - orçamento: escolha entre os contatos Comercial do cliente e "Gravar como contato do cliente"; o envio sugere
-       os e-mails desses contatos;
-     - medição: "Aprovador pelo cliente" entre os contatos "Aprova a medição" da obra (ou do cliente); sai no boletim;
-     - ficha da obra e do cliente: aviso de pendência (vw_cliente_contatos_pendencias, fora de vw_sc_acoes).
-   Sem a migration no banco, tudo some sem erro (a aba diz que chega com a atualização do banco).
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const CCT_PAPEIS = [["comercial", "Comercial"], ["aprova_medicao", "Aprova a medição"], ["financeiro", "Financeiro"]];
 const CCT_COLS = "id,cliente_id,nome,cargo,email,telefone,papeis,principal_em,ativo,origem,observacoes";
@@ -29,7 +29,7 @@ function cctSemTabela(err){
 function cctPapelRotulo(p){ const x = CCT_PAPEIS.find(a => a[0] === p); return x ? x[1] : p; }
 function cctPodeEditar(){ return typeof cliPodeEditar === "function" ? !!cliPodeEditar() : false; }
 
-/* contatos de um cliente, com as obras ligadas (sem obra = vale para todas) */
+
 async function cctLer(clienteId, soAtivos){
   let q = sb.from("cliente_contatos").select(CCT_COLS).eq("cliente_id", clienteId).order("nome");
   if(soAtivos) q = q.eq("ativo", true);
@@ -44,7 +44,7 @@ async function cctLer(clienteId, soAtivos){
   return { contatos: (r.data || []).map(c => ({ ...c, obras: vinc.filter(x => x.contato_id === c.id).map(x => x.obra_id) })) };
 }
 
-/* ---------------- ficha do cliente: aba Contatos ---------------- */
+
 async function carregarCliContatos(clienteId){
   const box = $("cli-ct-conteudo");
   if(!box) return;
@@ -64,7 +64,7 @@ async function carregarCliContatos(clienteId){
     sb.from("obras").select("id,codigo,nome,status").eq("cliente_id", clienteId).order("codigo"),
     sb.from("vw_cliente_contatos_pendencias").select("tipo,obra_id,obra_codigo,texto").eq("cliente_id", clienteId)
   ]);
-  if(_cctCliente !== clienteId) return;   // abriu outro cliente enquanto carregava
+  if(_cctCliente !== clienteId) return;
   if(r.erro){
     box.innerHTML = _cctSemTabela ? uiVazio("Os contatos por papel chegam com a atualização do banco da fase 183a.")
                                   : uiErro("Não foi possível carregar os contatos: " + r.erro.message);
@@ -132,17 +132,17 @@ function cctFormHTML(c){
   return `<div class="cli-ct-form" id="cli-ct-form" data-id="${esc(c ? c.id : "")}">
     <h3 class="cli-ct-form-tit">${c ? "Editar contato" : "Novo contato"}</h3>
     <div class="grade">
-      ${/* html */ uiCampo({ id: "cli-ct-nome", rotulo: "Nome", valor: c ? c.nome : "", obrigatorio: true })}
-      ${/* html */ uiCampo({ id: "cli-ct-cargo", rotulo: "Cargo", valor: c ? c.cargo : "", placeholder: "ex.: compras, fiscal da obra" })}
-      ${/* html */ uiCampo({ id: "cli-ct-email", rotulo: "E-mail", tipo: "email", valor: c ? c.email : "" })}
-      ${/* html */ uiCampo({ id: "cli-ct-tel", rotulo: "Telefone", tipo: "tel", valor: c ? c.telefone : "" })}
+      ${  uiCampo({ id: "cli-ct-nome", rotulo: "Nome", valor: c ? c.nome : "", obrigatorio: true })}
+      ${  uiCampo({ id: "cli-ct-cargo", rotulo: "Cargo", valor: c ? c.cargo : "", placeholder: "ex.: compras, fiscal da obra" })}
+      ${  uiCampo({ id: "cli-ct-email", rotulo: "E-mail", tipo: "email", valor: c ? c.email : "" })}
+      ${  uiCampo({ id: "cli-ct-tel", rotulo: "Telefone", tipo: "tel", valor: c ? c.telefone : "" })}
     </div>
-    <fieldset class="cli-ct-grupo"><legend>Papéis</legend>${/* html */ papeis}</fieldset>
+    <fieldset class="cli-ct-grupo"><legend>Papéis</legend>${  papeis}</fieldset>
     <fieldset class="cli-ct-grupo" id="cli-ct-obras-box"${p.includes("aprova_medicao") ? "" : " hidden"}>
       <legend>Obras em que aprova a medição <span class="meta">(nenhuma marcada = todas as obras do cliente)</span></legend>
-      <div class="cli-ct-obras">${/* html */ obras}</div>
+      <div class="cli-ct-obras">${  obras}</div>
     </fieldset>
-    ${/* html */ uiCampo({ id: "cli-ct-obs", rotulo: "Observações", tipo: "textarea", valor: c ? c.observacoes : "", linhas: 2 })}
+    ${  uiCampo({ id: "cli-ct-obs", rotulo: "Observações", tipo: "textarea", valor: c ? c.observacoes : "", linhas: 2 })}
     <label class="check-inline"><input type="checkbox" id="cli-ct-ativo"${c && c.ativo === false ? "" : " checked"}> Ativo (inativo deixa de ser principal)</label>
     <div class="cli-ct-form-acoes">
       ${c ? '<button type="button" class="ui-btn ui-btn-perigo" data-cli-ct-acao="excluir">Excluir</button>' : ""}
@@ -176,7 +176,7 @@ function cctLerForm(){
   };
 }
 
-/* regra que o banco também confere; aqui só para a mensagem sair na hora */
+
 function cctValidar(reg){
   if(String(reg.nome || "").length < 2) return "Informe o nome do contato.";
   if(!reg.papeis.length) return "Marque pelo menos um papel.";
@@ -228,8 +228,8 @@ async function excluirCliContato(){
   carregarCliContatos(_cctCliente);
 }
 
-/* o gatilho do banco muda clientes.contato_nome/email/telefone/email_nf: traz para o formulário aberto, senão o próximo
-   "Salvar" do cliente gravaria de volta o valor antigo */
+
+
 async function cctRecarregarEspelho(){
   if(!_cctCliente || typeof cliEditId === "undefined" || cliEditId !== _cctCliente) return;
   const { data, error } = await sb.from("clientes").select("contato_nome,email,telefone,email_nf").eq("id", _cctCliente).single();
@@ -238,7 +238,7 @@ async function cctRecarregarEspelho(){
   por("cli-contato", data.contato_nome); por("cli-email", data.email); por("cli-tel", data.telefone); por("cli-email-nf", data.email_nf);
 }
 
-/* aba Fiscal: o e-mail da nota sugere os contatos Financeiro */
+
 function cctAtualizarDatalistNf(){
   const inp = $("cli-email-nf"), dl = $("cli-ct-dl-nf");
   if(!inp || !dl) return;
@@ -249,7 +249,7 @@ function cctAtualizarDatalistNf(){
   if(dica) dica.textContent = fin.length ? `Contatos Financeiro: ${fin.map(c => c.email).join(", ")}` : "";
 }
 
-/* ---------------- avisos de pendência (cliente e obra) ---------------- */
+
 function cctAvisoCliente(pend){
   const box = $("cli-ct-aviso");
   if(!box) return;
@@ -274,7 +274,7 @@ async function cctAvisoObra(obraId){
   box.hidden = false;
 }
 
-/* ---------------- orçamento ---------------- */
+
 async function cctOrcCarregar(clienteId){
   const box = $("orc-ct-box"), sel = $("orc-ct-sel");
   if(!box || !sel) return;
@@ -302,7 +302,7 @@ function cctOrcEscolher(){
   cctOrcBotao();
 }
 
-/* "Gravar como contato do cliente" aparece quando o que está digitado não é um contato já cadastrado */
+
 function cctOrcBotao(){
   const b = $("btn-orc-ct-gravar");
   if(!b) return;
@@ -326,7 +326,7 @@ async function cctOrcGravar(){
   await cctOrcCarregar(clienteId);
 }
 
-/* envio da proposta: os e-mails dos contatos ativos do cliente (Comercial primeiro) viram botões que somam em "Para" */
+
 async function cctOrcSugerirEmails(raiz, clienteId){
   const alvo = raiz && raiz.querySelector("#orc-env-sug"), para = raiz && raiz.querySelector("#orc-env-para");
   if(!alvo || !para || !clienteId || _cctSemTabela) return;
@@ -347,8 +347,8 @@ async function cctOrcSugerirEmails(raiz, clienteId){
   });
 }
 
-/* ---------------- medição: aprovador pelo cliente ---------------- */
-/* orig = o que está gravado na medição (troca de obra mantém o original para mandar a limpeza ao salvar) */
+
+
 async function cctMedPreencher(obraId, valor, orig){
   const campo = $("med-aprov-cli-campo"), sel = $("med-aprov-cli");
   if(!campo || !sel) return;
@@ -374,7 +374,7 @@ async function cctMedPreencher(obraId, valor, orig){
   sel.disabled = false;
 }
 
-/* só manda a coluna quando o campo apareceu (banco com a migration) e o valor mudou */
+
 function cctMedParaGravar(){
   const campo = $("med-aprov-cli-campo"), sel = $("med-aprov-cli");
   if(!campo || !sel || campo.hidden || _cctSemTabela) return {};
@@ -389,7 +389,7 @@ async function cctNomeContato(id){
   return data.cargo ? `${data.nome} (${data.cargo})` : data.nome;
 }
 
-/* ---------------- ligações ---------------- */
+
 function ligarCliContatos(){
   $("btn-cli-ct-novo")?.addEventListener("click", () => abrirCliContato(null));
   $("cli-ct-conteudo")?.addEventListener("click", ev => {
@@ -405,17 +405,17 @@ function ligarCliContatos(){
     const p = ev.target.closest("[data-cli-ct-papel]");
     if(p && p.dataset.cliCtPapel === "aprova_medicao"){ const o = $("cli-ct-obras-box"); if(o) o.hidden = !p.checked; }
     const pr = ev.target.closest("[data-cli-ct-principal]");
-    if(pr && pr.checked){   // principal só em papel marcado
+    if(pr && pr.checked){
       const papel = document.querySelector(`[data-cli-ct-papel="${pr.dataset.cliCtPrincipal}"]`);
       if(papel && !papel.checked){ papel.checked = true; if(pr.dataset.cliCtPrincipal === "aprova_medicao"){ const o = $("cli-ct-obras-box"); if(o) o.hidden = false; } }
     }
   });
-  // orçamento
+
   $("orc-cliente")?.addEventListener("change", () => cctOrcCarregar($("orc-cliente").value));
   $("orc-ct-sel")?.addEventListener("change", cctOrcEscolher);
   ["orc-contato-nome", "orc-contato-email"].forEach(id => $(id)?.addEventListener("input", debounce(cctOrcBotao)));
   $("btn-orc-ct-gravar")?.addEventListener("click", () => comBotaoTravado("btn-orc-ct-gravar", cctOrcGravar));
-  // medição
+
   $("med-obra")?.addEventListener("change", () => cctMedPreencher($("med-obra").value, "", $("med-aprov-cli")?.dataset.orig || ""));
 }
 

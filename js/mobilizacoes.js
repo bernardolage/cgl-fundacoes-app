@@ -1,33 +1,33 @@
-/* ====================================================================
-   Módulo: Mobilizações — quadro obra × equipamento (substitui o Trello)
-   Fase 157d (11/11/2026): o quadro passou a ser por contrato (js/mobilizacoes_contrato.js); o registro continua por máquina.
-   Fase 34 (02/09/2026). Espelha as 7 colunas do quadro "MOBILIZAÇÕES",
-   mas a coluna é DERIVADA (vw_mobilizacoes_quadro.coluna): ninguém arrasta
-   card. O que move o card: mobilizacoes.status (botões de ação no card),
-   obras.status e medicoes.status.
 
-   Regras (SPEC_MOBILIZACOES.md, decisões de 01/09/2026):
-   - unidade = obra × equipamento; TAG nula = "XX" (decidida na mobilização)
-   - mobilizacoes.status é a única fonte de equipamentos.localizacao_* (trigger)
-   - em_transito gera remessa em movimentacoes_ativos; desmobilizar gera retorno
-   - pendências por setor nascem do modelo ao criar; "pendência aberta" não
-     bloqueia mobilizar (aviso), senão a equipe volta pro WhatsApp
-   ==================================================================== */
 
-let _mobCards      = [];      // linhas de vw_mobilizacoes_quadro
-let _mobPendSetor  = [];      // linhas de vw_mobilizacao_pendencias_setor
-let _mobView       = "quadro"; // quadro (contratos) | maquinas | cronograma (fase 189a) | grafico (fase 189b) | lista | pendencias | regularizar
-let _mobReg        = null;    // fase 157a: linhas de vw_mobilizacoes_regularizar (null = view indisponível)
-let _mobRegFiltro  = "";      // fase 157a: tipo escolhido na visão Para regularizar (vazio = todos)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _mobCards      = [];
+let _mobPendSetor  = [];
+let _mobView       = "quadro";
+let _mobReg        = null;
+let _mobRegFiltro  = "";
 let _mobCarregado  = false;
-let _mobAberta     = null;    // registro de mobilizacoes aberto no drawer
-let _mobAbertaCard = null;    // linha da view correspondente
-let _mobPendAberta = [];      // pendências da mobilização aberta
-let _mobEquips     = [];      // equipamentos ativos
-let _mobObras      = [];      // obras candidatas a nova mobilização
-let _mobProfiles   = [];      // responsáveis (profiles ativos)
-let _mobKit        = [];      // ids dos acessórios separados para a mobilização aberta (mobilizacoes.acessorios_ids)
-let _mobApoioSel   = { mob: [], mobn: [] };   // fase 80: TAGs de apoio escolhidas na ficha (mob) e na nova mobilização (mobn)
+let _mobAberta     = null;
+let _mobAbertaCard = null;
+let _mobPendAberta = [];
+let _mobEquips     = [];
+let _mobObras      = [];
+let _mobProfiles   = [];
+let _mobKit        = [];
+let _mobApoioSel   = { mob: [], mobn: [] };
 const MOB_APOIO_TIPOS = ["bomba", "compressor", "gerador"];
 
 const MOB_COLUNAS = [
@@ -41,12 +41,12 @@ const MOB_COLUNAS = [
 ];
 const MOB_STATUS = { prevista: "Prevista", em_preparacao: "Em preparação", em_transito: "Em trânsito", em_obra: "Em obra", desmobilizada: "Desmobilizada", cancelada: "Cancelada" };
 const MOB_SETOR  = { engenharia: "Engenharia", sesmt: "SESMT", rh: "RH", manutencao: "Manutenção", almoxarifado: "Almoxarifado", logistica: "Logística", comercial: "Comercial" };
-// profiles.cargo → setor cujas pendências a pessoa vê em "Minhas pendências"
+
 const MOB_CARGO_SETOR = { engenheiro: "engenharia", assistente_engenharia: "engenharia", encarregado: "engenharia", operador: "engenharia", sesmt: "sesmt", rh: "rh", mecanico: "manutencao", almoxarife: "almoxarifado", comprador: "almoxarifado", gestor_acessorios: "almoxarifado", gestor_manutencao: "almoxarifado", logistica: "logistica", comercial: "comercial" };
 const MOB_TIPO_ICONE = { helice: "🌀", secante: "🌀", raiz: "🌱", trado: "🔩", outro: "⚙️" };
-// fase 157a: motivo da desmobilização (check em mobilizacoes.desmob_motivo; a RPC mobilizacao_desmobilizar confere de novo)
+
 const MOB_DESMOB_MOTIVOS = { fim_contrato: "Fim do contrato", manutencao_sede: "Manutenção na sede", troca_maquina: "Troca de máquina", paralisacao: "Paralisação da obra", outro: "Outro" };
-// fase 157a: pendências da visão Para regularizar (vw_mobilizacoes_regularizar), na ordem da tela
+
 const MOB_REG_TIPOS = {
   mob_nova:                { rot: "Mobilização nova a planejar", acao: "Abrir", dica: "Criada nos últimos 7 dias e ainda prevista: definir TAG, data e viagem." },
   obra_sem_mobilizacao:    { rot: "Obra com diário e sem mobilização", acao: "Mobilizar", dica: "A obra já tem RDO, mas nenhuma mobilização: a localização das máquinas não acompanha." },
@@ -56,7 +56,7 @@ const MOB_REG_TIPOS = {
   mob_encerrada_sem_volta: { rot: "Desmobilizada sem viagem de volta", acao: "Abrir", dica: "Ligue a viagem que trouxe a máquina de volta." },
   viagem_mob_solta:        { rot: "Viagem de mobilização sem a mobilização", acao: "Abrir viagem", dica: "Na ficha da viagem, escolha a mobilização que ela atende." }
 };
-// transições válidas por status atual (quem pode é o RLS + regra no confirmar)
+
 const MOB_TRANSICOES = {
   prevista:      [["em_preparacao", "▶ Iniciar preparação", "btn"], ["cancelada", "✕ Cancelar", "btn-sec txt-perigo"]],
   em_preparacao: [["em_transito", "🚚 Saiu para a obra (gera remessa)", "btn"], ["cancelada", "✕ Cancelar", "btn-sec txt-perigo"]],
@@ -64,20 +64,20 @@ const MOB_TRANSICOES = {
   em_obra:       [["desmobilizada", "↩ Desmobilizar (gera retorno)", "btn"]],
   desmobilizada: [], cancelada: []
 };
-/* fase 95: quem cria e edita a mobilização (dados, kit e status). Espelha mobilizacoes_write +
-   mobilizacoes_insert_acessorios/mobilizacoes_update_acessorios no banco; lá has_role() já cobre diretor, aqui a
-   lista precisa trazê-lo. Quem está fora vê a ficha sem "Salvar", sem botões de status e sem "+ Nova mobilização". */
+
+
+
 const MOB_CARGOS_EDITAM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica", "gestor_acessorios", "gestor_manutencao"];
 const MOB_MSG_SEM_PERMISSAO = "Seu cargo não pode alterar esta mobilização.";
 function mobPodeEditar(){ return !!usuarioAtual && MOB_CARGOS_EDITAM.includes(usuarioAtual.cargo); }
 
 function mobSetorDoUsuario(){
   const cargo = usuarioAtual?.cargo;
-  if(!cargo || ["diretor", "admin", "auditor"].includes(cargo)) return null; // vê todos
+  if(!cargo || ["diretor", "admin", "auditor"].includes(cargo)) return null;
   return MOB_CARGO_SETOR[cargo] || null;
 }
 
-/* ---------- Carga ---------- */
+
 async function carregarMobilizacoes(forcar){
   if(_mobCarregado && !forcar) return;
   const cont = $("mob-conteudo");
@@ -88,8 +88,8 @@ async function carregarMobilizacoes(forcar){
     sb.from("equipamentos").select("id,codigo,nome,tipo,status,localizacao_tipo,localizacao_obra_id").eq("ativo", true).order("codigo"),
     sb.from("obras").select("id,codigo,nome,status,contrato_id,cliente_id,cidade,uf").not("status", "in", "(cancelada)").order("codigo", { ascending: false }),
     sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome"),
-    sb.from("vw_mobilizacoes_regularizar").select("*"),  // fase 157a: pendências (erro = migration ainda não aplicada: a visão some)
-    mobCarregarContratos()                                // fase 157d: cartão do contrato, máquinas, equipe e OS abertas
+    sb.from("vw_mobilizacoes_regularizar").select("*"),
+    mobCarregarContratos()
   ]);
   if(qRes.error){ aviso("app-aviso", "Não foi possível carregar as mobilizações: " + qRes.error.message, "erro"); return; }
   _mobReg       = rRes.error ? null : (rRes.data || []);
@@ -120,12 +120,12 @@ function preencherFiltrosMob(){
   if(selSetor && !selSetor.options.length){
     selSetor.innerHTML = '<option value="">Qualquer setor pendente</option>' + Object.entries(MOB_SETOR).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
   }
-  mobPreencherFiltrosCtr();   // fase 157d: tipo de serviço e responsável
+  mobPreencherFiltrosCtr();
 }
 
-/* ---------- Render ---------- */
+
 function renderMobilizacoes(){
-  // KPIs (fase 157d: "ativas" = contratos com máquina viva; pendências somam as das máquinas e as do contrato)
+
   const ativos = _mobCards.filter(c => ["novo_contrato", "mobilizando", "andamento_helice_secante", "andamento_raiz_trado"].includes(c.coluna));
   const ctrAtivos = _mobContratos.filter(k => k.coluna !== "encerradas");
   const pendAb = ativos.reduce((s, c) => s + (Number(c.pendencias_abertas) || 0), 0) + ctrAtivos.reduce((s, k) => s + (Number(k.pend_contrato_abertas) || 0), 0);
@@ -139,22 +139,22 @@ function renderMobilizacoes(){
   const minhas = _mobPendSetor.filter(p => !p.concluida && (!mobSetorDoUsuario() || p.setor === mobSetorDoUsuario())).length;
   kp("mob-kpi-minhas", minhas);
   const badge = $("mob-minhas-badge"); if(badge) badge.textContent = minhas || "";
-  // fase 95: "+ Nova mobilização" só para quem cria (mobilizacoes_write / mobilizacoes_insert_acessorios no banco)
+
   const bn = $("btn-mob-nova"); if(bn) bn.style.display = mobPodeEditar() ? "" : "none";
 
-  // fase 157a: visão Para regularizar (some sem a view no banco)
+
   const breg = document.querySelector('#sec-mobilizacoes .serv-view-btn[data-view="regularizar"]');
   if(breg) breg.style.display = _mobReg ? "" : "none";
   if($("mob-reg-badge")) $("mob-reg-badge").textContent = _mobReg && _mobReg.length ? _mobReg.length : "";
   if(_mobView === "regularizar" && !_mobReg) _mobView = "quadro";
 
   document.querySelectorAll("#sec-mobilizacoes .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _mobView));
-  // fase 157d: o filtro de setor só vale em Minhas pendências
+
   if($("mob-f-setor")) $("mob-f-setor").style.display = _mobView === "pendencias" ? "" : "none";
-  // fase 189a: o Cronograma tem filtros próprios (metodologia, cliente, situação, livre até); a busca continua valendo
+
   ["mob-f-cliente", "mob-f-tag", "mob-f-tipo", "mob-f-resp"].forEach(id => { if($(id)) $(id).style.display = ["cronograma", "grafico"].includes(_mobView) ? "none" : ""; });
   if(_mobView === "cronograma" && typeof renderCronogramaMob === "function") renderCronogramaMob();
-  else if(_mobView === "grafico" && typeof renderGraficoMob === "function") renderGraficoMob();   // fase 189b
+  else if(_mobView === "grafico" && typeof renderGraficoMob === "function") renderGraficoMob();
   else if(_mobView === "pendencias") renderMinhasPendenciasMob();
   else if(_mobView === "regularizar") renderRegularizarMob();
   else if(_mobView === "maquinas") renderPorMaquinaMob();
@@ -162,10 +162,10 @@ function renderMobilizacoes(){
   else renderQuadroMob();
 }
 
-/* ---------- Fase 157a: Para regularizar ----------
-   Uma linha por obra, mobilização ou viagem (vw_mobilizacoes_regularizar): a Logística liga a viagem pela ficha da viagem
-   (finalidade Mobilização ou Desmobilização e a mobilização), a engenharia informa a desmobilização prevista na ficha
-   da mobilização e a obra com diário sem mobilização ganha a sua pelo botão Mobilizar. Nada é ligado automaticamente. */
+
+
+
+
 function renderRegularizarMob(){
   const cont = $("mob-conteudo");
   if(!cont) return;
@@ -205,7 +205,7 @@ function renderRegularizarMob(){
 function mobLigarFiltrosReg(cont){
   cont.querySelectorAll("[data-mob-reg]").forEach(b => b.addEventListener("click", () => { _mobRegFiltro = b.dataset.mobReg; renderRegularizarMob(); }));
 }
-/* Chamado pela Sala de Comando ("Para regularizar" de mobilizações): abre o quadro nesta visão, no tipo da linha */
+
 async function mobAbrirRegularizar(filtro){
   if(!irParaSecao("mobilizacoes")) return;
   _mobView = "regularizar";
@@ -222,13 +222,13 @@ function mobBadgePend(c){
   return `<span class="mob-badge ${esc(cls)}" title="${esc(setores || "todas as pendências concluídas")}">${c.tem_atrasada ? "⏰ " : ""}${txt}</span>`;
 }
 
-/* fase 157a: prevista criada nos últimos 7 dias (tipo mob_nova da vw_mobilizacoes_regularizar) */
+
 function mobEhNova(id){ return !!(_mobReg && _mobReg.some(r => r.tipo === "mob_nova" && r.mobilizacao_id === id)); }
 
-/* fase 157d: o cartão por máquina, a ordem por TAG e o quadro de colunas antigo saíram; o quadro agora é por contrato
-   (renderQuadroMob em js/mobilizacoes_contrato.js). */
 
-/* ---------- Minhas pendências (tela do celular de cada setor) ---------- */
+
+
+
 function renderMinhasPendenciasMob(){
   const cont = $("mob-conteudo");
   if(!cont) return;
@@ -246,7 +246,7 @@ function renderMinhasPendenciasMob(){
     <span>${setorFiltro ? `Setor <strong>${esc(MOB_SETOR[setorFiltro] || setorFiltro)}</strong>` : "Todos os setores"} · <strong>${abertas.length}</strong> aberta(s)${abertas.filter(p => p.atrasada).length ? ` · <span class="txt-perigo">${abertas.filter(p => p.atrasada).length} atrasada(s)</span>` : ""}</span>
     <span class="meta">Marque a caixa ao concluir. Mobilizações já em obra não aparecem aqui.</span>
   </div>`;
-  // fase 157d: pessoas a liberar de todas as obras, em ordem de saída (SESMT e quem vê todos os setores)
+
   const pessoas = (!setorFiltro || setorFiltro === "sesmt") ? mobPessoasALiberarHTML() : "";
   if(!lista.length){ cont.innerHTML = cab + pessoas + `<p class="vazio">Nenhuma pendência para este setor.</p>`; mobLigarPessoasALiberar(cont); return; }
   const resp = (id) => (_mobProfiles.find(p => p.id === id) || {}).nome || "";
@@ -266,7 +266,7 @@ function renderMinhasPendenciasMob(){
   cont.querySelectorAll("input[data-pend]").forEach(cb => cb.addEventListener("change", () => concluirPendenciaMob(cb.dataset.pend, cb.checked, cb)));
   cont.querySelectorAll(".mob-pend-card").forEach(a => a.addEventListener("click", (e) => {
     e.preventDefault();
-    if(a.dataset.mob) abrirMobilizacao(a.dataset.mob, "pendencias"); else abrirContratoMob(a.dataset.obra, "pendencias");   // fase 157d: pendência do contrato
+    if(a.dataset.mob) abrirMobilizacao(a.dataset.mob, "pendencias"); else abrirContratoMob(a.dataset.obra, "pendencias");
   }));
   mobLigarPessoasALiberar(cont);
 }
@@ -276,13 +276,13 @@ async function concluirPendenciaMob(id, concluida, cb){
   if(error){ aviso("app-aviso", "Não foi possível atualizar a pendência: " + error.message, "erro"); if(cb) cb.checked = !concluida; return; }
   const p = _mobPendSetor.find(x => x.id === id); if(p) p.concluida = concluida;
   const pa = _mobPendAberta.find(x => x.id === id) || _mobPendObra.find(x => x.id === id); if(pa) pa.concluida = concluida;
-  // recarrega o quadro em segundo plano (badges de pendência mudam)
+
   carregarMobilizacoes(true);
 }
 
-/* ---------- Drawer da mobilização ---------- */
-/* fase 157d: abre a ficha do contrato com esta máquina escolhida (aba = qual aba mostrar). A Minha fila manda o id da
-   obra quando a pendência é do contrato: aí abre o contrato. */
+
+
+
 async function abrirMobilizacao(id, aba){
   if(!_mobCarregado) await carregarMobilizacoes(false);
   if(!_mobLive.some(x => x.id === id) && _mobLive.some(x => x.obra_id === id)) return abrirContratoMob(id, aba || "pendencias");
@@ -296,7 +296,7 @@ async function abrirMobilizacao(id, aba){
     mobCarregarSugestoesEquipe(m.obra_id)
   ]);
   if(aba) _mobAba = aba;
-  else if(!_mobAberta || _mobAberta.obra_id !== m.obra_id) _mobAba = "maquinas";   // outro contrato: começa em Máquinas
+  else if(!_mobAberta || _mobAberta.obra_id !== m.obra_id) _mobAba = "maquinas";
   _mobAberta = m;
   _mobAbertaCard = _mobCards.find(c => c.id === id) || {};
   _mobPendAberta = pend || [];
@@ -307,11 +307,11 @@ async function abrirMobilizacao(id, aba){
 }
 function fecharMobilizacao(){
   $("mob-modal").style.display = "none"; _mobAberta = null;
-  // Aberta a partir da ficha da obra (aba Mobilização & equipamentos): recarrega a aba ao fechar
+
   if(typeof obraEditId !== "undefined" && obraEditId && document.querySelector("#sec-obras.ativa") && typeof carregarEquipamentosDaObra === "function") carregarEquipamentosDaObra(obraEditId);
 }
 
-/* fase 80: onde a TAG está agora (vem do status da mobilização, pelo gatilho) */
+
 function mobEquipOnde(e){
   const o = e.localizacao_obra_id ? _mobObras.find(x => x.id === e.localizacao_obra_id) : null;
   switch(e.localizacao_tipo){
@@ -322,8 +322,8 @@ function mobEquipOnde(e){
     default: return "na base";
   }
 }
-/* fase 80: TAGs de apoio por busca (bomba, compressor e gerador; "todos os tipos" para segunda perfuratriz ou
-   caminhão). Cada resultado diz onde a TAG está; a que está em outra obra aparece com aviso, não some. */
+
+
 function mobApoioHTML(pref){
   return `<div id="${esc(pref)}-apoio-chips" class="mob-acoes" style="margin:0 0 6px;"></div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
@@ -368,9 +368,9 @@ function mobEquipOpts(sel, filtro){
   return '<option value="">— XX (a definir) —</option>' + lista.map(e => `<option value="${esc(e.id)}"${e.id === sel ? " selected" : ""}>${esc(e.codigo)} — ${esc(e.nome)} · ${esc(mobEquipOnde(e))}</option>`).join("");
 }
 
-/* fase 157d: a ficha virou ficha do contrato com abas (renderDrawerMob em js/mobilizacoes_contrato.js) */
 
-/* fase 157a: sugere a desmobilização prevista pela previsão de término da obra (fase 140); só sugere, quem grava é o usuário */
+
+
 async function mobSugerirDesmobPrev(m){
   const box = $("mob-desmob-sug");
   if(!box || m.data_desmob_prev || !["prevista", "em_preparacao", "em_transito", "em_obra"].includes(m.status)) return;
@@ -380,9 +380,9 @@ async function mobSugerirDesmobPrev(m){
   $("mob-desmob-usar")?.addEventListener("click", e => { e.preventDefault(); $("mob-data-desmob-prev").value = data.previsao_termino; });
 }
 
-/* ---------- Fase 89: viagens da mobilização (ida e volta) ----------
-   Chips "Viagem VG-…" na seção 3 e o botão "Programar viagem" (cria a viagem de ida planejada e abre a ficha
-   em Logística para pôr caminhão, motorista e data). A ficha da viagem volta para esta mobilização. */
+
+
+
 async function mobRenderViagens(){
   const box = $("mob-viagens"); const m = _mobAberta; if(!box || !m) return;
   const ids = [m.viagem_ida_id, m.viagem_volta_id].filter(Boolean);
@@ -394,7 +394,7 @@ async function mobRenderViagens(){
     const st = (typeof STATUS !== "undefined" && STATUS.viagem && STATUS.viagem[v.status]) || { label: v.status };
     return `<a href="#" class="mob-chip ${v.status === "concluida" ? "ok" : "st"}" data-vg="${esc(v.id)}" title="abrir a viagem em Logística">🚚 ${esc(rot)} ${esc(v.numero)} · ${esc(st.label)} · ${v.caminhao ? esc(v.caminhao.codigo) : "sem caminhão"}${v.funcionario ? " · " + esc(v.funcionario.nome) : ""}</a>`;
   };
-  // fase 95: além de operar a viagem, precisa gravar o vínculo em mobilizacoes (senão a viagem nasce órfã)
+
   const podeProgramar = pode && mobPodeEditar() && !m.viagem_ida_id && ["prevista", "em_preparacao"].includes(m.status);
   box.innerHTML = chip(m.viagem_ida_id, "Viagem de ida") + chip(m.viagem_volta_id, "Viagem de volta")
     + (podeProgramar ? `<button type="button" class="btn-sec btn-sm" id="btn-mob-programar-viagem" title="cria a viagem de mobilização (planejada) e abre a ficha para pôr caminhão, motorista e data">Programar viagem</button>` : "")
@@ -416,9 +416,9 @@ function mobAbrirViagem(id){
   abrirViagem(id, async () => { if(irParaSecao("mobilizacoes")){ await carregarMobilizacoes(false); abrirMobilizacao(mobId); } });
 }
 
-/* ---------- Fase 83: materiais da mobilização e separação ----------
-   Além do kit de acessórios, a mobilização pré-configura os materiais do almoxarifado (mobilizacao_materiais).
-   "Gerar separação" cria a lista (kit + materiais) para o almoxarife de plantão; a baixa acontece lá, ao marcar. */
+
+
+
 let _mobMatN = 0;
 function mobMatPodeEditar(){
   return !!usuarioAtual && !["concluida", "cancelada", "desmobilizada"].includes(_mobAberta?.status)
@@ -484,10 +484,10 @@ async function mobRenderSeparacao(){
   }
 }
 
-/* ---------- Kit de acessórios da mobilização ----------
-   Antes da saída: escolhe as peças (sugestão pela TAG + Ø das estacas, ou busca por marcação/jogo).
-   Na saída, viram itens da remessa (acessorio_id) e a logística só confere na tela de Movimentações.
-   Em obra: mostra o que o sistema registra na obra; a conferência do retorno acontece na movimentação. */
+
+
+
+
 function mobKitEditavel(){ return _mobAberta && ["prevista","em_preparacao"].includes(_mobAberta.status); }
 function mobAceDescr(a){ return (typeof aceDescr === "function" ? aceDescr(a) : (a.tipo || "Acessório")); }
 function mobAceOnde(a){ return typeof aceOnde === "function" ? aceOnde(a) : (a.local_tipo || ""); }
@@ -537,8 +537,8 @@ async function mobRenderKit(){
     box.querySelectorAll(".mob-kit-rem").forEach(b => b.addEventListener("click", () => { _mobKit = _mobKit.filter(id => id !== b.dataset.id); mobRenderKit(); }));
     mobLigarBuscaKit(cat);
   } else {
-    // fase 80: depois da remessa a mobilização mostra só o kit DELA e o que voltou; a obra inteira fica na aba
-    // "Bens do contrato" da ficha da obra
+
+
     const movIds = [m.movimentacao_remessa_id, m.movimentacao_retorno_id].filter(Boolean);
     const { data: movs } = movIds.length ? await sb.from("movimentacoes_ativos").select("id,numero,tipo").in("id", movIds) : { data: [] };
     if(!$("mob-kit") || _mobAberta !== m) return;
@@ -621,7 +621,7 @@ async function mobSugerirKit(){
 }
 async function mobSalvarKit(){
   if(!_mobAberta) return;
-  // fase 95: .select("id") — sem ele o RLS devolve 0 linhas sem erro e a tela dizia "Kit salvo" sem ter gravado
+
   const { data, error } = await sb.from("mobilizacoes").update({ acessorios_ids: _mobKit }).eq("id", _mobAberta.id).select("id");
   if(error){ aviso("app-aviso", "Não foi possível salvar o kit: " + error.message, "erro"); return; }
   if(!data?.length){ aviso("app-aviso", "Não foi possível salvar o kit: " + MOB_MSG_SEM_PERMISSAO, "erro"); return; }
@@ -659,7 +659,7 @@ async function salvarMobilizacao(){
     data_saida_real: $("mob-data-saida").value || null,
     data_chegada_real: $("mob-data-chegada").value || null,
     data_desmob_real: $("mob-data-desmob").value || null,
-    data_desmob_prev: $("mob-data-desmob-prev")?.value || null,   // fase 157a
+    data_desmob_prev: $("mob-data-desmob-prev")?.value || null,
     equipamento_id: $("mob-equip").value || null,
     equipamentos_apoio: [..._mobApoioSel.mob],
     estacas_resumo: lerEstacasResumoMob(),
@@ -675,8 +675,8 @@ async function salvarMobilizacao(){
     const msg = /mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa (em preparação, em trânsito ou em obra)." : error.message;
     aviso("app-aviso", "Não foi possível salvar: " + msg, "erro"); return;
   }
-  if(!data?.length){ aviso("app-aviso", "Não foi possível salvar: " + MOB_MSG_SEM_PERMISSAO, "erro"); return; }   // fase 95: RLS barrou (0 linhas, sem erro)
-  // fase 157d: contato e condições são do contrato: gravam também nas outras máquinas em andamento da obra
+  if(!data?.length){ aviso("app-aviso", "Não foi possível salvar: " + MOB_MSG_SEM_PERMISSAO, "erro"); return; }
+
   const irmas = _mobLive.filter(x => x.obra_id === _mobAberta.obra_id && x.id !== _mobAberta.id && !["desmobilizada", "cancelada"].includes(x.status)).map(x => x.id);
   if(irmas.length){
     const cond = { contato_obra_nome: reg.contato_obra_nome, contato_obra_telefone: reg.contato_obra_telefone,
@@ -698,10 +698,10 @@ async function atualizarPendenciaMob(id, campos){
   else { const p = _mobPendAberta.find(x => x.id === id) || _mobPendObra.find(x => x.id === id); if(p) Object.assign(p, campos); }
 }
 
-/* ---------- Transições de status ---------- */
-/* Fase 89: a VIAGEM é o registro central da logística. A mobilização gera a viagem de ida (base → obra) ao
-   iniciar a preparação ou ao sair, e a de volta (obra → base) ao desmobilizar; a nota de remessa/retorno
-   nasce ligada à viagem. A localização da TAG continua vindo do status da mobilização (gatilho da fase 34). */
+
+
+
+
 const MOB_VG_SELECT = "id,numero,status,data,caminhao_id,funcionario_id,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao";
 async function mobGarantirViagem(m, sentido){
   const campo = sentido === "ida" ? "viagem_ida_id" : "viagem_volta_id";
@@ -722,12 +722,12 @@ async function mobGarantirViagem(m, sentido){
   if(error) throw new Error("viagem: " + error.message);
   const { data: vinc, error: e2 } = await sb.from("mobilizacoes").update({ [campo]: data.id }).eq("id", m.id).select("id");
   if(e2) throw new Error("vínculo da viagem: " + e2.message);
-  if(!vinc?.length) throw new Error("vínculo da viagem: " + MOB_MSG_SEM_PERMISSAO);   // fase 95: RLS barrou (0 linhas, sem erro)
+  if(!vinc?.length) throw new Error("vínculo da viagem: " + MOB_MSG_SEM_PERMISSAO);
   m[campo] = data.id;
   if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;
   return data;
 }
-/* em_transito: a viagem planejada sai (data de saída agora); em_obra: a viagem de ida conclui com a chegada real */
+
 async function mobViagemStatus(vg, status, dataChegada){
   if(!vg?.id) return;
   if(status === "em_transito"){
@@ -741,8 +741,8 @@ async function mobViagemStatus(vg, status, dataChegada){
   if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;
 }
 async function criarMovimentacaoMob(tipo, m, vg){
-  // Remessa (base → obra) ao sair; retorno (obra → base) ao desmobilizar. Fica em rascunho, ligada à viagem (fase 89),
-  // para a logística completar NF/transportadora na ficha do documento.
+
+
   const { data: numero, error: errNum } = await sb.rpc("proximo_numero_movimentacao");
   if(errNum) throw new Error("número da movimentação: " + errNum.message);
   const obra = _mobObras.find(o => o.id === m.obra_id) || {};
@@ -759,7 +759,7 @@ async function criarMovimentacaoMob(tipo, m, vg){
   if(error) throw new Error("movimentação: " + error.message);
   const ids = [m.equipamento_id, ...(m.equipamentos_apoio || [])].filter(Boolean);
   const itens = ids.map(id => { const e = _mobEquips.find(x => x.id === id) || {}; return { movimentacao_id: mov.id, equipamento_id: id, descricao: [e.codigo, e.nome].filter(Boolean).join(" — ") || "Equipamento", quantidade: 1, unidade: "un" }; });
-  // Acessórios: remessa leva o kit separado; retorno traz o que o sistema registra na obra (logística confere no rascunho).
+
   let aces = [];
   try {
     const cat = await mobCatalogo(true);
@@ -774,8 +774,8 @@ async function criarMovimentacaoMob(tipo, m, vg){
 
 async function mudarStatusMobilizacao(novo, btn){
   const m = _mobAberta; if(!m) return;
-  // fase 95: confere o cargo ANTES de criar viagem e movimentação; se o UPDATE de mobilizacoes fosse barrado depois,
-  // sobrava movimentação órfã e a mobilização parada em "em preparação"
+
+
   if(!mobPodeEditar()){ aviso("app-aviso", MOB_MSG_SEM_PERMISSAO, "erro"); return; }
   const abertas = _mobPendAberta.filter(p => !p.concluida).length;
   let naoLiberados = [];
@@ -783,12 +783,12 @@ async function mudarStatusMobilizacao(novo, btn){
     const equip = $("mob-equip")?.value || m.equipamento_id;
     if(!equip){ aviso("app-aviso", "Defina a TAG principal antes de registrar a saída.", "erro"); $("mob-equip")?.focus(); return; }
     if(abertas && !confirm(`Ainda há ${abertas} pendência(s) aberta(s). Registrar a saída mesmo assim?`)) return;
-    // fase 157d (D6): equipe não liberada pelo SESMT avisa e pede confirmação; não bloqueia, e a confirmação vai para a conversa
+
     naoLiberados = mobEquipeNaoLiberados(m.id);
     if(naoLiberados.length && !confirm(`${naoLiberados.length} pessoa(s) da equipe ainda sem liberação do SESMT: ${naoLiberados.map(e => `${mobNomeEq(e)} (${(MOB_EQ_SITUACAO[e.situacao] || {}).rot || e.situacao})`).join(", ")}.\n\nRegistrar a saída mesmo assim? A confirmação fica registrada na conversa da máquina.`)) return;
     if(!confirm("Registrar saída para a obra? A viagem de ida passa a 'em trânsito' em Logística com a nota de remessa (rascunho), e a TAG passa a 'em trânsito'.")) return;
   } else if(novo === "desmobilizada"){
-    abrirDesmobilizacaoMob(); return;   // fase 157a: motivo, data e volta prevista no modal; grava pela RPC
+    abrirDesmobilizacaoMob(); return;
   } else if(novo === "cancelada"){
     if(!confirm("Cancelar esta mobilização?")) return;
   } else if(novo === "em_preparacao"){
@@ -797,11 +797,11 @@ async function mudarStatusMobilizacao(novo, btn){
   }
   if(btn) btn.disabled = true;
   try {
-    // salva o formulário antes (TAG/apoio escolhidos agora contam para a remessa)
+
     await salvarMobilizacaoSilencioso();
     const atual = _mobAberta;
     const upd = { status: novo };
-    // fase 89: viagem de ida nasce planejada na preparação (ou agora, se ainda não existir) e sai junto com a remessa
+
     if(novo === "em_preparacao"){ const vg = await mobGarantirViagem(atual, "ida"); upd.viagem_ida_id = vg.id; }
     if(novo === "em_transito"){
       const vg = await mobGarantirViagem(atual, "ida"); upd.viagem_ida_id = vg.id;
@@ -811,28 +811,28 @@ async function mudarStatusMobilizacao(novo, btn){
     if(novo === "em_obra" && atual.viagem_ida_id) await mobViagemStatus({ id: atual.viagem_ida_id }, "concluida", $("mob-data-chegada")?.value || atual.data_chegada_real || null);
     const { data: gravou, error } = await sb.from("mobilizacoes").update(upd).eq("id", atual.id).select("id");
     if(error) throw new Error(/mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa." : error.message);
-    if(!gravou?.length) throw new Error(MOB_MSG_SEM_PERMISSAO);   // fase 95: RLS barrou (0 linhas, sem erro)
-    // kit saiu na remessa → a pendência "acessórios conferidos e separados" do almoxarifado está cumprida
+    if(!gravou?.length) throw new Error(MOB_MSG_SEM_PERMISSAO);
+
     if(novo === "em_transito" && (atual.acessorios_ids || []).length){
       const p = _mobPendAberta.find(x => !x.concluida && x.setor === "almoxarifado" && /acess/i.test(x.titulo || ""));
       if(p) await sb.from("mobilizacao_pendencias").update({ concluida: true }).eq("id", p.id);
     }
-    if(novo === "em_transito" && naoLiberados.length) await mobRegistrarSaidaSemLiberacao(atual.id, naoLiberados);   // fase 157d (D6)
+    if(novo === "em_transito" && naoLiberados.length) await mobRegistrarSaidaSemLiberacao(atual.id, naoLiberados);
     aviso("app-aviso", `Mobilização: ${MOB_STATUS[novo]}.`, "ok");
     await carregarMobilizacoes(true);
     if(typeof carregarMovimentacoes === "function" && novo === "em_transito") carregarMovimentacoes();
-    if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;   // fase 89: painel de Logística recarrega
+    if(typeof _frotaViagens !== "undefined") _frotaViagens.chave = null;
     await abrirMobilizacao(atual.id);
-    if(novo === "em_obra") await mobOferecerMoverAlocacao(atual.id).catch(e => console.warn("mover alocação:", e.message || e));   // fase 157e: chegada pergunta se move a alocação da equipe
+    if(novo === "em_obra") await mobOferecerMoverAlocacao(atual.id).catch(e => console.warn("mover alocação:", e.message || e));
   } catch(err){
     aviso("app-aviso", "Não foi possível mudar o status: " + err.message, "erro");
     if(btn) btn.disabled = false;
   }
 }
-/* ---------- Fase 157a: desmobilizar com motivo ----------
-   O modal pede motivo e data; na manutenção na sede pede também a volta prevista, e a RPC mobilizacao_desmobilizar
-   cria a mobilização prevista da volta (mesma TAG, mesma obra). A viagem de volta e a nota de retorno continuam
-   nascendo aqui, antes da RPC, como na fase 89. */
+
+
+
+
 function abrirDesmobilizacaoMob(){
   const m = _mobAberta; if(!m) return;
   $("mobd-motivo").innerHTML = '<option value="">— selecione —</option>' + Object.entries(MOB_DESMOB_MOTIVOS).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
@@ -890,11 +890,11 @@ async function salvarMobilizacaoSilencioso(){
   if(mobKitEditavel()) reg.acessorios_ids = _mobKit;
   const { data, error } = await sb.from("mobilizacoes").update(reg).eq("id", _mobAberta.id).select("*");
   if(error) throw new Error(/mobilizacoes_equip_ativa_uq/.test(error.message) ? "Esta TAG já está em outra mobilização ativa." : error.message);
-  if(!data?.length) throw new Error(MOB_MSG_SEM_PERMISSAO);   // fase 95: RLS barrou (0 linhas, sem erro); o .single() antigo dava um erro técnico
+  if(!data?.length) throw new Error(MOB_MSG_SEM_PERMISSAO);
   _mobAberta = data[0];
 }
 
-/* ---------- Nova mobilização ---------- */
+
 function abrirNovaMobilizacao(obraIdPre){
   const sel = $("mobn-obra");
   if(sel){
@@ -908,7 +908,7 @@ function abrirNovaMobilizacao(obraIdPre){
 }
 function fecharNovaMobilizacao(){ $("mob-nova-modal").style.display = "none"; }
 async function criarMobilizacao(){
-  if(!mobPodeEditar()){ aviso("app-aviso", "Seu cargo não pode criar mobilização.", "erro"); return; }   // fase 95
+  if(!mobPodeEditar()){ aviso("app-aviso", "Seu cargo não pode criar mobilização.", "erro"); return; }
   const obra_id = $("mobn-obra")?.value;
   if(!obra_id){ aviso("app-aviso", "Selecione a obra.", "erro"); return; }
   const reg = { obra_id, equipamento_id: $("mobn-equip")?.value || null,
@@ -922,27 +922,27 @@ async function criarMobilizacao(){
   abrirMobilizacao(data.id);
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarMobilizacoes(){
   document.querySelectorAll("#sec-mobilizacoes .serv-view-btn").forEach(b => b.addEventListener("click", () => { _mobView = b.dataset.view; renderMobilizacoes(); }));
   $("mob-busca")?.addEventListener("input", debounce(renderMobilizacoes));
-  ["mob-f-cliente", "mob-f-tag", "mob-f-setor", "mob-f-tipo", "mob-f-resp"].forEach(id => $(id)?.addEventListener("change", renderMobilizacoes));   // fase 157d: tipo e responsável
+  ["mob-f-cliente", "mob-f-tag", "mob-f-setor", "mob-f-tipo", "mob-f-resp"].forEach(id => $(id)?.addEventListener("change", renderMobilizacoes));
   $("btn-mob-atualizar")?.addEventListener("click", () => carregarMobilizacoes(true));
   $("btn-mob-nova")?.addEventListener("click", () => abrirNovaMobilizacao());
   $("btn-mobn-fechar")?.addEventListener("click", fecharNovaMobilizacao);
   $("btn-mobn-criar")?.addEventListener("click", () => comBotaoTravado("btn-mobn-criar", criarMobilizacao));
-  // fase 157a: desmobilizar com motivo
+
   $("btn-mobd-fechar")?.addEventListener("click", fecharDesmobilizacaoMob);
   $("btn-mobd-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-mobd-confirmar", confirmarDesmobilizacaoMob));
   ["mobd-motivo", "mobd-data", "mobd-volta"].forEach(id => $(id)?.addEventListener("change", mobDesmobAtualizar));
-  // fase 157e: mover a alocação da equipe na chegada
+
   $("btn-mobal-fechar")?.addEventListener("click", fecharMoverAlocacaoMob);
   $("btn-mobal-agora-nao")?.addEventListener("click", fecharMoverAlocacaoMob);
   $("btn-mobal-confirmar")?.addEventListener("click", () => comBotaoTravado("btn-mobal-confirmar", confirmarMoverAlocacaoMob));
   $("mob-modal")?.addEventListener("click", (e) => { if(e.target.id === "mob-modal") fecharMobilizacao(); });
   $("mob-kpi-card-minhas")?.addEventListener("click", () => { _mobView = "pendencias"; renderMobilizacoes(); });
   document.querySelector('nav button[data-secao="mobilizacoes"]')?.addEventListener("click", () => carregarMobilizacoes(false));
-  // Gatilho a partir da ficha da Obra (aba Contrato): abre o quadro com a obra já escolhida
+
   $("btn-obr-criar-mob")?.addEventListener("click", async () => {
     const id = (typeof obraEditId !== "undefined") ? obraEditId : null;
     if(!id){ aviso("app-aviso", "Salve a obra antes de criar a mobilização.", "erro"); return; }

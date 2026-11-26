@@ -1,40 +1,40 @@
-/* ====================================================================
-   OCORRÊNCIAS SST — fase 109d (#108), prefixo sso-. Seção própria sec-sesmt-ocorrencias (separada da sec-sesmt da 109a).
-   Registro rápido aberto a todo usuário ativo (D15: encarregado e operador pelo celular, login por CPF) pela RPC
-   sst_ocorrencia_registrar; painel no padrão Serviços (lista, kanban por status, indicadores, lições aprendidas); ficha no
-   padrão Odoo (header de ações, statusbar com os 6 estados, chips, smart-buttons, abas Descrição, Envolvidos, Investigação,
-   Plano de ação, Lição aprendida, Saúde, Anexos, Histórico). Saúde só pelas RPCs auditadas sst_ocorrencia_saude_ler/gravar
-   (SESMT e RH em sessão aal2). Anexos no bucket privado sst-ocorrencias (pasta = id); documento médico no bucket sst-saude
-   da 109a (ocorrencias/<id>/). Regras de status, numeração e permissões vivem no banco (gatilhos e RLS da migration
-   20261027_fase109d_sesmt_ocorrencias.sql): o front só mostra a mensagem.
-   Permissões: espelha sst_pode_operar() / sst_pode_ler() / sst_pode_ler_saude() da 109a. Enquanto podeVerSesmt() e
-   sstPodeOperar() do core.js (109a) não estiverem na main, as funções locais abaixo aplicam a mesma regra (a sessão de
-   contexto remove o fallback na mesclagem).
-   ==================================================================== */
-let _ssoRegistros = [];        // sst_ocorrencias da lista (com embeds)
-let _ssoView = "lista";        // lista | kanban | indicadores | licoes
-let _ssoAtual = null;          // ocorrência aberta (null = nenhuma)
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _ssoRegistros = [];
+let _ssoView = "lista";
+let _ssoAtual = null;
 let _ssoEnvolvidos = [];
 let _ssoAcoes = [];
-let _ssoSaude = null;          // linhas de sst_ocorrencia_saude lidas pela RPC (null = não lidas)
+let _ssoSaude = null;
 let _ssoAnexos = [];
 let _ssoTab = "descricao";
 let _ssoCarregado = false;
-let _ssoPreset = null;         // { filtro, id } vindo do Para regularizar
+let _ssoPreset = null;
 const _ssoBase = { obras: [], equipamentos: [], funcionarios: [], profiles: [], pronto: false };
 
-/* ---------- permissões: espelham sstPodeOperar()/podeVerSesmt() do core.js (fase 109a) ---------- */
+
 function ssoPodeOperar(){ return sstPodeOperar(); }
 function ssoPodeLerSesmt(){ return podeVerSesmt(); }
-/* D15: ocorrência completa = quem lê o SESMT + engenharia e gestor de manutenção (sst_ocorrencias_pode_ler no banco) */
+
 function ssoPodeLerOcorrencias(){
   return ssoPodeLerSesmt() || (!!usuarioAtual && ["engenheiro", "assistente_engenharia", "gestor_manutencao"].includes(usuarioAtual.cargo));
 }
-/* saúde: SESMT ou RH; o MFA (aal2) é conferido pelo banco na RPC */
+
 function ssoPodeLerSaude(){ return ssoPodeOperar() || (!!usuarioAtual && usuarioAtual.cargo === "rh"); }
 function ssoPodeRegistrar(){ return !!usuarioAtual && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
 
-/* ---------- constantes (listas do levantamento, seção 4.10) ---------- */
+
 STATUS.sst_ocorrencia = {
   registrada:          { label: "Registrada",          cor: "cinza"    },
   em_investigacao:     { label: "Em investigação",     cor: "azul"     },
@@ -74,7 +74,7 @@ const SSO_PARTES_CORPO = ["Cabeça", "Olhos", "Face", "Pescoço", "Ombro", "Bra�
 const SSO_SEV_DIMENSOES = ["seguranca", "meio_ambiente", "financeiro", "comunidade"];
 const SSO_MSG_MIGRATION = "O módulo de ocorrências ainda não está no banco (migration da fase 109d pendente).";
 
-/* ---------- helpers ---------- */
+
 function ssoDtLocal(ts){
   if(!ts) return "";
   const d = new Date(ts), p = n => String(n).padStart(2, "0");
@@ -108,7 +108,7 @@ function ssoMsgErro(err, prefixo){
 function ssoAviso(msg, tipo){ aviso("app-aviso", msg, tipo); }
 function ssoShow(id, on){ const el = $(id); if(el) el.style.display = on ? "" : "none"; }
 
-/* ---------- base (obras, máquinas, funcionários, usuários) ---------- */
+
 async function ssoGarantirBase(){
   if(_ssoBase.pronto) return;
   const [obras, equips, funcs, profs] = await Promise.all([
@@ -145,7 +145,7 @@ function ssoPreencherSelects(){
   if($("sso-env-papel")) $("sso-env-papel").innerHTML = ssoOpcoes(SSO_PAPEL);
   if($("sso-setores-lista")) $("sso-setores-lista").innerHTML = SSO_SETORES.map(s => `<option value="${esc(s)}"></option>`).join("");
   document.querySelectorAll(".sso-sev").forEach(sel => { sel.innerHTML = `<option value="">—</option>` + [1, 2, 3, 4, 5].map(n => `<option value="${Number(n)}">${Number(n)}</option>`).join(""); });
-  // filtros do painel
+
   if($("sso-f-categoria")) $("sso-f-categoria").innerHTML = ssoOpcoes(SSO_CATEGORIAS, "Todas as categorias") + `<option value="__sem">Sem classificação</option>`;
   if($("sso-f-status")) $("sso-f-status").innerHTML = `<option value="">Todos os status</option><option value="__abertas">Abertas (não encerradas)</option>` + opcoesStatus("sst_ocorrencia");
   if($("sso-f-obra")) $("sso-f-obra").innerHTML = `<option value="">Todas as obras</option>` + obrasAtivas.map(o => `<option value="${esc(o.id)}">${esc(ssoObraRotulo(o))}</option>`).join("");
@@ -156,9 +156,9 @@ function ssoPreencherSelects(){
   }
 }
 
-/* ====================================================================
-   Painel
-   ==================================================================== */
+
+
+
 let _ssoCarregando = false;
 async function carregarSsoOcorrencias(){
   _ssoCarregado = true; _ssoCarregando = true;
@@ -260,7 +260,7 @@ function renderSsoKanban(dados){
   $("sso-conteudo").querySelectorAll(".serv-kan-card").forEach(c => c.addEventListener("click", () => abrirSsoOcorrencia(c.dataset.id)));
 }
 
-/* ---------- indicadores (sst_indicadores: só agregados) ---------- */
+
 async function renderSsoIndicadores(){
   const cont = $("sso-conteudo");
   const ano = Number($("sso-f-ano")?.value) || new Date().getFullYear();
@@ -302,7 +302,7 @@ async function renderSsoIndicadores(){
   });
 }
 
-/* ---------- lições aprendidas (vw_sst_licoes: publicadas, sem envolvido; todo usuário ativo) ---------- */
+
 async function renderSsoLicoes(){
   const cont = $("sso-conteudo");
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
@@ -320,9 +320,9 @@ async function renderSsoLicoes(){
   if(leitor) cont.querySelectorAll(".hist-item.linha-clicavel").forEach(el => el.addEventListener("click", () => abrirSsoOcorrencia(el.dataset.id)));
 }
 
-/* ====================================================================
-   Registro rápido (RPC sst_ocorrencia_registrar) — qualquer usuário ativo
-   ==================================================================== */
+
+
+
 async function ssoAbrirRegistro(){
   if(!ssoPodeRegistrar()){ ssoAviso("Usuário de revisão não grava.", "erro"); return; }
   await ssoGarantirBase();
@@ -368,9 +368,9 @@ async function ssoSubirAnexo(ocorrenciaId, file){
   return true;
 }
 
-/* ====================================================================
-   Ficha (Odoo)
-   ==================================================================== */
+
+
+
 function mostrarPainelSso(){
   ssoShow("sso-ficha", false); ssoShow("sso-painel", true);
   _ssoAtual = null;
@@ -435,7 +435,7 @@ function ssoPreencherFicha(o){
   $("sso-licao-publicada").value = ssoDtLocal(o.licao_publicada_em);
   $("sso-licao-dss").value = o.licao_divulgada_dss_em || "";
   $("sso-aprovada-por").value = o.aprovada_por || "";
-  // quem não opera só lê: campos travados, botões de gravação escondidos
+
   document.querySelectorAll("#sso-ficha .odoo-body input, #sso-ficha .odoo-body select, #sso-ficha .odoo-body textarea").forEach(el => {
     if(el.closest("#sso-anexo-arquivos, #sso-saude-conteudo")) return;
     el.disabled = !oper;
@@ -445,7 +445,7 @@ function ssoPreencherFicha(o){
   ssoShow("btn-sso-investigar", oper && ["registrada", "em_investigacao"].includes(o.status));
   ssoShow("btn-sso-encerrar", oper && o.status !== "encerrada");
   ssoShow("sso-tab-saude-btn", ssoPodeLerSaude());
-  // anexo: quem opera ou quem registrou (até a classificação)
+
   const podeAnexar = oper || (o.registrado_por === usuarioAtual?.id && o.status === "registrada");
   ["sso-anexo-arquivos", "btn-sso-anexo-enviar"].forEach(id => { ssoShow(id, podeAnexar); if($(id)) $(id).disabled = !podeAnexar; });
 }
@@ -519,7 +519,7 @@ async function excluirSsoOcorrencia(){
   carregarSsoOcorrencias();
 }
 
-/* ---------- envolvidos ---------- */
+
 async function ssoCarregarEnvolvidos(){
   const { data } = await sb.from("sst_ocorrencia_envolvidos").select("*").eq("ocorrencia_id", _ssoAtual.id).order("created_at");
   _ssoEnvolvidos = data || [];
@@ -556,7 +556,7 @@ async function ssoRemoverEnvolvido(id){
   await ssoCarregarEnvolvidos();
 }
 
-/* ---------- plano de ação ---------- */
+
 async function ssoCarregarAcoes(){
   const { data } = await sb.from("sst_ocorrencia_acoes").select("*").eq("ocorrencia_id", _ssoAtual.id).order("ordem").order("created_at");
   _ssoAcoes = data || [];
@@ -620,7 +620,7 @@ async function ssoRemoverAcao(id){
   await ssoCarregarAcoes();
 }
 
-/* ---------- saúde (área restrita; RPCs auditadas) ---------- */
+
 async function ssoCarregarSaude(){
   const cont = $("sso-saude-conteudo");
   if(!ssoPodeLerSaude()){ cont.innerHTML = `<p class="vazio">Área restrita ao SESMT e ao RH.</p>`; return; }
@@ -695,7 +695,7 @@ async function ssoSalvarSaude(envId){
   _ssoSaude = null; ssoCarregarSaude();
 }
 
-/* ---------- anexos (bucket sst-ocorrencias) ---------- */
+
 async function ssoCarregarAnexos(){
   const { data, error } = await sb.storage.from("sst-ocorrencias").list(_ssoAtual.id, { limit: 200, sortBy: { column: "created_at", order: "asc" } });
   _ssoAnexos = error ? [] : (data || []).filter(a => a.name && !a.name.startsWith("."));
@@ -727,7 +727,7 @@ async function ssoEnviarAnexos(){
   ssoCarregarAnexos();
 }
 
-/* ---------- PDFs: comunicação preliminar, investigação (RG 4.24 renovada) e lição aprendida ---------- */
+
 async function ssoGerarPdf(tipo){
   if(!_ssoAtual) return;
   const o = _ssoAtual;
@@ -735,8 +735,8 @@ async function ssoGerarPdf(tipo){
   const RG = { preliminar: "RG 4.24 · comunicação CGL", investigacao: "RG 4.24 · investigação de acidente / incidente", licao: "Lição aprendida · SESMT" };
   const cel = "border:1px solid;padding:1.4mm 2mm;font-size:9pt;vertical-align:top;";
   const lab = "font-weight:700;width:38mm;";
-  // v já vem escapado pelos chamadores (esc, txt, ssoDtBR)
-  const linha = (r, v) => `<tr><td style="${cel}${lab}">${esc(r)}</td><td style="${cel}">${/* html */ v}</td></tr>`;
+
+  const linha = (r, v) => `<tr><td style="${cel}${lab}">${esc(r)}</td><td style="${cel}">${  v}</td></tr>`;
   const txt = v => esc(v || "—").replace(/\n/g, "<br>");
   const envolvidos = tipo === "licao" ? [] : _ssoEnvolvidos;
   const cab = `<table style="width:100%;border-collapse:collapse;margin-top:3mm;">
@@ -776,23 +776,23 @@ async function ssoGerarPdf(tipo){
   }
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;">
     ${pdfCabecalhoHTML(TIT[tipo], RG[tipo] + " · CGL Fundações Ltda")}
-    ${/* html */ cab}${/* html */ corpo}
+    ${  cab}${  corpo}
     <p style="font-size:7.5pt;margin:4mm 0 0;">Gerado pelo Controle CGL em ${dataBR(hojeISO())}. ${tipo === "licao" ? "Documento de divulgação: não cita nome de envolvido." : "Dados de saúde (lesão, afastamento, CAT) não constam deste documento."}</p>
   </div>`;
   const el = document.createElement("div"); el.innerHTML = html;
   await pdfGerar(el, { filename: `${tipo}-${String(o.numero || "ocorrencia").toLowerCase()}.pdf` });
 }
 
-/* ---------- atalho do Para regularizar e do card da Sala de Comando ---------- */
+
 function ssoAbrirPreset(filtro, id){
   _ssoPreset = { filtro: filtro || null, id: id || null };
-  // o clique no menu (irParaSecao) já disparou a carga, que consome o preset ao terminar; só recarrega se nada estiver em andamento
+
   if(!_ssoCarregando) carregarSsoOcorrencias();
 }
 
-/* ====================================================================
-   Ligações
-   ==================================================================== */
+
+
+
 function ligarSsoOcorrencias(){
   if(!$("sso-painel")) return;
   document.querySelector('nav button[data-secao="sesmt-ocorrencias"]')?.addEventListener("click", () => { mostrarPainelSso(); carregarSsoOcorrencias(); });
@@ -803,7 +803,7 @@ function ligarSsoOcorrencias(){
   $("btn-sso-reg-fechar")?.addEventListener("click", () => ssoShow("sso-registro-card", false));
   $("btn-sso-reg-limpar")?.addEventListener("click", ssoLimparRegistro);
   $("btn-sso-reg-enviar")?.addEventListener("click", () => comBotaoTravado("btn-sso-reg-enviar", ssoEnviarRegistro));
-  // ficha
+
   $("btn-sso-voltar")?.addEventListener("click", () => { mostrarPainelSso(); renderSsoOcorrencias(); });
   $("btn-sso-salvar")?.addEventListener("click", () => comBotaoTravado("btn-sso-salvar", () => salvarSsoOcorrencia()));
   $("btn-sso-investigar")?.addEventListener("click", () => comBotaoTravado("btn-sso-investigar", async () => { if(_ssoAtual?.status === "registrada") await ssoMudarStatus("em_investigacao"); ssoAtivarTab("investigacao"); }));

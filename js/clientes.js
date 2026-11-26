@@ -1,27 +1,27 @@
-/* ====================================================================
-   Módulo: Clientes
-   Layout: padrão Serviços + Odoo. Ver memória feedback-padrao-ui.
-   CRUD sem statusbar (cliente é ativo/inativo via checkbox).
-   Fase 105a (22/10/2026): aba Fiscal (indicador da IE, IE, e-mail da nota), CEP → endereço e código IBGE pela
-   ViaCEP, CPF/CNPJ conferido pelos dígitos verificadores (o banco recusa documento novo ou alterado inválido) e a
-   visão "Pendências fiscais": clientes de obra em andamento sem o que a nota exige, obras sem IBGE, máquinas e
-   acessórios em mobilização sem NCM e os dados fiscais da empresa (js/fiscal.js). Antes da migration da fase 105a os
-   campos novos ficam desligados e não vão no salvar (_cliTemFiscal).
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
 
 let _clientes = [];
 let _cliView  = "lista";
 let cliEditId = null;
-let _cliTemFiscal = false;    // clientes.codigo_ibge / indicador_ie / email_nf existem (migration da fase 105a)
-let _cliDocOriginal = "";     // documento ao abrir: o que já estava gravado não é barrado (o banco faz igual)
-let _cliFiscal = null;        // dados da visão Pendências fiscais (obras em andamento, mobilizações, itens)
-let _cliFiscalTodos = false;  // visão Pendências fiscais: mostrar também os clientes completos
+let _cliTemFiscal = false;
+let _cliDocOriginal = "";
+let _cliFiscal = null;
+let _cliFiscalTodos = false;
 
 const CLI_IND_IE = { contribuinte: "Contribuinte", isento: "Isento", nao_contribuinte: "Não contribuinte" };
 
-/* Lote S49 (#140): quem cadastra e edita cliente. Espelha as policies de clientes: clientes_write (admin, comercial,
-   financeiro; diretor por has_role) e as do módulo extra de Orçamentos (hotfix 113: insere e edita, não exclui).
-   Os demais cargos veem a lista e a ficha sem os botões de gravar. */
+
+
+
 function cliPodeEditar(){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return false;
   return ["diretor", "admin", "comercial", "financeiro"].includes(usuarioAtual.cargo)
@@ -36,9 +36,9 @@ function cliAplicarPermissoes(){
   const excl = $("btn-excluir-cli"); if(excl) excl.style.display = cliEditId && cliPodeExcluir() ? "" : "none";
 }
 
-/* ---------- Fase 182a: grupo econômico ----------
-   O grupo fica no cadastro do cliente (D1); a obra herda. Campo com busca e criação na hora ("Criar grupo 'X'" ao
-   Salvar). Sugestão pela raiz do CNPJ (8 primeiros dígitos) só na tela: nunca grava sozinha. */
+
+
+
 let _cliGrupos = [];
 function cliPorId(id){ return id ? _clientes.find(c => c.id === id) || null : null; }
 function cliRotulo(id){ const c = cliPorId(id); return c ? (String(c.nome_fantasia || "").trim() || c.nome || "") : (mapaClientes[id] || ""); }
@@ -58,13 +58,13 @@ async function cliCarregarGrupos(){
   }
 }
 function cliGrupoPorNome(txt){ const n = String(txt || "").trim().toLowerCase(); return n ? _cliGrupos.find(g => g.nome.trim().toLowerCase() === n) || null : null; }
-// dica embaixo do campo: grupo novo é criado ao Salvar
+
 function cliGrupoDica(){
   const el = $("cli-grupo-dica"); if(!el) return;
   const txt = ($("cli-grupo")?.value || "").trim();
   el.textContent = txt && !cliGrupoPorNome(txt) ? `Criar grupo "${txt}" ao salvar.` : "";
 }
-// mesma raiz de CNPJ de outro cliente já agrupado → pergunta se usa o mesmo grupo
+
 function cliAvisoRaiz(){
   const box = $("cli-grupo-aviso"); if(!box) return;
   box.innerHTML = ""; delete box.dataset.grupo;
@@ -78,7 +78,7 @@ function cliAvisoRaiz(){
   box.innerHTML = `${outro ? `Este CNPJ é da mesma raiz de ${esc(outro.nome)} (grupo ${esc(grupo.nome)}).` : `Este CNPJ é da raiz do grupo ${esc(grupo.nome)}.`} Usar o mesmo grupo?
     ${cliPodeEditar() ? `<button type="button" class="btn-sec btn-sm" data-cli-usar-grupo="1" title="Preenche o campo; grava só ao Salvar">Usar este grupo</button>` : ""}`;
 }
-// grupo do formulário → id (cria o grupo novo depois de confirmar). undefined = cancelou.
+
 async function cliResolverGrupo(){
   const txt = ($("cli-grupo")?.value || "").trim();
   if(!txt) return null;
@@ -92,7 +92,7 @@ async function cliResolverGrupo(){
   await cliCarregarGrupos();
   return data.id;
 }
-// smart-button "Obras do grupo": abre o painel de Obras só com as obras dos clientes do grupo
+
 function cliObrasDoGrupo(grupoId){
   const ids = new Set(_clientes.filter(c => c.grupo_id === grupoId).map(c => c.id));
   return (typeof _obrRegistros !== "undefined" ? _obrRegistros : []).filter(o => ids.has(o.cliente_id)).map(o => o.id);
@@ -112,9 +112,9 @@ async function cliAbrirObrasDoGrupo(){
   renderObras({ ids: cliObrasDoGrupo(gid), rotulo: "Grupo " + cliGrupoNome(gid) });
 }
 
-/* ---------- Carga ---------- */
+
 async function carregarClientes(){
-  // select("*"): as colunas fiscais (fase 105a) vêm quando existirem, sem quebrar antes da migration
+
   const [{ data, error }] = await Promise.all([sb.from("clientes").select("*").order("nome"), cliCarregarGrupos()]);
   _clientes = error ? [] : (data || []);
   _cliTemFiscal = _clientes.length ? Object.prototype.hasOwnProperty.call(_clientes[0], "codigo_ibge")
@@ -122,12 +122,12 @@ async function carregarClientes(){
   renderClientes();
 }
 
-/* ---------- Filtros ---------- */
+
 function cliFiltrados(){
   const termo = ($("cli-busca")?.value || "").trim().toLowerCase();
   const fTipo = $("cli-f-tipo")?.value || "";
   const fAtivo = $("cli-f-ativo")?.value || "";
-  const fGrupo = $("cli-f-grupo")?.value || "";   // fase 182a
+  const fGrupo = $("cli-f-grupo")?.value || "";
   return _clientes.filter(c => {
     if(fTipo && c.tipo_pessoa !== fTipo) return false;
     if(fGrupo === "__sem" && c.grupo_id) return false;
@@ -142,13 +142,13 @@ function cliFiltrados(){
   });
 }
 
-/* ---------- Render ---------- */
+
 function renderClientes(){
   const card = $("cli-fiscal-empresa-card");
   if(card) card.style.display = _cliView === "fiscal" ? "" : "none";
-  cliAplicarPermissoes();   // lote S49 (#140)
+  cliAplicarPermissoes();
   if(_cliView === "fiscal"){ renderCliFiscal(); return; }
-  if(_cliView === "corrigir" && typeof clsRender === "function"){ clsRender(); return; }   // fase 182b
+  if(_cliView === "corrigir" && typeof clsRender === "function"){ clsRender(); return; }
   const dados = cliFiltrados();
   const cont = $("cli-contador");
   if(cont) cont.textContent = `${dados.length} de ${_clientes.length}`;
@@ -183,7 +183,7 @@ function renderCliLista(dados){
 function renderCliKanban(dados){
   const cont = $("cli-conteudo");
   if(!cont) return;
-  // Agrupa por UF
+
   const ufs = {};
   dados.forEach(c => {
     const uf = (c.uf || "—").toUpperCase();
@@ -212,10 +212,10 @@ function renderCliKanban(dados){
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
 }
 
-/* ---------- Pendências fiscais (fase 105a) ----------
-   Cliente de obra em andamento com o cadastro incompleto para a NF-e (fiscalClientePendencias, a mesma regra da function
-   focus-nfe desde o hotfix NF-e de remessa A; o aviso urgente sai de vw_pendencias_cliente_fiscal); obra em andamento sem IBGE; máquina ou
-   acessório de mobilização ativa (em preparação, em trânsito, em obra) sem NCM. */
+
+
+
+
 const CLI_MOB_ATIVA = ["em_preparacao", "em_transito", "em_obra"];
 async function cliCarregarFiscal(force){
   if(_cliFiscal && !force) return _cliFiscal;
@@ -231,7 +231,7 @@ async function cliCarregarFiscal(force){
     acIds.length ? sb.from("acessorios").select("id,marcacao,familia,tipo,ncm").in("id", acIds) : Promise.resolve({ data: [] })
   ]);
   const obraIbge = obras.length ? Object.prototype.hasOwnProperty.call(obras[0], "codigo_ibge") : await fiscalColunaExiste("obras", "codigo_ibge");
-  // obras de cada máquina/acessório (pela mobilização ativa)
+
   const obrasDe = {};
   mobs.forEach(m => [m.equipamento_id, ...(m.equipamentos_apoio || []), ...(m.acessorios_ids || [])].filter(Boolean)
     .forEach(id => { (obrasDe[id] = obrasDe[id] || new Set()).add(m.obra_id); }));
@@ -302,7 +302,7 @@ async function renderCliFiscal(){
     ? `<p class="meta">O NCM de máquinas e acessórios chega com a atualização do banco da fase 105a.</p>`
     : itensSem.length ? `<div class="tabela-rola"><table>
       <thead><tr><th>Item</th><th>Tipo</th><th>Mobilização (obra)</th></tr></thead>
-      <tbody>${itensSem.map(i => `<tr><td>${/* html */ i.link}</td><td>${esc(i.tipo)}</td><td>${obrasTxt(i.id) || "—"}</td></tr>`).join("")}</tbody></table></div>
+      <tbody>${itensSem.map(i => `<tr><td>${  i.link}</td><td>${esc(i.tipo)}</td><td>${obrasTxt(i.id) || "—"}</td></tr>`).join("")}</tbody></table></div>
       <p class="meta">Abra a ficha e preencha a aba Fiscal. A carga em lote por tipo de máquina está em docs/cargas/ncm-equipamentos.md (depois do OK do contador).</p>`
     : `<p class="vazio">Todas as máquinas e acessórios em mobilização ativa têm NCM.</p>`;
 
@@ -317,7 +317,7 @@ async function renderCliFiscal(){
   $("cli-fiscal-todos")?.addEventListener("change", e => { _cliFiscalTodos = e.target.checked; renderCliFiscal(); });
 }
 
-/* ---------- Painel <-> Ficha ---------- */
+
 function mostrarPainelCli(){
   $("cli-painel").style.display = "";
   $("cli-ficha").style.display = "none";
@@ -336,23 +336,23 @@ function novoCliente(){
    "cli-cep","cli-logradouro","cli-numero","cli-complemento","cli-bairro","cli-cidade","cli-uf","cli-obs",
    "cli-ibge","cli-ind-ie","cli-email-nf","cli-grupo"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
-  cliGrupoDica(); cliAvisoRaiz();   // fase 182a
+  cliGrupoDica(); cliAvisoRaiz();
   $("cli-tipo").value = "juridica";
   $("cli-ativo").checked = true;
   if($("cli-cep-status")) $("cli-cep-status").textContent = "";
   if($("cli-cep")) delete $("cli-cep").dataset.ultimo;
-  cliAplicarPermissoes();   // lote S49 (#140): sem Excluir no cliente novo
+  cliAplicarPermissoes();
   cliAplicarCamposFiscais();
   abrirFichaCliVisual({ nome: "(novo)", tipo_pessoa: "juridica", ativo: true });
   if(typeof ocultarHistorico === "function") ocultarHistorico("cli-historico");
-  if(typeof carregarCliContatos === "function") carregarCliContatos(null);   // fase 183a
-  if(typeof carregarCliDocumentos === "function") carregarCliDocumentos(null);   // fase 183b
+  if(typeof carregarCliContatos === "function") carregarCliContatos(null);
+  if(typeof carregarCliDocumentos === "function") carregarCliDocumentos(null);
 }
 
 async function abrirCliente(id, aba){
   cliEditId = id;
   const { data, error } = await sb.from("clientes").select("*").eq("id",id).single();
-  if(cliEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
+  if(cliEditId !== id) return;
   if(error){ aviso("app-aviso","Erro ao abrir cliente: "+error.message,"erro"); return; }
   _cliTemFiscal = Object.prototype.hasOwnProperty.call(data, "codigo_ibge");
   _cliDocOriginal = data.cpf_cnpj || "";
@@ -373,21 +373,21 @@ async function abrirCliente(id, aba){
   $("cli-uf").value          = data.uf || "";
   $("cli-obs").value         = data.observacoes || "";
   $("cli-ativo").checked     = data.ativo !== false;
-  // fase 105a
+
   if($("cli-ibge"))     $("cli-ibge").value     = data.codigo_ibge || "";
   if($("cli-ind-ie"))   $("cli-ind-ie").value   = data.indicador_ie || "";
   if($("cli-email-nf")) $("cli-email-nf").value = data.email_nf || "";
-  if($("cli-grupo")) $("cli-grupo").value = cliGrupoNome(data.grupo_id);   // fase 182a
+  if($("cli-grupo")) $("cli-grupo").value = cliGrupoNome(data.grupo_id);
   cliGrupoDica(); cliAvisoRaiz();
   if($("cli-cep-status")) $("cli-cep-status").textContent = "";
   if($("cli-cep")) $("cli-cep").dataset.ultimo = String(data.cep || "").replace(/\D/g, "");
   cliAplicarCamposFiscais();
-  cliAplicarPermissoes();   // lote S49 (#140): Salvar/Excluir conforme o cargo e o módulo extra
+  cliAplicarPermissoes();
   abrirFichaCliVisual(data);
   if(aba) ativarTabCli(aba);
   if(typeof montarHistorico === "function") montarHistorico("clientes", id, "cli-historico");
-  if(typeof carregarCliContatos === "function") carregarCliContatos(id);   // fase 183a: aba Contatos e aviso
-  if(typeof carregarCliDocumentos === "function") carregarCliDocumentos(id);   // fase 183b: documentos e quem assina
+  if(typeof carregarCliContatos === "function") carregarCliContatos(id);
+  if(typeof carregarCliDocumentos === "function") carregarCliDocumentos(id);
 }
 
 function abrirFichaCliVisual(c){
@@ -401,7 +401,7 @@ function abrirFichaCliVisual(c){
     ? `${c.cidade}${c.uf ? "/" + c.uf.toUpperCase() : ""}`
     : "—";
   $("cli-ficha-tel-chip").textContent = c.telefone || "—";
-  if($("cli-ficha-grupo-chip")) $("cli-ficha-grupo-chip").textContent = cliGrupoNome(c.grupo_id) || "—";   // fase 182a
+  if($("cli-ficha-grupo-chip")) $("cli-ficha-grupo-chip").textContent = cliGrupoNome(c.grupo_id) || "—";
   cliAtualizarSmartGrupo(c);
   $("cli-ficha-ativo-chip").innerHTML = (c.ativo === false)
     ? '<span class="tag cinza">Inativo</span>'
@@ -412,7 +412,7 @@ function abrirFichaCliVisual(c){
   ativarTabCli("geral");
 }
 
-/* situação fiscal ao vivo (aba Fiscal, badge e o aviso do documento) a partir do que está no formulário */
+
 function cliLerFormFiscal(){
   const v = id => $(id)?.value.trim();
   return { nome: v("cli-nome"), cpf_cnpj: v("cli-doc"), inscricao_estadual: v("cli-ie"), indicador_ie: $("cli-ind-ie")?.value || "",
@@ -445,7 +445,7 @@ function ativarTabCli(nome){
   });
 }
 
-/* lote S58 (#228): BrasilAPI preenche só campo vazio, com a mesma regra de Fornecedores. CPF não sai do app. */
+
 async function cliBuscarCnpj(){
   const st = $("cli-doc-status");
   const msg = (txt, erro) => { if(st){ st.textContent = txt || ""; st.classList.toggle("txt-perigo", !!erro); } };
@@ -477,7 +477,7 @@ async function cliBuscarCnpj(){
   }
 }
 
-/* ---------- Salvar / excluir ---------- */
+
 async function salvarCliente(){
   if(!$("cli-nome").value.trim()){ aviso("app-aviso","Informe o nome/razão social.","erro"); ativarTabCli("geral"); return; }
   const reg = {
@@ -499,7 +499,7 @@ async function salvarCliente(){
     observacoes:        $("cli-obs").value.trim() || null,
     ativo:              $("cli-ativo").checked
   };
-  // fase 105a: documento novo ou alterado precisa conferir (o gatilho do banco recusa igual); o que já estava gravado passa
+
   if(reg.cpf_cnpj && reg.cpf_cnpj !== _cliDocOriginal && !fiscalDocValido(reg.cpf_cnpj)){
     aviso("app-aviso", "CPF/CNPJ inválido: confira os dígitos verificadores.", "erro"); ativarTabCli("geral"); return;
   }
@@ -517,7 +517,7 @@ async function salvarCliente(){
       aviso("app-aviso", "E-mail para a nota inválido (vários: separe por vírgula).", "erro"); ativarTabCli("fiscal"); return;
     }
   }
-  // fase 182a: grupo econômico (existente pelo nome, ou criado agora depois do OK)
+
   const grupoId = await cliResolverGrupo();
   if(grupoId === undefined){ ativarTabCli("geral"); return; }
   reg.grupo_id = grupoId;
@@ -538,7 +538,7 @@ async function salvarCliente(){
   cliEditId = result.data.id;
   cliAplicarPermissoes();
   aviso("app-aviso","Cliente salvo.","ok");
-  _cliFiscal = null;   // a visão Pendências fiscais relê
+  _cliFiscal = null;
   await carregarClientes();
   if(typeof carregarClientesSelects === "function") await carregarClientesSelects();
   if(typeof carregarDashboard === "function") await carregarDashboard();
@@ -556,7 +556,7 @@ async function excluirCliente(){
   mostrarPainelCli();
 }
 
-/* Atalho do "Para regularizar" (dashboard.js): um cliente abre a ficha na aba Fiscal; vários, a visão Pendências fiscais */
+
 async function cliAbrirPendenciasFiscais(clienteId){
   if(!irParaSecao("clientes")) return;
   if(clienteId){ await abrirCliente(clienteId, "fiscal"); return; }
@@ -567,14 +567,14 @@ async function cliAbrirPendenciasFiscais(clienteId){
   renderClientes();
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarClientes(){
   document.querySelectorAll("#cli-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {
       document.querySelectorAll("#cli-painel .serv-view-btn").forEach(x => x.classList.remove("ativo"));
       b.classList.add("ativo");
       _cliView = b.dataset.view;
-      if(_cliView === "fiscal"){ _cliFiscal = null; const fe = $("cli-fe"); if(fe) fe.innerHTML = ""; }   // relê ao entrar
+      if(_cliView === "fiscal"){ _cliFiscal = null; const fe = $("cli-fe"); if(fe) fe.innerHTML = ""; }
       renderClientes();
     });
   });
@@ -598,8 +598,8 @@ function ligarClientes(){
   $("btn-voltar-cli")?.addEventListener("click", mostrarPainelCli);
   $("btn-salvar-cli")?.addEventListener("click", () => comBotaoTravado("btn-salvar-cli", salvarCliente));
   $("btn-excluir-cli")?.addEventListener("click", excluirCliente);
-  $("btn-cli-cnpj")?.addEventListener("click", () => comBotaoTravado("btn-cli-cnpj", cliBuscarCnpj));   // lote S58 (#228)
-  // fase 182a: grupo econômico
+  $("btn-cli-cnpj")?.addEventListener("click", () => comBotaoTravado("btn-cli-cnpj", cliBuscarCnpj));
+
   $("cli-f-grupo")?.addEventListener("change", renderClientes);
   $("cli-grupo")?.addEventListener("input", () => { cliGrupoDica(); cliAvisoRaiz(); });
   $("cli-doc")?.addEventListener("input", cliAvisoRaiz);
@@ -615,7 +615,7 @@ function ligarClientes(){
     b.addEventListener("click", () => ativarTabCli(b.dataset.tab));
   });
 
-  // fase 105a: CEP → endereço, cidade, UF e IBGE (ViaCEP); situação fiscal ao vivo
+
   fiscalLigarCep({ cep: "cli-cep", botao: "btn-cli-cep", status: "cli-cep-status", logradouro: "cli-logradouro",
                    bairro: "cli-bairro", cidade: "cli-cidade", uf: "cli-uf", ibge: "cli-ibge" });
   ["cli-nome", "cli-doc", "cli-ie", "cli-ind-ie", "cli-cep", "cli-ibge", "cli-logradouro", "cli-bairro", "cli-cidade", "cli-uf"].forEach(id => {

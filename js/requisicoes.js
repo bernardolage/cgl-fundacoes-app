@@ -1,47 +1,47 @@
-/* ====================================================================
-   Módulo: Requisições (fase 60 — plano Compras §6 fase 3)
-   Quem precisa pede (campo, oficina, almoxarifado, engenharia): item, quantidade, obra ou TAG,
-   urgência e justificativa. O comprador junta requisições pendentes e gera o pedido de compra
-   (RPC requisicoes_gerar_pedido); o almoxarife pode atender direto do estoque. Vive dentro de
-   Compras (visão "Requisições" + indicador) e na lista de Reposição do Estoque ("Requisitar o
-   que falta"). Depende de compras.js (cmpCarregarBase, cmpObra, cmpEq, cmpLigarBusca, abrirPedido).
-   Prefixo: req-.
-   Fase 102 (26/10/2026, #91 e #143): apropriação obrigatória (obra, TAG, setor ou "reposição do estoque"; o setor é
-   novo, requisicoes.centro_custo_id). "Aprovar" consulta o estoque item a item (RPC requisicoes_aprovar, prévia em
-   requisicoes_previa): item com produto e saldo disponível para a quantidade toda vira separação no almoxarifado
-   (fase 83) e o resto vira pedido de compra em rascunho, com fornecedor opcional (as cotações definem); a mesma
-   requisição pode gerar os dois. "Só compra" manda tudo para o pedido (o "Gerar pedido" da fase 60). A requisição
-   mostra os destinos e a etapa de cada um (requisicoes_destinos, que também serve a quem não lê Compras) e, quando o
-   almoxarifado recebe, quem pediu confere: "Recebi e conferi" (requisicao_conferir). A requisição só fica atendida
-   quando todos os destinos terminaram.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 let _reqLista = [];
-let _reqSel = new Set();          // requisições marcadas para aprovar / virar pedido
-let _reqAtual = null;             // requisição aberta no modal (null = nova)
-let _reqItens = [];               // itens em edição (nova)
+let _reqSel = new Set();
+let _reqAtual = null;
+let _reqItens = [];
 let _reqFiltroSt = "pendente";
 let _reqBuscaLigada = false;
-let _reqDestinos = {};            // fase 102: requisicao_id -> destinos (separação / pedido) com a etapa
-let _reqPrevia = {};              // fase 102: requisicao_item_id -> linha de requisicoes_previa (modal)
-let _reqPedModo = "aprovar";      // fase 102: "aprovar" (o estoque decide) | "compra" (tudo para o pedido)
-let _reqPedIds = [];              // fase 102: requisições do modal de aprovação
+let _reqDestinos = {};
+let _reqPrevia = {};
+let _reqPedModo = "aprovar";
+let _reqPedIds = [];
 
 const REQ_STATUS = {
   pendente:  ["Pendente",              "ambar"],
-  aprovada:  ["Em atendimento",        "azul"],    // fase 102: separação e/ou pedido em andamento (era "Em compra")
+  aprovada:  ["Em atendimento",        "azul"],
   separada:  ["Atendida pelo estoque", "verde"],
   atendida:  ["Atendida",              "verde"],
   rejeitada: ["Rejeitada",             "vermelho"],
   cancelada: ["Cancelada",             "cinza"]
 };
 const REQ_PRIORIDADE = { normal: "Normal", urgente: "Urgente" };
-const REQ_FILTRO_CONFERIR = "_conferir";   // fase 102: requisições com recebimento esperando a minha conferência
+const REQ_FILTRO_CONFERIR = "_conferir";
 const REQ_SEP_STATUS = { aberta: ["separação aberta", "azul"], em_separacao: ["em separação", "ambar"], separada: ["separada: pronta para retirar", "verde"],
   entregue: ["entregue", "verde"], cancelada: ["cancelada", "cinza"] };
 
-/* = policy requisicoes_write; lote S48 (#123): + gestor_manutencao (a fase 92c já o pôs no banco);
-   lote S55 (#180): + módulo extra "compras" (Maria Eduarda: requisição e recebimento de NF, sem alçada) */
+
+
 function reqPodePedir(){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return false;
   return ["admin","diretor","comprador","almoxarife","encarregado","engenheiro","assistente_engenharia","mecanico","operador","logistica","gestor_acessorios","financeiro","gestor_frota","gestor_manutencao"].includes(usuarioAtual.cargo)
@@ -50,22 +50,22 @@ function reqPodePedir(){
 function reqPodeDecidir(){ return typeof cmpPodeOperar === "function" && cmpPodeOperar(); }
 function reqTag(st){ const o = REQ_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function reqDestino(r){
-  if(r.centro_custo_id) return (typeof cmpCentro === "function" && cmpCentro(r.centro_custo_id)) || "Setor";   // fase 102
+  if(r.centro_custo_id) return (typeof cmpCentro === "function" && cmpCentro(r.centro_custo_id)) || "Setor";
   return r.equipamento_id ? "TAG " + (cmpEq(r.equipamento_id) || "?") : r.obra_id ? (cmpObra(r.obra_id) || "obra") : "Estoque (reposição da base)";
 }
 function reqItemNome(it){ return it.produto ? `${prodTxt(it.produto)}` : (it.descricao || "item"); }
-/* lote S55 (#175): serviço consumido é produto com tipo_item = "servico" (tag na linha) */
+
 function reqTagServico(it){ return it.produto && it.produto.tipo_item === "servico" ? ' <span class="tag azul" title="Serviço consumido: aplicação direta, sem estoque">serviço</span>' : ""; }
-/* fase 102: a seção está no menu deste cargo? (abrir o pedido ou a separação a partir da requisição) */
+
 function reqPodeAbrirSecao(sec){ const b = document.querySelector(`.sidebar-nav button[data-secao="${sec}"]`); return !!b && b.style.display !== "none"; }
 function reqLePedidos(){ return reqPodeDecidir() || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura()); }
 
-/* ---------- destinos (fase 102) ---------- */
+
 async function reqCarregarDestinos(ids){
   const out = {};
   for(let i = 0; i < ids.length; i += 200){
     const { data, error } = await sb.rpc("requisicoes_destinos", { p_ids: ids.slice(i, i + 200) });
-    if(error){ console.warn("requisicoes_destinos:", error.message); break; }   // antes da migration da fase 102
+    if(error){ console.warn("requisicoes_destinos:", error.message); break; }
     (data || []).forEach(d => { (out[d.requisicao_id] = out[d.requisicao_id] || []).push(d); });
   }
   return out;
@@ -96,14 +96,14 @@ function reqLigarLinksDestino(cont){
   }));
 }
 
-/* ---------- visão dentro de Compras ---------- */
+
 async function renderRequisicoes(){
   const cont = $("cmp-conteudo"); if(!cont) return;
   await cmpCarregarBase(false);
   const conferir = _reqFiltroSt === REQ_FILTRO_CONFERIR;
-  // fase 102: itens com "*" (pedido_item_id e separacao_item_id quando a migration estiver aplicada)
+
   let q = sb.from("requisicoes")
-    .select("*, solicitante:profiles!requisicoes_solicitado_por_fkey(nome), pedido:pedidos_compra(id,numero,status), itens:requisicao_itens(*, produto:produtos(codigo,nome,unidade,fornecedor_padrao_id,estoque_atual,tipo_item))")   // lote S55: tipo_item
+    .select("*, solicitante:profiles!requisicoes_solicitado_por_fkey(nome), pedido:pedidos_compra(id,numero,status), itens:requisicao_itens(*, produto:produtos(codigo,nome,unidade,fornecedor_padrao_id,estoque_atual,tipo_item))")
     .order("created_at", { ascending: false }).limit(500);
   if(conferir) q = q.eq("status", "aprovada");
   else if(_reqFiltroSt) q = q.eq("status", _reqFiltroSt);
@@ -147,7 +147,7 @@ async function renderRequisicoes(){
   reqLigarLinksDestino(cont);
 }
 
-/* ---------- modal: nova requisição / detalhe ---------- */
+
 async function abrirRequisicao(r){
   if(!r && !reqPodePedir()){ aviso("app-aviso", "Seu perfil não abre requisições.", "erro"); return; }
   await cmpCarregarBase(false);
@@ -155,13 +155,13 @@ async function abrirRequisicao(r){
   _reqPrevia = {};
   const nova = !r;
   const set = (id, html) => { const el = $(id); if(el){ const v = el.value; el.innerHTML = html; el.value = v; } };
-  // lote S54 (#171, D-171): requisição nova só para obra aberta; a obra de uma requisição já aberta aparece mesmo que concluída depois
+
   const reqObras = _cmpObras.slice();
   if(r?.obra_id && !reqObras.some(o => o.id === r.obra_id) && typeof _cmpObraMap === "object" && _cmpObraMap[r.obra_id]) reqObras.push(_cmpObraMap[r.obra_id]);
   set("req-obra", `<option value="">— nenhuma —</option>` + reqObras.map(o => `<option value="${esc(o.id)}">${esc(o.codigo)} — ${esc(o.nome)}${o.status === "concluida" ? " · concluída" : ""}</option>`).join(""));
   set("req-equip", `<option value="">— nenhuma —</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join(""));
-  if(typeof cmpCampoTag === "function") cmpCampoTag($("req-equip"));   // fase 131a: TAG com busca (código, nome, placa ou tipo)
-  // fase 102: setor / obra interna (centros de custo ativos; o da requisição aparece mesmo inativo)
+  if(typeof cmpCampoTag === "function") cmpCampoTag($("req-equip"));
+
   set("req-centro", `<option value="">— nenhum —</option>` + _cmpCentros.filter(c => c.ativo || c.id === r?.centro_custo_id)
     .map(c => `<option value="${esc(c.id)}">${esc((typeof CMP_CENTRO_TIPO === "object" && CMP_CENTRO_TIPO[c.tipo]) || c.tipo)}: ${esc(c.nome)}</option>`).join(""));
   $("req-titulo").textContent = nova ? "Nova requisição" : `${r.numero} · ${(REQ_STATUS[r.status] || [r.status])[0]}`;
@@ -180,11 +180,11 @@ async function abrirRequisicao(r){
   if($("btn-req-conferir")) $("btn-req-conferir").style.display = "none";
   if($("req-destinos")){ $("req-destinos").style.display = "none"; $("req-destinos").innerHTML = ""; }
   reqRenderItens();
-  reqRascOferecer(nova);   // lote S60 (#177)
+  reqRascOferecer(nova);
   if(nova && !_reqBuscaLigada){ cmpLigarBusca("req-busca", "req-res", p => reqAddItem(p)); _reqBuscaLigada = true; }
   $("cmp-req-modal").style.display = "flex";
   if(nova) return;
-  // fase 102: destinos (separação / pedido) e, pendente para quem decide, a prévia do que o estoque cobre
+
   const id = r.id;
   const [dest, prev] = await Promise.all([
     reqCarregarDestinos([id]),
@@ -197,7 +197,7 @@ async function abrirRequisicao(r){
   reqRenderItens();
 }
 function fecharRequisicao(){ reqRascGravar(); _reqRascBase = null; $("cmp-req-modal").style.display = "none"; _reqAtual = null; _reqItens = []; _reqPrevia = {}; }
-/* fase 102: bloco "Separação / pedido" no topo do modal + "Recebi e conferi" para quem pediu */
+
 function reqRenderDestinos(){
   const el = $("req-destinos"), r = _reqAtual; if(!el || !r) return;
   const dest = _reqDestinos[r.id] || [];
@@ -210,34 +210,34 @@ function reqRenderDestinos(){
   const b = $("btn-req-conferir");
   if(b) b.style.display = dest.some(d => d.pode_conferir) && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura()) ? "" : "none";
 }
-/* coluna "Estoque e destino": saldo do produto (nova) ou a prévia da aprovação (pendente) ou o destino que ele teve */
+
 function reqItemDestinoTxt(it){
   const pv = _reqPrevia[it.id];
   if(pv){
-    // o motivo já diz o disponível quando conta; o saldo do cadastro aparece quando difere (reservado em outra separação)
+
     const temDisp = /dispon/.test(pv.motivo || "");
     const saldo = pv.estoque_atual !== null && pv.estoque_atual !== undefined && (!temDisp || Number(pv.disponivel) !== Number(pv.estoque_atual)) ? `saldo ${num(pv.estoque_atual)}` : "";
     const dest = pv.destino === "separacao" ? '<span class="tag verde">separação</span>' : pv.destino === "pedido" ? '<span class="tag azul">compra</span>' : '<span class="tag cinza">atendido</span>';
-    return `${/* html */ dest} <span class="meta">${esc([saldo, pv.motivo].filter(Boolean).join(" · "))}</span>`;
+    return `${  dest} <span class="meta">${esc([saldo, pv.motivo].filter(Boolean).join(" · "))}</span>`;
   }
   if(it.separacao_item_id) return '<span class="tag verde">separação</span>';
   if(it.pedido_item_id) return '<span class="tag azul">compra</span>';
-  if(it.produto && it.produto.tipo_item === "servico") return '<span class="meta">serviço consumido: vai para compra</span>';   // lote S55 (#175)
+  if(it.produto && it.produto.tipo_item === "servico") return '<span class="meta">serviço consumido: vai para compra</span>';
   if(it.produto && it.produto.estoque_atual !== undefined && it.produto.estoque_atual !== null) return `<span class="meta">saldo ${num(it.produto.estoque_atual)}</span>`;
-  return it.produto_id ? "" : '<span class="meta">item livre (antigo): vai para compra</span>';   // lote S55: só itens anteriores ao fim do item livre
+  return it.produto_id ? "" : '<span class="meta">item livre (antigo): vai para compra</span>';
 }
-/* lote S55 (#175): acabou o item livre — todo item é produto do catálogo (serviço consumido também); os antigos sem
-   produto continuam renderizando (descrição fixa) */
-/* ---------- lote S60 (#177): rascunho local da requisição nova ---------- */
+
+
+
 let _reqRascBase = null;
 function reqRascChave(){ return rascunhoChave("requisicao", null); }
 function reqRascEstado(){
   return { obra: $("req-obra").value, equip: $("req-equip").value, centro: $("req-centro").value, reposicao: $("req-reposicao").checked,
     prioridade: $("req-prioridade").value, just: $("req-just").value, itens: _reqItens };
 }
-/* lote S69-i (#342): o rascunho mora no localStorage com a chave do usuário (sobrevive a outra aba e a fechar o navegador) e
-   vence em 7 dias (rascunhoLerLocal); "Sair" apaga (rascunhoLimparTodos). Enquanto a faixa Restaurar/Descartar está à vista,
-   nada é gravado por cima do rascunho guardado. */
+
+
+
 function reqRascGravar(){
   if(_reqRascBase === null || _reqAtual) return;
   const txt = JSON.stringify(reqRascEstado());
@@ -254,7 +254,7 @@ function reqRascOferecer(nova){
   reqRascFaixa("");
   if(!nova) return;
   const base = JSON.stringify(reqRascEstado()), chave = reqRascChave();
-  // rascunho da versão anterior (sessionStorage, mesma chave): passa para o localStorage na primeira abertura
+
   const antigo = rascunhoLer(chave);
   if(antigo){ if(!rascunhoLerLocal(chave)) rascunhoGuardarLocal(chave, antigo.dados); rascunhoApagar(chave); }
   const r = rascunhoLerLocal(chave);
@@ -274,11 +274,11 @@ function reqRascOferecer(nova){
   el.querySelector('[data-faixa-acao="descartar"]')?.addEventListener("click", () => {
     rascunhoApagarLocal(chave);
     reqRascFaixa(""); _reqRascBase = base;
-    reqRascGravar();   // o que foi digitado com a faixa à vista passa a ser o rascunho
+    reqRascGravar();
   });
 }
 function reqRenderItens(){
-  reqRascAgendar();   // lote S60 (#177)
+  reqRascAgendar();
   const tb = $("req-itens"); if(!tb) return;
   const nova = !_reqAtual;
   if(!_reqItens.length){ tb.innerHTML = `<tr><td colspan="5" class="vazio">Nenhum item. Busque o produto acima (serviço consumido também é produto; fora do catálogo, peça o cadastro ao almoxarifado ou ao comprador).</td></tr>`; return; }
@@ -293,13 +293,13 @@ function reqRenderItens(){
   tb.querySelectorAll("button[data-rem]").forEach(b => b.addEventListener("click", () => { _reqItens.splice(Number(b.dataset.rem), 1); reqRenderItens(); }));
 }
 function reqAddItem(p){
-  if(!p?.id) return;   // lote S55 (#175): sem item livre; o banco também recusa (trg_requisicao_item_produto)
+  if(!p?.id) return;
   if(_reqItens.some(i => i.produto_id === p.id)){ aviso("app-aviso", "Esse produto já está na requisição.", "erro"); return; }
   _reqItens.push({ produto_id: p.id, produto: { codigo: p.codigo, nome: p.nome, unidade: p.unidade, estoque_atual: p.estoque_atual, tipo_item: p.tipo_item }, descricao: `${prodTxt(p)}`, unidade: p.unidade || "un", quantidade_solicitada: 1 });
   reqRenderItens();
   if($("req-busca")) $("req-busca").value = "";
 }
-/* fase 102: obra/TAG, setor e reposição se excluem (requisicoes_apropriacao_chk no banco) */
+
 function reqApropriacaoMudou(origem){
   if(_reqAtual) return;
   if(origem === "centro" && $("req-centro").value){ $("req-obra").value = ""; $("req-equip").value = ""; $("req-reposicao").checked = false; }
@@ -308,21 +308,21 @@ function reqApropriacaoMudou(origem){
 }
 async function salvarRequisicao(){
   if(_reqAtual) return;
-  const itens = _reqItens.filter(i => Number(i.quantidade_solicitada) > 0 && i.produto_id);   // lote S55 (#175): só produto do catálogo
+  const itens = _reqItens.filter(i => Number(i.quantidade_solicitada) > 0 && i.produto_id);
   if(!itens.length){ aviso("app-aviso", "Adicione ao menos um item do catálogo com quantidade.", "erro"); return; }
   const reg = { obra_id: $("req-obra").value || null, equipamento_id: $("req-equip").value || null, centro_custo_id: $("req-centro").value || null,
     prioridade: $("req-prioridade").value || "normal", justificativa: $("req-just").value.trim() || null, status: "pendente" };
-  // fase 102 (#91, etapa 1): apropriação obrigatória
+
   if(!reg.obra_id && !reg.equipamento_id && !reg.centro_custo_id && !$("req-reposicao").checked){
     aviso("app-aviso", "Diga para onde vai o custo: obra, TAG ou setor. Se for para repor o estoque da base, marque \"Reposição do estoque\".", "erro"); return;
   }
   if(reg.centro_custo_id && (reg.obra_id || reg.equipamento_id)){ aviso("app-aviso", "Escolha obra/TAG ou setor, não os dois.", "erro"); return; }
-  if(!reg.centro_custo_id) delete reg.centro_custo_id;   // banco sem a migration da fase 102 continua aceitando
+  if(!reg.centro_custo_id) delete reg.centro_custo_id;
   const { data: r, error } = await sb.from("requisicoes").insert(reg).select("id,numero").single();
   if(error){ aviso("app-aviso", "Não foi possível abrir a requisição: " + error.message, "erro"); return; }
-  const { error: eIt } = await sb.from("requisicao_itens").insert(itens.map(i => ({ requisicao_id: r.id, produto_id: i.produto_id, unidade: (i.unidade || "un").trim(), quantidade_solicitada: Number(i.quantidade_solicitada) })));   // lote S55: sem descricao (item livre acabou)
+  const { error: eIt } = await sb.from("requisicao_itens").insert(itens.map(i => ({ requisicao_id: r.id, produto_id: i.produto_id, unidade: (i.unidade || "un").trim(), quantidade_solicitada: Number(i.quantidade_solicitada) })));
   if(eIt){ await sb.from("requisicoes").delete().eq("id", r.id); aviso("app-aviso", "Erro nos itens: " + eIt.message, "erro"); return; }
-  rascunhoApagarLocal(reqRascChave()); rascunhoApagar(reqRascChave()); _reqRascBase = null;   // lote S60 (#177); S69-i: localStorage
+  rascunhoApagarLocal(reqRascChave()); rascunhoApagar(reqRascChave()); _reqRascBase = null;
   aviso("app-aviso", `Requisição ${r.numero} aberta. O comprador vê em Compras › Requisições.`, "ok");
   fecharRequisicao();
   if(typeof _cmpView !== "undefined" && $("sec-compras")?.classList.contains("ativa")){ _cmpView = "requisicoes"; await cmpFetchPedidos(); renderCompras(); }
@@ -340,8 +340,8 @@ async function reqMudarStatus(status){
   await cmpFetchPedidos(); renderCompras();
 }
 
-/* ---------- aprovar (estoque decide) ou só compra (fase 102, #143; era "gerar pedido" da fase 60) ---------- */
-/* fornecedor padrão mais frequente entre os itens (fase 102: só os que vão para o pedido, quando a prévia diz quais) */
+
+
 function reqFornecedorSugerido(ids, itensPedido){
   const cont = {};
   _reqLista.filter(r => ids.includes(r.id)).forEach(r => (r.itens || []).forEach(i => {
@@ -360,7 +360,7 @@ async function reqAbrirAprovar(ids, modo){
   $("req-ped-titulo").textContent = compra ? "Mandar para compra" : (ids.length > 1 ? `Aprovar ${ids.length} requisições` : "Aprovar requisição");
   _reqPedNPed = null;
   reqPedTextos();
-  sel.onchange = reqPedTextos;   // lote S53 (#163): o botão e a ajuda seguem o fornecedor escolhido
+  sel.onchange = reqPedTextos;
   const reqs = _reqLista.filter(r => ids.includes(r.id));
   $("req-ped-resumo").innerHTML = `<p class="meta">Carregando o que o estoque cobre…</p>`;
   $("cmp-req-ped-modal").style.display = "flex";
@@ -381,9 +381,9 @@ async function reqAbrirAprovar(ids, modo){
   _reqPedNPed = nPed;
   reqPedTextos();
 }
-/* lote S53 (#163): sem fornecedor o pedido gerado nasce em cotação (requisicoes_aprovar); com fornecedor, em rascunho.
-   O botão e a ajuda do modal dizem qual dos dois vai acontecer. _reqPedNPed = itens que vão para compra (null = prévia
-   ainda carregando). */
+
+
+
 let _reqPedNPed = null;
 function reqPedTextos(){
   const compra = _reqPedModo === "compra", semForn = !$("req-ped-forn").value, vaiPedido = compra || _reqPedNPed === null || _reqPedNPed > 0;
@@ -399,14 +399,14 @@ async function reqConfirmarAprovar(){
   if(error){ aviso("app-aviso", "Não foi possível aprovar: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   $("cmp-req-ped-modal").style.display = "none"; _reqSel = new Set(); _reqPedIds = [];
   const seps = (data?.separacoes || []).map(s => s.numero).join(", ");
-  const emCot = data?.pedido_status === "em_cotacao";   // lote S53 (#163)
+  const emCot = data?.pedido_status === "em_cotacao";
   const partes = [data?.itens_separacao ? `${data.itens_separacao} item(ns) na separação ${seps} (almoxarifado)` : "",
     data?.itens_pedido ? `${data.itens_pedido} no pedido ${data.pedido_numero} (${emCot ? "em cotação: registre as propostas na aba Cotações e feche com o fornecedor escolhido" : "rascunho: confira preços, cote e envie para aprovação"})` : ""].filter(Boolean);
   aviso("app-aviso", "Aprovado: " + (partes.join(" e ") || "os destinos que já existiam continuam") + ".", "ok");
   await cmpFetchPedidos();
   if(data?.pedido_id){ await abrirPedido(data.pedido_id); if(emCot && typeof ativarTabPedido === "function") ativarTabPedido("cotacoes"); }
 }
-/* fase 102 (#91, etapa 5): quem pediu confere o que o almoxarifado recebeu */
+
 async function reqConferir(){
   const r = _reqAtual; if(!r) return;
   const obs = prompt(`Conferir o material recebido da requisição ${r.numero}.\nObservação (opcional; diga aqui se faltou algo ou veio com defeito):`, "");
@@ -418,7 +418,7 @@ async function reqConferir(){
   await cmpFetchPedidos(); renderCompras();
 }
 
-/* ---------- Estoque › Reposição: requisitar o que falta ---------- */
+
 async function reqCriarDaReposicao(){
   if(!reqPodePedir()){ aviso("app-aviso", "Seu perfil não abre requisições.", "erro"); return; }
   const faltam = (typeof _estRep === "object" ? _estRep : []).filter(p => typeof estAComprar === "function" && estAComprar(p) > 0);
@@ -431,17 +431,17 @@ async function reqCriarDaReposicao(){
   aviso("app-aviso", `Requisição ${r.numero} aberta com ${faltam.length} item(ns). O comprador vê em Compras › Requisições.`, "ok");
 }
 
-/* ---------- ligação ---------- */
+
 function ligarRequisicoes(){
   if(!$("cmp-req-modal")) return;
-  ["input", "change"].forEach(ev => $("cmp-req-modal")?.addEventListener(ev, reqRascAgendar));   // lote S60 (#177)
+  ["input", "change"].forEach(ev => $("cmp-req-modal")?.addEventListener(ev, reqRascAgendar));
   $("btn-cmp-req-nova")?.addEventListener("click", () => abrirRequisicao(null));
   $("btn-req-fechar")?.addEventListener("click", fecharRequisicao);
   $("btn-req-salvar")?.addEventListener("click", () => comBotaoTravado("btn-req-salvar", salvarRequisicao));
   $("btn-req-rejeitar")?.addEventListener("click", () => reqMudarStatus("rejeitada"));
   $("btn-req-estoque")?.addEventListener("click", () => reqMudarStatus("separada"));
   $("btn-req-cancelar")?.addEventListener("click", () => reqMudarStatus("cancelada"));
-  // fase 102: aprovar (o estoque decide) e "só compra" (tudo para o pedido)
+
   $("btn-req-aprovar")?.addEventListener("click", () => { if(_reqAtual){ const id = _reqAtual.id; fecharRequisicao(); reqAbrirAprovar([id], "aprovar"); } });
   $("btn-req-pedido")?.addEventListener("click", () => { if(_reqAtual){ const id = _reqAtual.id; fecharRequisicao(); reqAbrirAprovar([id], "compra"); } });
   $("btn-req-conferir")?.addEventListener("click", () => comBotaoTravado("btn-req-conferir", reqConferir));
@@ -449,7 +449,7 @@ function ligarRequisicoes(){
   $("btn-req-ped-fechar")?.addEventListener("click", () => { $("cmp-req-ped-modal").style.display = "none"; _reqPedIds = []; });
   $("btn-req-ped-gerar")?.addEventListener("click", () => comBotaoTravado("btn-req-ped-gerar", reqConfirmarAprovar));
   $("btn-est-requisitar")?.addEventListener("click", () => comBotaoTravado("btn-est-requisitar", reqCriarDaReposicao));
-  // linha da lista abre o detalhe (o clique geral de cmp-conteudo abre pedidos por data-id; aqui é data-req)
+
   $("cmp-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("input,a,button")) return;
     const tr = e.target.closest("tr[data-req]"); if(!tr) return;

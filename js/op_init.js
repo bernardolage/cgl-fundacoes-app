@@ -1,10 +1,10 @@
-/* ====================================================================
-   App do operador (fase 129b) — op_init.js (carrega por último)
-   Tela Entrar (CPF e senha), troca obrigatória da senha provisória, pedir a senha de novo sem perder a fila,
-   arranque (perfil, fila do aparelho, diário guardado), service worker e os gatilhos da drenagem.
-   Quem entra direto aqui: operador e encarregado (sem MFA, CLAUDE.md fase 93b). Engenharia, admin e diretor
-   chegam pelo "Modo campo" do sistema, com a sessão (e o MFA) já feitos lá.
-   ==================================================================== */
+
+
+
+
+
+
+
 
 const CARGOS_LOGIN_DIRETO = ["operador", "encarregado"];
 
@@ -48,7 +48,7 @@ async function entrar(ev){
   await iniciarOperador(true);
 }
 
-/* sessão vencida: pede só a senha, a fila e a tela ficam como estão */
+
 async function entrarDeNovo(ev){
   ev.preventDefault();
   const senha = $("op-sv-senha").value;
@@ -64,7 +64,7 @@ async function entrarDeNovo(ev){
   agendarDrenagem(0);
 }
 
-/* senha provisória do RH (fase 93b): troca obrigatória antes de qualquer outra tela */
+
 let _trocaResolver = null;
 function mostrarTrocaSenha(obrigatoria){
   $("op-troca-titulo").textContent = obrigatoria ? "Troque sua senha" : "Trocar a senha";
@@ -112,7 +112,7 @@ async function iniciarOperador(veioDoLogin){
   if(!sessao){ mostrarLogin(); return; }
   OP.perfil = await lerPerfil().catch(() => null);
   if(!OP.perfil){
-    // sem sinal com sessão guardada: abre o que está no aparelho, a fila espera
+
     if(!navigator.onLine && prefLer("ultimo_perfil")) OP.perfil = { id: prefLer("ultimo_perfil"), nome: prefLer("ultimo_nome") || "", cargo: prefLer("ultimo_cargo") };
     else { mostrarLogin(); return; }
   }
@@ -123,7 +123,7 @@ async function iniciarOperador(veioDoLogin){
   }
   if(!CARGOS_LOGIN_DIRETO.includes(OP.perfil.cargo)){
     if(veioDoLogin){ await sb.auth.signOut(); mostrarLogin("Entre pelo sistema principal e use Modo campo."); return; }
-    // engenharia, admin e diretor: sessão do sistema principal, com o MFA feito lá
+
     try {
       const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
       if(aal?.nextLevel === "aal2" && aal?.currentLevel !== "aal2"){ location.replace("index.html"); return; }
@@ -150,7 +150,7 @@ async function iniciarOperador(veioDoLogin){
   agendarDrenagem(0);
 }
 
-/* ---------- ligações ---------- */
+
 $("op-form-login").addEventListener("submit", entrar);
 $("op-form-sessao").addEventListener("submit", entrarDeNovo);
 $("op-form-troca").addEventListener("submit", salvarTrocaSenha);

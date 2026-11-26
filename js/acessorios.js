@@ -1,39 +1,39 @@
-/* ====================================================================
-   ACESSÓRIOS (fase 47/48 · 15/09/2026)
-   Peças com identidade (marcação) de hélice, raiz, secante e trado.
-   - Painel "Onde está" (kanban por localização, agrupado por modelo),
-     Lista e Contagem (vw_acessorios_contagem = CONTAGEM GERAL da planilha).
-   - Seleção em massa → Enviar para obra / Retornar ao pátio / Mover /
-     Abrir reparo / Condição / Registrar perda (RPCs da fase 48; cada
-     peça ganha o seu evento em acessorio_eventos pelo trigger).
-   - Ficha Odoo: statusbar = condição, chips, smart-buttons, abas
-     Dados técnicos · Jogo · Histórico · Reparos · Observações (+ chatter).
-   Escrita: admin, diretor, gestor_acessorios, mecanico, logistica,
-   engenheiro (RLS acessorios_write). Família escolhida fica lembrada
-   por usuário (localStorage): Walison abre em raiz, Lucas em hélice.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 let _aceView = "kanban";
-let _aceFoco = null; // { ids:Set, rotulo } — clique num card do quadro com várias peças mostra só elas na lista
-let _aceFamilia = null;            // '' = todas
-let _aceKpi = "";                  // filtro rápido dos indicadores
-let _aceRegistros = [];            // acessórios (cache)
+let _aceFoco = null;
+let _aceFamilia = null;
+let _aceKpi = "";
+let _aceRegistros = [];
 let _aceModelos = [];
-let _aceEquips = [];               // equipamentos de produção (sem caminhão/veículo)
-let _aceEq = {};                   // id -> equipamento
+let _aceEquips = [];
+let _aceEq = {};
 let _aceForns = [];
-let _aceSel = new Set();           // ids selecionados
+let _aceSel = new Set();
 let _aceCarregado = false;
-let _aceContagem = null;           // linhas da view (cache)
-let _aceSoSemPreco = false;        // Contagem: só modelos sem preço (fase 75, "Para regularizar")
-let _aceAcaoIds = [];              // alvo da ação em curso (modais)
-let _aceAtual = null;              // registro aberto na ficha
-let acessorioEditId = null;        // null = novo
-let _aceMdDepois = null;           // callback após salvar modelo
+let _aceContagem = null;
+let _aceSoSemPreco = false;
+let _aceAcaoIds = [];
+let _aceAtual = null;
+let acessorioEditId = null;
+let _aceMdDepois = null;
 let _aceMdEditId = null;
-let _aceValor = {};                // id -> { valor, base, preco_vencido, peso_kg } (vw_acessorios_valor)
-let _aceFotosN = {};               // id -> nº de fotos
-let _aceFotoUrl = {};              // storage_path -> { url, expira_em } (lote S43: assinada por 12 h, renovada a 5 min do fim)
-let _aceSucata = [];               // últimos preços da sucata
+let _aceValor = {};
+let _aceFotosN = {};
+let _aceFotoUrl = {};
+let _aceSucata = [];
 const ACE_FOTO_BUCKET = "acessorios-fotos";
 const ACE_FOTO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 const ACE_FOTO_TIPO_LBL = { identificacao: "Identificação", avaria: "Avaria", descarte: "Descarte / sucata", outro: "Outra" };
@@ -56,18 +56,18 @@ const ACE_TIPOS_FAMILIA = {
 };
 const ACE_ACOPL_LBL = { czm: "CZM", hg: "HG", soilmec: "Soilmec", cgl: "CGL", ek: "EK", api: "API", outro: "Outro" };
 const ACE_EVENTO_LBL = { localizacao: "Localização", condicao: "Condição", reparo: "Reparo", perda: "Perda", observacao: "Conferência / nota", importacao: "Importação", instalacao: "Instalação", retirada: "Retirada" };
-// fase 141: motivo da retirada e para onde a peça vai
+
 const ACE_MOTIVO_RETIRADA = [
   { valor: "quebrou", rotulo: "Quebrou" }, { valor: "desgaste", rotulo: "Desgaste" }, { valor: "preventiva", rotulo: "Preventiva" },
   { valor: "troca_obra", rotulo: "Troca de obra" }, { valor: "reparo", rotulo: "Reparo" }, { valor: "outro", rotulo: "Outro" }
 ];
 const ACE_DESTINO_RETIRADA = [ { valor: "patio", rotulo: "Pátio" }, { valor: "oficina", rotulo: "Oficina" }, { valor: "equipamento", rotulo: "Fica na máquina" } ];
 const aceMotivoLbl = (v) => (ACE_MOTIVO_RETIRADA.find(m => m.valor === v) || {}).rotulo || v || "";
-// fase 141: sem a migration 141b, a lista segue funcionando com as colunas antigas
+
 const ACE_COLS_VIDA = "marca,origem_fornecedor_id,instalado_equipamento_id,instalado_em,";
 let _aceSemVida = false;
-let _aceVida = null;        // { vidas, resumo, consumo, pct, minimo } da visão Vida útil
-let _aceVidaAba = "modelo"; // modelo | consumo
+let _aceVida = null;
+let _aceVidaAba = "modelo";
 let _aceRtMotivo = null, _aceRtDestino = null;
 const ACE_REPARO_TIPOS = { recuperacao_estrutural: "Recuperação estrutural", solda: "Solda", corte: "Corte", usinagem: "Usinagem", fabricacao_peca: "Fabricação de peça", pintura: "Pintura", outro: "Outro" };
 const ACE_REPARO_STATUS = { aberto: "Aberto", em_execucao: "Em execução", concluido: "Concluído", cancelado: "Cancelado" };
@@ -94,7 +94,7 @@ function aceDescr(a){
   if(a.pol_interna) p.push(`${a.pol_interna}"`);
   return p.join(" ");
 }
-/* chave de agrupamento (modelo) usada no kanban e na contagem local */
+
 function aceModeloKey(a){ return a.modelo_id || `${a.tipo}|${a.diametro_mm || ""}|${a.acoplamento || ""}|${a.pol_interna || ""}`; }
 function aceOnde(a){
   const d = a.local_descricao ? ` · ${a.local_descricao}` : "";
@@ -109,7 +109,7 @@ function aceOnde(a){
     default:            return "Não localizado" + d;
   }
 }
-/* coluna do kanban "onde está" */
+
 function aceColKey(a){
   switch(a.local_tipo){
     case "fornecedor":  return "forn:" + (a.local_fornecedor_id || "");
@@ -134,7 +134,7 @@ function aceQuando(iso){
 function aceOrdMarc(a, b){ return String(a.marcacao).localeCompare(String(b.marcacao), "pt-BR", { numeric: true }); }
 function aceChaveFamilia(){ return "ace_familia_" + (usuarioAtual?.id || "anon"); }
 
-/* ---------- carga ---------- */
+
 async function aceFetchTodos(){
   const cols = (_aceSemVida ? "" : ACE_COLS_VIDA) + "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,ordem_fabricacao_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia,peso_kg,preco_origem,preco_atualizado_em)";
   const tudo = []; const passo = 1000;
@@ -147,7 +147,7 @@ async function aceFetchTodos(){
   }
   return tudo;
 }
-/* valor de reposição por peça (view) — paginado como o catálogo */
+
 async function aceFetchValor(ids){
   const out = {}; const passo = 1000;
   for(let de = 0; ; de += passo){
@@ -213,8 +213,8 @@ async function carregarAcessorios(force){
   renderAcessorios();
 }
 
-/* Catálogo para outros módulos (Movimentações, Mobilizações): devolve as peças em cache ou carrega.
-   Também garante _aceEq (nomes de TAG usados por aceOnde). */
+
+
 let _aceCatalogoEm = 0;
 async function aceCatalogo(force){
   const fresco = _aceRegistros.length && (_aceCarregado || (Date.now() - _aceCatalogoEm) < 120000);
@@ -229,10 +229,10 @@ async function aceCatalogo(force){
   _aceContagem = null;
   return _aceRegistros;
 }
-/* outro módulo mudou peças de lugar (remessa recebida, mobilização): próxima visita recarrega */
+
 function aceInvalidar(){ _aceCarregado = false; _aceCatalogoEm = 0; }
 
-/* recarrega só algumas peças (depois de uma ação) e re-renderiza */
+
 async function aceRefetch(ids){
   if(!ids || !ids.length) return;
   const cols = (_aceSemVida ? "" : ACE_COLS_VIDA) + "id,marcacao,familia,modelo_id,jogo,seq_no_jogo,tipo,diametro_mm,diametro_real_mm,passo_mm,passo_ideal_mm,acoplamento,pol_interna,comprimento_m,tubo_mm,detalhe,peso_kg,numero_serie,condicao,condicao_motivo,local_tipo,local_equipamento_id,local_obra_id,local_fornecedor_id,local_descricao,local_confirmado_em,equipamento_padrao_id,produto_id,ordem_fabricacao_id,observacoes,ativo,updated_at,modelo:acessorio_modelos(descricao,medida,grupo_contagem,preco_referencia)";
@@ -267,7 +267,7 @@ function acePreencherSelectsFixos(){
   ["ace-familia","ace-md-familia"].forEach(id => { const el = $(id); if(el) el.innerHTML = fam; });
   const ac = $("ace-acopl"); if(ac) ac.innerHTML = `<option value="">—</option>` + Object.entries(ACE_ACOPL_LBL).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   const mv = $("ace-mv-tipo"); if(mv) mv.innerHTML = ACE_LOCAIS_MOVER.map(v => `<option value="${esc(v)}">${esc(aceLbl("acessorio_local", v))}</option>`).join("");
-  const cd = $("ace-cd-cond"); if(cd){ cd.innerHTML = opcoesStatus("acessorio"); cd.querySelector('option[value="vendido"]')?.remove(); }   // fase 180c: "vendido" nasce da venda do bem
+  const cd = $("ace-cd-cond"); if(cd){ cd.innerHTML = opcoesStatus("acessorio"); cd.querySelector('option[value="vendido"]')?.remove(); }
   const rt = $("ace-rp-tipo"); if(rt) rt.innerHTML = Object.entries(ACE_REPARO_TIPOS).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
   const fc = $("ace-f-condicao"); if(fc) fc.innerHTML = `<option value="">Condição</option>` + opcoesStatus("acessorio");
   const fl = $("ace-f-local"); if(fl) fl.innerHTML = `<option value="">Onde está</option>` + opcoesStatus("acessorio_local");
@@ -277,7 +277,7 @@ function acePreencherSelectsFixos(){
 
 function aceDaFamilia(){ return _aceFamilia ? _aceRegistros.filter(a => a.familia === _aceFamilia) : _aceRegistros; }
 
-/* selects de filtro dependem da família (mantêm o valor se ainda existir) */
+
 function acePreencherFiltros(){
   const base = aceDaFamilia();
   const setOpts = (id, placeholder, pares) => {
@@ -288,13 +288,13 @@ function acePreencherFiltros(){
   };
   const tipos = [...new Set(base.map(a => a.tipo))].sort((a, b) => (ACE_TIPO_LBL[a] || a).localeCompare(ACE_TIPO_LBL[b] || b, "pt-BR"));
   setOpts("ace-f-tipo", "Todos os tipos", tipos.map(t => [t, ACE_TIPO_LBL[t] || t]));
-  // lote S46 (#87): filtro pelo Ø externo (diametro_mm) das peças do segmento; a medida continua na busca livre
+
   const diams = [...new Set(base.map(a => Number(a.diametro_mm)).filter(d => d > 0))].sort((a, b) => a - b);
   const pares = diams.map(d => [String(d), `Ø ${d}`]);
   if(base.some(a => !(Number(a.diametro_mm) > 0))) pares.push(["sem", "sem Ø"]);
   setOpts("ace-f-medida", "Ø externo", pares);
-  // lote S48 (#126): filtro pelo detalhe (Mola, Unha, Bits…). Texto livre: "MOLA" e "Mola" viram a mesma opção (chave sem
-  // acento, minúscula, sem espaço duplo); o rótulo é a grafia mais usada, com a inicial maiúscula.
+
+
   const detCont = new Map();
   base.forEach(a => { const k = aceDetalheChave(a.detalhe); if(!k) return;
     const g = detCont.get(k) || new Map(); const t = aceDetalheTexto(a.detalhe); g.set(t, (g.get(t) || 0) + 1); detCont.set(k, g); });
@@ -315,7 +315,7 @@ function acePreencherFiltros(){
   const fj = $("ace-f-jogo"); if(fj) fj.style.display = jogos.length ? "" : "none";
 }
 
-/* lote S48 (#126): detalhe é texto livre; a chave junta grafias ("MOLA", "Mola", " mola ") e o texto tira espaço duplo */
+
 function aceDetalheTexto(s){ return String(s || "").replace(/\s+/g, " ").trim(); }
 function aceDetalheChave(s){ return aceDetalheTexto(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 
@@ -326,10 +326,10 @@ function aceFiltradas(){
   const fC = $("ace-f-condicao")?.value || "", fL = $("ace-f-local")?.value || "", fE = $("ace-f-equip")?.value || "";
   const fO = $("ace-f-obra")?.value || "", fJ = $("ace-f-jogo")?.value || "";
   return aceDaFamilia().filter(a => {
-    if(a.ativo === false && fC !== "baixado" && fC !== "vendido") return false;   // fase 180c: vendido junto com o bem
+    if(a.ativo === false && fC !== "baixado" && fC !== "vendido") return false;
     if(fT && a.tipo !== fT) return false;
-    if(fM === "sem" ? Number(a.diametro_mm) > 0 : (fM && String(Number(a.diametro_mm)) !== fM)) return false;   // lote S46 (#87): Ø externo
-    if(fD && (fD === "sem" ? !!aceDetalheChave(a.detalhe) : aceDetalheChave(a.detalhe) !== fD)) return false;   // lote S48 (#126)
+    if(fM === "sem" ? Number(a.diametro_mm) > 0 : (fM && String(Number(a.diametro_mm)) !== fM)) return false;
+    if(fD && (fD === "sem" ? !!aceDetalheChave(a.detalhe) : aceDetalheChave(a.detalhe) !== fD)) return false;
     if(fA && a.acoplamento !== fA) return false;
     if(fC && a.condicao !== fC) return false;
     if(fL && a.local_tipo !== fL) return false;
@@ -350,7 +350,7 @@ function aceFiltradas(){
   });
 }
 
-/* ---------- render ---------- */
+
 function renderAcessorios(){
   document.querySelectorAll("#ace-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _aceView));
   document.querySelectorAll("#ace-familias .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.familia === (_aceFamilia || "")));
@@ -441,8 +441,8 @@ function renderAcessoriosLista(dados){
   </table></div>`;
 }
 
-/* ---------- Contagem (CONTAGEM GERAL) ----------
-   opts (opcional, fase 75): { semPreco } liga ou desliga o filtro "Sem preço". */
+
+
 async function renderAcessoriosContagem(opts){
   if(opts && typeof opts.semPreco === "boolean") _aceSoSemPreco = opts.semPreco;
   const cont = $("ace-conteudo");
@@ -456,7 +456,7 @@ async function renderAcessoriosContagem(opts){
     .sort((a, b) => (a.grupo_contagem || "ZZZ").localeCompare(b.grupo_contagem || "ZZZ", "pt-BR") || a.descricao.localeCompare(b.descricao, "pt-BR", { numeric: true }) || String(a.medida || "").localeCompare(String(b.medida || ""), "pt-BR", { numeric: true }));
   const c = $("ace-contador"); if(c) c.textContent = `${linhas.length} modelos`;
   const cols = ["cadastrados","em_estoque","em_obra","em_manutencao","perdas","sem_marcacao"];
-  const verTot = typeof ehDiretoria === "function" && ehDiretoria(); // somatório de reposição só para a diretoria
+  const verTot = typeof ehDiretoria === "function" && ehDiretoria();
   const soma = arr => cols.reduce((o, k) => (o[k] = arr.reduce((s, l) => s + Number(l[k] || 0), 0), o), { valor_total: arr.reduce((s, l) => s + Number(l.valor_reposicao || 0), 0) });
   const precoTag = l => !l.preco_referencia ? '<span class="tag ambar" title="modelo sem preço: clique na linha e informe">sem preço</span>' : l.preco_origem === "estimativa" ? '<span class="tag ambar" title="estimado a partir do Ø vizinho, do R$/m ou do piso de um orçamento">estimado</span>' : (l.preco_origem === "cotacao" ? '<span class="tag azul" title="preço de cotação de fornecedor (S.A Trados, 2024)">cotação</span> ' : "") + (l.preco_vencido ? '<span class="tag ambar" title="preço com mais de 12 meses">vencido</span>' : (l.preco_origem === "compra" ? '<span class="tag verde" title="atualizado pela última compra">compra</span>' : ""));
   const grupos = new Map();
@@ -488,7 +488,7 @@ async function renderAcessoriosContagem(opts){
   $("ace-f-sem-preco")?.addEventListener("change", e => renderAcessoriosContagem({ semPreco: e.target.checked }));
   $("btn-ace-sucata")?.addEventListener("click", abrirPrecoSucata);
 }
-/* ---------- preço da sucata ---------- */
+
 function abrirPrecoSucata(){
   if(!acePodeEditar()) return;
   $("ace-sc-mes").value = hojeISO().slice(0, 7); $("ace-sc-preco").value = _aceSucata[0]?.preco_kg ?? ""; $("ace-sc-obs").value = "";
@@ -519,7 +519,7 @@ function aceExportarContagem(linhas, grupos, tot, verTot){
   XLSX.writeFile(wb, `contagem-acessorios-${_aceFamilia || "todas"}-${hojeISO()}.xlsx`);
 }
 
-/* ---------- seleção em massa ---------- */
+
 function aceRenderSelecao(){
   const box = $("ace-selecao"); if(!box) return;
   const n = _aceSel.size;
@@ -558,7 +558,7 @@ function aceLigarDrag(cont){
   });
 }
 
-/* ---------- modais de ação ---------- */
+
 function aceMvAtualizarCampos(){
   const t = $("ace-mv-tipo").value;
   $("ace-mv-c-obra").style.display  = ["obra","em_transito"].includes(t) ? "" : "none";
@@ -577,18 +577,18 @@ function abrirMoverAcessorios(ids, pre){
   $("ace-mv-equip").value = pre.equip || "";
   $("ace-mv-forn").value = pre.forn || "";
   $("ace-mv-desc").value = ""; $("ace-mv-obs").value = "";
-  // sugestão: peça única já em obra/equipamento mantém a referência
+
   if(ids.length === 1 && !pre.obra && !pre.equip){
     const a = _aceRegistros.find(x => x.id === ids[0]);
     if(a && ["obra","em_transito"].includes(pre.tipo) && a.local_obra_id) $("ace-mv-obra").value = a.local_obra_id;
   }
-  // equipamento mobilizado na obra escolhida: pré-seleciona se só houver um
+
   aceMvAtualizarCampos();
   $("ace-mover-modal").style.display = "flex";
 }
 function fecharMoverAcessorios(){ $("ace-mover-modal").style.display = "none"; }
-// hotfix 33 (#33): erro técnico (tipo, coluna, permissão do banco) não aparece cru na tela;
-// mensagem de regra levantada pela RPC (P0001, ex.: "Informe a obra.") passa como está
+
+
 const ACE_ERROS_TECNICOS = ["42804", "42703", "42883", "42P01", "22P02", "42501"];
 function aceMsgErroMover(error){
   if(ACE_ERROS_TECNICOS.includes(error.code) || /is of type .* but expression is of type|permission denied/i.test(error.message || "")){
@@ -606,7 +606,7 @@ async function salvarMoverAcessorios(){
   if(t === "obra" && !p.p_obra_id){ aviso("app-aviso", "Informe a obra.", "erro"); return; }
   if(t === "equipamento" && !p.p_equipamento_id){ aviso("app-aviso", "Informe o equipamento.", "erro"); return; }
   if(t === "fornecedor" && !p.p_fornecedor_id){ aviso("app-aviso", "Informe o fornecedor.", "erro"); return; }
-  // lote S39 (#19): peça perdida que volta fica com "reencontrada em <data>" no histórico (texto do evento)
+
   const regs = _aceAcaoIds.map(id => _aceRegistros.find(a => a.id === id)).filter(Boolean);
   if(t !== "perdido" && !p.p_obs && regs.length && regs.every(a => a.local_tipo === "perdido")){
     p.p_obs = "Reencontrada em " + dataBR($("ace-mv-data").value || hojeISO());
@@ -620,7 +620,7 @@ async function salvarMoverAcessorios(){
   await aceRefetch(ids);
 }
 
-/* ---------- fase 141: instalar e retirar (a vida da peça) ---------- */
+
 function abrirInstalarAcessorios(ids){
   if(!acePodeEditar()){ aviso("app-aviso", "Seu perfil não instala acessórios.", "erro"); return; }
   if(!ids.length) return;
@@ -630,7 +630,7 @@ function abrirInstalarAcessorios(ids){
   if(ja.length){ aviso("app-aviso", `Já instalada: ${ja.map(a => a.marcacao + " em " + aceEqTag(a.instalado_equipamento_id)).join(", ")}. Retire antes de instalar em outra máquina.`, "erro"); return; }
   _aceAcaoIds = ids;
   $("ace-in-resumo").textContent = aceResumoIds(ids);
-  // peças já na mesma máquina vêm com a TAG preenchida
+
   const tags = [...new Set(regs.map(a => a.local_equipamento_id).filter(Boolean))];
   $("ace-in-equip").value = tags.length === 1 && regs.every(a => a.local_equipamento_id) ? aceEqTag(tags[0]) : "";
   $("ace-in-data").value = hojeISO(); $("ace-in-data").max = hojeISO();
@@ -653,7 +653,7 @@ async function salvarInstalarAcessorios(){
   ids.forEach(id => _aceSel.delete(id));
   await aceRefetch(ids);
 }
-/* mensagem de regra levantada pela RPC passa como está; erro técnico não aparece cru (hotfix 33) */
+
 function aceMsgRpc(error){
   return ACE_ERROS_TECNICOS.includes(error.code) || /permission denied/i.test(error.message || "") ? "avise a diretoria (erro técnico registrado)." : error.message;
 }
@@ -687,7 +687,7 @@ async function salvarRetirarAcessorios(){
   ids.forEach(id => _aceSel.delete(id));
   await aceRefetch(ids);
 }
-/* Refurar e Chegadas: ferramenta quebrou com peça instalada sugere a retirada; um clique por peça, nunca automático */
+
 function aceSugerirRetirada(pecas){
   if(!pecas || !pecas.length) return;
   const pode = acePodeEditar(), lista = $("ace-sug-lista");
@@ -708,10 +708,10 @@ async function aceSugRetirar(b, id){
   });
 }
 
-/* ---------- fase 141: visão Vida útil por modelo ---------- */
+
 const aceMediana = (v) => { const o = [...v].sort((a, b) => a - b), m = Math.floor(o.length / 2); return !o.length ? null : o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2; };
 const aceM = (v) => `${num(Math.round(Number(v || 0)))} m`;
-/* metros que contam (RDO finalizado) + o que ainda está em diário não finalizado, sempre separado */
+
 function aceVidaMetrosTxt(v){
   return `${esc(aceM(v.metros))}${Number(v.metros_rascunho) > 0 ? ` <span class="meta">+ ${esc(aceM(v.metros_rascunho))} em diários não finalizados</span>` : ""}`;
 }
@@ -725,7 +725,7 @@ async function aceCarregarVida(){
   const erro = vidas.error || resumo.error || consumo.error;
   return { erro, vidas: vidas.data || [], resumo: resumo.data || [], consumo: consumo.data || [], pct: cfg.data?.acessorio_vida_alerta_pct ?? 80, minimo: cfg.data?.acessorio_vida_min_amostras ?? 3 };
 }
-/* mesma regra do aviso (vw_sc_regularizar_ace): mediana do modelo × marca; com poucas vidas, a do modelo */
+
 function aceVidaMedianaDe(d, v){
   if(!v.modelo_id) return null;
   const enc = d.vidas.filter(x => x.conta_desgaste && !x.aberta && x.modelo_id === v.modelo_id);
@@ -759,7 +759,7 @@ async function aceRenderVidaUtil(){
     const linhas = [...d.consumo].sort((a, b) => String(b.mes).localeCompare(String(a.mes)) || String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true }));
     cont.innerHTML = toggle + `<p class="ajuda-campo">Pontas e caçambas de unha e de bits que saem por quantidade: unidades que saíram para a TAG ÷ metros perfurados pela TAG no mês, só com diário finalizado.</p>` + (!linhas.length ? `<p class="vazio">Nenhuma saída desses itens para máquina.</p>` :
       `<div class="tabela-rola"><table><thead><tr><th>Mês</th><th>Item</th><th class="num">Ø (mm)</th><th>Máquina</th><th class="num">Unidades</th><th>Metros</th><th class="num">Por 1.000 m</th><th>Fornecedor</th></tr></thead>
-      <tbody>${linhas.map(l => `<tr><td>${esc(String(l.mes).slice(5, 7) + "/" + String(l.mes).slice(0, 4))}</td><td><strong>${esc(l.codigo)}</strong> <span class="meta">${esc(l.nome || "")}</span></td><td class="num">${esc(l.diametro_mm ?? "—")}</td><td>${esc(l.maquina || "—")}</td><td class="num">${esc(num(l.unidades))}</td><td>${/* html */ aceVidaMetrosTxt(l)}</td><td class="num">${l.consumo_por_1000m != null ? esc(num(l.consumo_por_1000m)) : "—"}</td><td>${esc(l.fornecedor || "—")}</td></tr>`).join("")}</tbody></table></div>`);
+      <tbody>${linhas.map(l => `<tr><td>${esc(String(l.mes).slice(5, 7) + "/" + String(l.mes).slice(0, 4))}</td><td><strong>${esc(l.codigo)}</strong> <span class="meta">${esc(l.nome || "")}</span></td><td class="num">${esc(l.diametro_mm ?? "—")}</td><td>${esc(l.maquina || "—")}</td><td class="num">${esc(num(l.unidades))}</td><td>${  aceVidaMetrosTxt(l)}</td><td class="num">${l.consumo_por_1000m != null ? esc(num(l.consumo_por_1000m)) : "—"}</td><td>${esc(l.fornecedor || "—")}</td></tr>`).join("")}</tbody></table></div>`);
     return;
   }
   cont.innerHTML = toggle + `<p class="ajuda-campo">Metros da máquina entre a instalação e a retirada, com refuro e só com diário finalizado. Instalar conta a vida; mover para a máquina não conta.</p>`
@@ -770,9 +770,9 @@ async function aceRenderVidaUtil(){
     + `<h4 style="margin:0 0 6px;">Peças instaladas hoje</h4>`
     + (!abertas.length ? `<p class="vazio">Nenhuma peça de desgaste instalada nesta família.</p>` :
       `<div class="tabela-rola"><table><thead><tr><th>Peça</th><th>Modelo</th><th>Marca</th><th>Máquina</th><th>Desde</th><th>Metros</th><th class="num">Estacas</th><th>Metros ÷ mediana</th></tr></thead>
-      <tbody>${abertas.map(v => `<tr class="linha-clicavel" data-id="${esc(v.acessorio_id)}"><td><strong>${esc(v.marcacao)}</strong></td><td>${esc(v.modelo || ACE_TIPO_LBL[v.tipo] || v.tipo)}</td><td>${esc(v.marca || "sem marca")}</td><td>${esc(v.maquina || "—")}</td><td>${dataBR(v.de)}</td><td>${/* html */ aceVidaMetrosTxt(v)}</td><td class="num">${esc(v.estacas)}</td><td>${/* html */ aceVidaBarraHTML(d, v)}</td></tr>`).join("")}</tbody></table></div>`);
+      <tbody>${abertas.map(v => `<tr class="linha-clicavel" data-id="${esc(v.acessorio_id)}"><td><strong>${esc(v.marcacao)}</strong></td><td>${esc(v.modelo || ACE_TIPO_LBL[v.tipo] || v.tipo)}</td><td>${esc(v.marca || "sem marca")}</td><td>${esc(v.maquina || "—")}</td><td>${dataBR(v.de)}</td><td>${  aceVidaMetrosTxt(v)}</td><td class="num">${esc(v.estacas)}</td><td>${  aceVidaBarraHTML(d, v)}</td></tr>`).join("")}</tbody></table></div>`);
 }
-/* aba Vida útil da ficha: uma linha do tempo por instalação */
+
 async function aceCarregarVidasFicha(a){
   const c = $("ace-vida-lista"); if(!c) return;
   const r = await lerTudo(() => sb.from("vw_acessorio_vidas").select("instalacao_evento_id,maquina,obras,de,ate,aberta,dias,metros,estacas,metros_rascunho,estacas_rascunho,motivo_codigo,observacao,conta_desgaste").eq("acessorio_id", a.id), "instalacao_evento_id");
@@ -784,7 +784,7 @@ async function aceCarregarVidasFicha(a){
   const desgaste = vidas[0].conta_desgaste;
   c.innerHTML = (desgaste ? "" : `<p class="ajuda-campo">Este tipo não entra no resumo por modelo; as instalações ficam só aqui.</p>`) + `<div class="tl-lista">${vidas.map(v => `<div class="tl-item"><div class="tl-icone">${v.aberta ? "⚙️" : "⏏️"}</div><div class="tl-conteudo">
       <div class="tl-titulo">${esc(v.maquina || "Máquina")} <span class="tl-data meta">${dataBR(v.de)} a ${v.aberta ? "hoje" : dataBR(v.ate)} · ${esc(v.dias)} dia(s)</span></div>
-      <div>${/* html */ aceVidaMetrosTxt(v)} · ${esc(v.estacas)} estaca(s)${v.aberta ? ' · <span class="tag azul">instalada</span>' : ` · ${esc(aceMotivoLbl(v.motivo_codigo))}`}</div>
+      <div>${  aceVidaMetrosTxt(v)} · ${esc(v.estacas)} estaca(s)${v.aberta ? ' · <span class="tag azul">instalada</span>' : ` · ${esc(aceMotivoLbl(v.motivo_codigo))}`}</div>
       ${(v.obras || []).length ? `<div class="meta">Obras: ${esc(v.obras.join(", "))}</div>` : ""}${v.observacao ? `<div class="meta">${esc(v.observacao)}</div>` : ""}</div></div>`).join("")}</div>`;
 }
 
@@ -847,7 +847,7 @@ async function salvarCondicaoAcessorios(){
   await aceRefetch(ids);
 }
 
-/* ---------- fotos ---------- */
+
 function aceFotoExt(nome){ return (String(nome || "").split(".").pop() || "").toLowerCase(); }
 async function aceEnviarFotos(ids, arquivos, tipo, legenda){
   const falhas = [];
@@ -870,8 +870,8 @@ async function aceEnviarFotos(ids, arquivos, tipo, legenda){
   }
   return falhas;
 }
-/* Lote S43 (L6): mesma regra das fotos de funcionário: URL assinada por 12 h com `expira_em`, renovada quando
-   faltar menos de 5 min; imagem que falhar assina de novo uma vez (aceFotoFalhou) antes do placeholder. */
+
+
 const ACE_FOTO_ASSINA_S = 12 * 3600;
 const ACE_FOTO_MARGEM_MS = 5 * 60 * 1000;
 function aceFotoUrlValida(p){ const c = _aceFotoUrl[p]; return c && (c.expira_em - Date.now()) > ACE_FOTO_MARGEM_MS ? c.url : null; }
@@ -894,7 +894,7 @@ async function aceFotoFalhou(img){
   if(!url){ placeholder(); return; }
   img.src = url; const a = img.closest("a"); if(a) a.href = url;
 }
-// fase 99a: a CSP não roda onerror inline; o erro de imagem não borbulha, então escuta na captura
+
 document.addEventListener("error", (e) => { const t = e.target; if(t && t.tagName === "IMG" && t.dataset.falha === "ace-foto") aceFotoFalhou(t); }, true);
 async function aceRenderFotos(a){
   const c = $("ace-fotos"), capa = $("ace-capa"); if(!c) return;
@@ -957,14 +957,14 @@ async function salvarReparoAcessorios(){
   const linhas = _aceAcaoIds.map(id => {
     const a = _aceRegistros.find(x => x.id === id) || {};
     return { acessorio_id: id, equipamento_id: a.local_equipamento_id || a.equipamento_padrao_id || null,
-      descricao: desc, /* lote S69-b (#348): só o texto digitado; a peça já está em Peça/TAG */ tipo_servico: $("ace-rp-tipo").value, status: "aberto",
+      descricao: desc,   tipo_servico: $("ace-rp-tipo").value, status: "aberto",
       data_abertura: $("ace-rp-data").value || hojeISO(), custo_estimado: custo,
       observacoes: [obsLocal, $("ace-rp-obs").value.trim()].filter(Boolean).join(" · ") };
   });
   const { data, error } = await sb.from("reparos_caldeiraria").insert(linhas).select("id");
   if(error){ aviso("app-aviso", "Erro ao abrir reparo: " + error.message, "erro"); return; }
-  // peça vai para a oficina (trigger). Se é no fornecedor, move para lá.
-  let erroMover = null;   // fase 142 (EST-04)
+
+  let erroMover = null;
   if(local === "fornecedor"){
     ({ error: erroMover } = await sb.rpc("acessorios_mover", { p_ids: _aceAcaoIds, p_local_tipo: "fornecedor", p_fornecedor_id: fornId, p_obs: "Enviada para reparo: " + desc, p_data: aceDataISOparaTS($("ace-rp-data").value) }));
   }
@@ -986,7 +986,7 @@ async function aceMudarStatusReparo(repId, novo){
   if(_aceAtual) await aceRefetch([_aceAtual.id]);
 }
 
-/* ---------- modelo ---------- */
+
 function abrirModeloAcessorio(modeloId, pre, depois){
   if(!acePodeEditar()) return;
   _aceMdEditId = modeloId || null; _aceMdDepois = depois || null;
@@ -1012,7 +1012,7 @@ function aceMdPreencherTipos(){
 }
 function fecharModeloAcessorio(){ $("ace-modelo-modal").style.display = "none"; }
 async function salvarModeloAcessorio(){
-  // lote S39 (#25): "1.250,00" num input number vira "" e o preço sumia calado com "Modelo salvo."
+
   for(const id of ["ace-md-preco", "ace-md-peso"]){
     if($(id)?.validity?.badInput){
       aviso("app-aviso", (id === "ace-md-preco" ? "Preço" : "Peso") + " inválido: digite só o número, sem ponto de milhar (ex.: 1250,00).", "erro");
@@ -1035,20 +1035,20 @@ async function salvarModeloAcessorio(){
   const i = _aceModelos.findIndex(m => m.id === r.data.id);
   if(i >= 0) _aceModelos[i] = r.data; else _aceModelos.push(r.data);
   _aceModelos.sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR", { numeric: true }));
-  // peças já ligadas a esse modelo mostram a descrição nova
+
   _aceRegistros.forEach(a => { if(a.modelo_id === r.data.id) a.modelo = { descricao: r.data.descricao, medida: r.data.medida, grupo_contagem: r.data.grupo_contagem, preco_referencia: r.data.preco_referencia, peso_kg: r.data.peso_kg, preco_origem: r.data.preco_origem, preco_atualizado_em: r.data.preco_atualizado_em }; });
   _aceContagem = null;
   Object.assign(_aceValor, await aceFetchValor(_aceRegistros.filter(a => a.modelo_id === r.data.id).map(a => a.id)));
   aviso("app-aviso", "Modelo salvo.", "ok");
   fecharModeloAcessorio();
   acePreencherSelectsFixos();
-  // lote S40 (#25): a Contagem não era redesenhada e o preço gravado só aparecia ao sair e voltar
+
   if(_aceView === "contagem") renderAcessoriosContagem();
   if(_aceMdDepois){ const f = _aceMdDepois; _aceMdDepois = null; f(r.data); }
   else renderAcessorios();
 }
 
-/* ---------- ficha ---------- */
+
 function mostrarPainelAcessorios(){
   $("ace-ficha").style.display = "none";
   $("ace-painel").style.display = "";
@@ -1094,7 +1094,7 @@ function abrirFichaAcessorio(a){
   $("btn-ace-excluir").style.display = (!novo && ["admin","diretor"].includes(usuarioAtual?.cargo)) ? "" : "none";
   $("ace-ficha").querySelectorAll("input,select,textarea").forEach(el => { if(!el.closest(".modal-fundo")) el.disabled = !pode; });
 
-  // form
+
   $("ace-marcacao").value = a.marcacao || "";
   $("ace-familia").value = a.familia || "raiz";
   acePreencherTipoForm(a.tipo || aceTiposDaFamilia($("ace-familia").value)[0]);
@@ -1110,13 +1110,13 @@ function abrirFichaAcessorio(a){
   const dlM = $("ace-marcas"); if(dlM) dlM.innerHTML = [...new Set(_aceRegistros.map(x => x.marca).filter(Boolean))].sort().map(m => `<option value="${esc(m)}"></option>`).join("");
   $("ace-ativo").checked = a.ativo !== false;
   $("ace-obs").value = a.observacoes || "";
-  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("ace", "acessorio", a, pode);   // fase 105a: aba Fiscal (NCM lido à parte)
+  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("ace", "acessorio", a, pode);
   [...$("ace-compat").options].forEach(o => o.selected = false);
   $("ace-local-atual").innerHTML = novo
     ? "A peça nova entra no <strong>pátio</strong>. Depois de salvar, use <em>Mover</em> para colocá-la onde está."
     : `Onde está: <strong>${esc(aceOnde(a))}</strong> · ${tagStatus("acessorio_local", a.local_tipo)} · última confirmação ${aceQuando(a.local_confirmado_em)}${a.condicao_motivo ? ` · motivo: ${esc(a.condicao_motivo)}` : ""}`;
 
-  // chips
+
   $("ace-chip-marc").textContent = a.marcacao || "—";
   $("ace-chip-modelo").textContent = a.id ? aceDescr(a) : "—";
   $("ace-chip-medida").textContent = aceMedida(a) || "—";
@@ -1135,12 +1135,12 @@ function abrirFichaAcessorio(a){
   $("ace-fotos").innerHTML = `<p class="vazio">${novo ? "Salve a peça para adicionar fotos." : "Carregando…"}</p>`;
   if(!novo) aceRenderFotos(a);
 
-  // smart-buttons e abas filhas
+
   const setSb = (id, n) => { const b = $(id); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
   const irmaos = a.jogo ? _aceRegistros.filter(x => x.familia === a.familia && x.jogo === a.jogo && x.id !== a.id) : [];
   setSb("sb-ace-jogo", irmaos.length);
   aceRenderJogo(a, irmaos);
-  setSb("sb-ace-custos", 0);   // lote S56 (#202): aba Custos (compra, saída de estoque e avulso do jogo)
+  setSb("sb-ace-custos", 0);
   if(novo){ const cc = $("ace-custos-lista"); if(cc) cc.innerHTML = `<p class="vazio">A peça ainda não foi salva.</p>`; }
   else aceRenderCustos(a);
   setSb("sb-ace-hist", 0); setSb("sb-ace-rep", 0); setSb("sb-ace-compat", 0); setSb("sb-ace-vida", 0);
@@ -1154,7 +1154,7 @@ function abrirFichaAcessorio(a){
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-/* fase 84: peça que nasceu de uma ordem de fabricação mostra "Fabricada na OF-…" com link para a ordem */
+
 async function aceChipFabricacao(a){
   const chip = $("ace-chip-fab"), txt = $("ace-chip-fab-txt"); if(!chip || !txt) return;
   if(!a.ordem_fabricacao_id){ chip.style.display = "none"; txt.textContent = "—"; return; }
@@ -1169,10 +1169,10 @@ async function aceCarregarFilhas(a){
     sb.from("acessorio_eventos").select((_aceSemVida ? "" : "motivo_codigo,metros_vida,estacas_vida,") + "id,tipo,data,de_local_tipo,de_ref_id,de_descricao,para_local_tipo,para_ref_id,para_descricao,de_condicao,para_condicao,observacao,autor_nome,movimentacao_id,reparo_id").eq("acessorio_id", a.id).order("data", { ascending: false }).limit(300),
     sb.from("reparos_caldeiraria").select("id,status,descricao,tipo_servico,data_abertura,data_inicio,data_conclusao,custo_estimado,observacoes").eq("acessorio_id", a.id).order("data_abertura", { ascending: false }),
     sb.from("acessorio_equipamentos").select("equipamento_id").eq("acessorio_id", a.id),
-    // fase 80: remessas e retornos em que a peça foi, com link de volta para a movimentação; fase 89: e a viagem que levou cada nota
+
     sb.from("movimentacao_itens").select("movimentacao_id,mov:movimentacoes_ativos(id,numero,tipo,status,data_emissao,data_saida,origem_tipo,origem_obra_id,origem_descricao,destino_tipo,destino_obra_id,destino_descricao,interna,viagem:viagens(id,numero,data,status,caminhao:equipamentos!caminhao_id(codigo)))").eq("acessorio_id", a.id)
   ]);
-  await anexarCustoMO("reparo", rep.data);   // lote S67-h
+  await anexarCustoMO("reparo", rep.data);
   if(_aceAtual?.id !== a.id) return;
   const setSb = (id, n) => { const b = $(id); if(!b) return; b.querySelector(".sb-num").textContent = n || 0; b.classList.toggle("zero", !n); };
   const compIds = (comp.data || []).map(c => c.equipamento_id);
@@ -1192,7 +1192,7 @@ function aceRefLabel(tipo, refId, desc){
   else if(tipo === "em_transito" && refId) base += " → " + (aceObra(refId) || aceEqTag(refId) || "");
   return base + (desc ? ` · ${desc}` : "");
 }
-/* fase 80: movimentação de ativos (número, data, origem → destino) com link de volta */
+
 function aceMovLado(tipo, obraId, desc){
   if(tipo === "obra" && obraId) return linkObra(obraId, aceObra(obraId) || "obra");
   return esc({ base: "Base", obra: "Obra", fornecedor_manutencao: "Fornecedor (manutenção)", cliente: "Cliente", em_transito: "Em trânsito" }[tipo] || tipo || "—") + (desc ? " · " + esc(desc) : "");
@@ -1200,7 +1200,7 @@ function aceMovLado(tipo, obraId, desc){
 function aceMovsHTML(movs){
   if(!movs || !movs.length) return "";
   const lst = [...new Map(movs.map(m => [m.id, m])).values()].sort((x, y) => String(y.data_saida || y.data_emissao || "").localeCompare(String(x.data_saida || x.data_emissao || "")));
-  // fase 89: a viagem que levou a nota (ou o documento interno da viagem, quando a peça foi lançada direto nela)
+
   const vgTxt = m => m.viagem ? `${typeof linkViagem === "function" ? linkViagem(m.viagem.id, m.viagem.numero) : esc(m.viagem.numero)}${m.viagem.caminhao ? ` <span class="meta">${esc(m.viagem.caminhao.codigo)}</span>` : ""}` : '<span class="meta">—</span>';
   return `<div class="mov-ace-sug-grupo-t">Viagens e notas <span class="meta">${lst.length}</span></div>
     <div class="tabela-rola" style="margin-bottom:10px;"><table><thead><tr><th>Viagem</th><th>Nota</th><th>Tipo</th><th>Data</th><th>Origem → destino</th><th>Status</th></tr></thead>
@@ -1221,7 +1221,7 @@ function aceRenderHistorico(evs, err, movs){
     else txt = `${esc(aceLbl("acessorio", e.de_condicao))} → ${esc(aceLbl("acessorio", e.para_condicao))}`;
     return `<div class="tl-item"><div class="tl-icone">${esc(icone[e.tipo] || "•")}</div><div class="tl-conteudo">
       <div class="tl-titulo">${esc(ACE_EVENTO_LBL[e.tipo] || e.tipo)} <span class="tl-data meta">${aceQuando(e.data)}</span></div>
-      <div>${/* html */ txt}</div>${e.observacao ? `<div class="meta">${esc(e.observacao)}</div>` : ""}${e.movimentacao_id ? `<div class="meta">🚚 ${linkMovimentacao(e.movimentacao_id, movById[e.movimentacao_id]?.numero || "ver a movimentação")}</div>` : ""}
+      <div>${  txt}</div>${e.observacao ? `<div class="meta">${esc(e.observacao)}</div>` : ""}${e.movimentacao_id ? `<div class="meta">🚚 ${linkMovimentacao(e.movimentacao_id, movById[e.movimentacao_id]?.numero || "ver a movimentação")}</div>` : ""}
       <div class="tl-autor meta">${esc(e.autor_nome || "sistema")}</div></div></div>`;
   }).join("")}</div>`;
 }
@@ -1254,9 +1254,9 @@ function aceRenderJogo(a, irmaos){
     <tbody>${todos.map(x => `<tr class="linha-clicavel" data-id="${esc(x.id)}" ${x.id === a.id ? 'style="background:var(--bg-body);"' : ""}><td>${esc(x.seq_no_jogo ?? "")}</td><td><strong>${esc(x.marcacao)}</strong></td><td>${esc(aceDescr(x))}</td><td>${tagStatus("acessorio", x.condicao)}</td><td>${esc(aceOnde(x))}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
-/* Lote S56 (#202): aba Custos da peça. Lê vw_custos (compra com destino no acessório, saída de estoque para ele e custo
-   avulso do jogo: acessorio_id = peça ou acessorio_jogo = jogo). Sem as colunas novas (migration loteS56a não aplicada)
-   volta ao que havia: custos_avulsos do jogo. "+ Custo do jogo" continua lançando contra o jogo. */
+
+
+
 const ACE_CUSTO_ORIGEM_LBL = { compra: "Compra", estoque: "Saída de estoque", avulso: "Avulso (jogo)", pedido_externo: "Pedido Odoo", reparo: "Reparo" };
 async function aceRenderCustos(a){
   const c = $("ace-custos-lista"); if(!c || !a?.id) return;
@@ -1264,7 +1264,7 @@ async function aceRenderCustos(a){
   const filtro = `acessorio_id.eq.${a.id}` + (a.jogo ? `,acessorio_jogo.eq.${JSON.stringify(String(a.jogo))}` : "");
   let r = await sb.from("vw_custos").select("origem,origem_id,data,fornecedor_id,categoria,descricao,quantidade,valor,documento,acessorio_id,acessorio_jogo").or(filtro).order("data", { ascending: false }).limit(500);
   let antigo = false;
-  if(r.error && r.error.code === "42703"){   // vw_custos ainda sem acessorio_id/acessorio_jogo: só os avulsos do jogo, como antes
+  if(r.error && r.error.code === "42703"){
     antigo = true;
     r = a.jogo ? await sb.from("custos_avulsos").select("data,categoria,descricao,valor,documento,fornecedor_id").eq("acessorio_jogo", a.jogo).order("data", { ascending: false }) : { data: [] };
     if(!r.error) r.data = (r.data || []).map(x => ({ ...x, origem: "avulso", acessorio_jogo: a.jogo }));
@@ -1311,7 +1311,7 @@ async function salvarAcessorio(){
   if(!_aceSemVida){ reg.marca = $("ace-marca").value.trim().toUpperCase() || null; reg.origem_fornecedor_id = $("ace-origem-forn").value || null; }
   if(!reg.marcacao){ aviso("app-aviso", "Informe a marcação da peça.", "erro"); $("ace-marcacao").focus(); return; }
   if(!reg.tipo){ aviso("app-aviso", "Informe o tipo.", "erro"); return; }
-  // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
+
   const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("ace") : null;
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabAcessorio("fiscal"); return; }
   if(fis) Object.assign(reg, fis);
@@ -1347,7 +1347,7 @@ async function excluirAcessorio(){
   mostrarPainelAcessorios();
 }
 
-/* ---------- ligação ---------- */
+
 function ligarAcessorios(){
   if(!$("sec-acessorios")) return;
   document.querySelector('nav button[data-secao="acessorios"]')?.addEventListener("click", () => carregarAcessorios(false));
@@ -1364,7 +1364,7 @@ function ligarAcessorios(){
   $("btn-ace-nova")?.addEventListener("click", novoAcessorio);
   $("btn-ace-modelo")?.addEventListener("click", () => abrirModeloAcessorio(null));
 
-  // conteúdo: cliques em pills, linhas, checkboxes
+
   $("ace-conteudo")?.addEventListener("click", e => {
     const abaVida = e.target.closest("[data-vida-aba]");
     if(abaVida){ _aceVidaAba = abaVida.dataset.vidaAba; aceRenderVidaUtil(); return; }
@@ -1395,7 +1395,7 @@ function ligarAcessorios(){
     if(tr) abrirAcessorio(tr.dataset.id);
   });
 
-  // barra de seleção
+
   $("ace-selecao")?.addEventListener("click", e => {
     const b = e.target.closest("button[data-acao]"); if(!b) return;
     const ids = aceIdsSel();
@@ -1412,7 +1412,7 @@ function ligarAcessorios(){
     }
   });
 
-  // ficha
+
   $("btn-ace-voltar")?.addEventListener("click", mostrarPainelAcessorios);
   $("btn-ace-ft-enviar")?.addEventListener("click", () => $("ace-ft-arquivos").click());
   $("ace-ft-arquivos")?.addEventListener("change", aceEnviarFotosDaFicha);
@@ -1445,12 +1445,12 @@ function ligarAcessorios(){
   }));
   $("ace-jogo-lista")?.addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if(tr && tr.dataset.id !== _aceAtual?.id) abrirAcessorio(tr.dataset.id); });
 
-  // modais
+
   $("btn-ace-mv-fechar")?.addEventListener("click", fecharMoverAcessorios);
   $("btn-ace-mv-salvar")?.addEventListener("click", () => comBotaoTravado("btn-ace-mv-salvar", salvarMoverAcessorios));
   $("ace-mv-tipo")?.addEventListener("change", aceMvAtualizarCampos);
   $("ace-mv-obra")?.addEventListener("change", () => {
-    // sugere a máquina mobilizada nessa obra, se houver só uma
+
     const obraId = $("ace-mv-obra").value; if(!obraId || $("ace-mv-equip").value) return;
     const eqs = _aceEquips.filter(e => e.localizacao_tipo === "obra" && e.localizacao_obra_id === obraId);
     if(eqs.length === 1) $("ace-mv-equip").value = eqs[0].id;

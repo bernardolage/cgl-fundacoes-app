@@ -1,24 +1,24 @@
-/* ====================================================================
-   Mobilizações: visão Cronograma (fase 189a, #230). Prefixo mcr-.
-   O cronograma de equipamentos da RG 11.15 é uma VISÃO das mobilizações (D1): nada é cadastrado duas vezes.
-   - Uma linha por máquina ativa (perfuratriz, bomba, compressor, gerador), agrupada como na planilha (D4, D5):
-     vw_equipamentos_cronograma. O grupo vem de equipamentos.grupo_cronograma ou da metodologia.
-   - Início = chegada real ou início previsto; término = desmobilização real ou prevista; sem ela, a previsão de
-     término da obra (fase 140, vw_sc_obra_andamento) ou a data prevista da obra, com aviso (D6).
-   - A previsão de término muda pela RPC mobilizacao_prever_termino: só data_desmob_prev, com chatter. Status e
-     localização continuam pela ficha da mobilização (gatilho, §8).
-   - Reserva (D2): orçamento em negociação ou nome livre + data. Converter = equipamento_reserva_converter.
-   - Exporta .xlsx no leiaute da RG 11.15 (SheetJS de vendor/).
-   ==================================================================== */
 
-let _mcrLinhas    = [];      // linhas de vw_equipamentos_cronograma
-let _mcrPrevObra  = {};      // obra_id -> previsão de término pelo ritmo (vw_sc_obra_andamento, fase 140)
+
+
+
+
+
+
+
+
+
+
+
+
+let _mcrLinhas    = [];
+let _mcrPrevObra  = {};
 let _mcrCarregado = false;
-let _mcrOrcs      = null;    // orçamentos em negociação (lidos ao abrir a primeira reserva)
-let _mcrRes       = null;    // { linha, reserva } aberta no modal
+let _mcrOrcs      = null;
+let _mcrRes       = null;
 const _mcrFiltro  = { metodo: "", cliente: "", situacao: "", livreAte: "" };
 
-// Mesma lista de mobilizacoes_write (o banco confere de novo na RPC e na policy); auditor fica fora
+
 const MCR_CARGOS_EDITAM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica"];
 const MCR_METODO = { helice: "Hélice contínua", secante: "Secante", raiz: "Estaca raiz", trado: "Trado", bomba: "Bomba de concreto", compressor: "Compressor", gerador: "Gerador" };
 const MCR_ORDEM  = ["helice", "secante", "raiz", "trado", "bomba", "compressor", "gerador"];
@@ -30,7 +30,7 @@ async function mcrCarregar(forcar){
   if(_mcrCarregado && !forcar) return;
   const [cRes, pRes] = await Promise.all([
     sb.from("vw_equipamentos_cronograma").select("*").order("codigo"),
-    sb.from("vw_sc_obra_andamento").select("obra_id,previsao_termino")   // fase 140; erro = só perde a estimativa
+    sb.from("vw_sc_obra_andamento").select("obra_id,previsao_termino")
   ]);
   if(cRes.error) aviso("app-aviso", "Não foi possível carregar o cronograma: " + cRes.error.message, "erro");
   _mcrLinhas = cRes.error ? [] : (cRes.data || []);
@@ -39,14 +39,14 @@ async function mcrCarregar(forcar){
   _mcrCarregado = true;
 }
 
-/* ---------- Regras da linha ---------- */
+
 function mcrSituacao(l){
   if(l.mob_id && ["em_obra", "em_transito"].includes(l.mob_status)) return "obra";
   if(l.status === "em_manutencao" || l.localizacao_tipo === "fornecedor_manutencao") return "manutencao";
   return "patio";
 }
 function mcrLivre(l){ return mcrSituacao(l) === "patio" && !l.mob_id && !l.prox_mob_id && !l.reserva_id; }
-// término efetivo: { data, origem } (mob = da mobilização; ritmo = previsão da obra pela produção; obra = data prevista da obra)
+
 function mcrTermino(l){
   if(!l.mob_id) return null;
   if(l.termino) return { data: l.termino, origem: "mob" };
@@ -54,7 +54,7 @@ function mcrTermino(l){
   if(l.obra_fim_prevista) return { data: l.obra_fim_prevista, origem: "obra" };
   return null;
 }
-// data em que a máquina fica livre (ISO) ou null quando não se sabe
+
 function mcrLivreEm(l){
   if(l.mob_id){ const t = mcrTermino(l); return t ? t.data : null; }
   if(mcrSituacao(l) === "manutencao") return null;
@@ -72,7 +72,7 @@ function mcrProximaTexto(l){
   return "";
 }
 
-/* ---------- Filtro e agrupamento ---------- */
+
 function mcrFiltradas(){
   const termo = ($("mob-busca")?.value || "").trim().toLowerCase();
   const f = _mcrFiltro;
@@ -98,7 +98,7 @@ function mcrGrupos(linhas){
   return grupos;
 }
 
-/* ---------- Render ---------- */
+
 function renderCronogramaMob(){
   const cont = $("mob-conteudo");
   if(!cont) return;
@@ -153,7 +153,7 @@ function mcrLinhaHTML(l, pode){
     ? `<button type="button" class="mcr-reserva" data-mcr-res="${esc(l.reserva_id)}" data-mcr-eq="${esc(l.equipamento_id)}" title="Reserva para obra em negociação${l.reserva_fim ? " até " + esc(dataBR(l.reserva_fim)) : ""}. Clique para abrir.">Reserva: ${esc(l.reserva_rotulo || "")}</button>`
     : "";
   const proxima = l.prox_mob_id
-    ? `${linkMob(l.prox_mob_id, l.prox_obra_codigo, l.prox_cliente)}${reserva ? `<br>${/* html */ reserva}` : ""}`
+    ? `${linkMob(l.prox_mob_id, l.prox_obra_codigo, l.prox_cliente)}${reserva ? `<br>${  reserva}` : ""}`
     : (reserva || '<span class="meta">—</span>');
   const proxInicio = [l.prox_mob_id ? (l.prox_inicio ? dataBR(l.prox_inicio) : "sem data") : "", l.reserva_id ? dataBR(l.reserva_data) + " (reserva)" : ""].filter(Boolean);
   return `<tr>
@@ -163,8 +163,8 @@ function mcrLinhaHTML(l, pode){
     <td>${l.mob_id ? `${linkMob(l.mob_id, l.obra_codigo, l.obra_nome)}${stMob}${apoio}` : '<span class="meta">—</span>'}</td>
     <td>${operador}</td>
     <td>${l.inicio ? `${esc(dataBR(l.inicio))}${l.inicio_real ? "" : ' <span class="meta" title="Início previsto (a máquina ainda não chegou)">prev.</span>'}` : '<span class="meta">—</span>'}</td>
-    <td>${/* html */ termino}</td>
-    <td>${/* html */ proxima}</td>
+    <td>${  termino}</td>
+    <td>${  proxima}</td>
     <td>${proxInicio.length ? proxInicio.map(x => esc(x)).join("<br>") : '<span class="meta">—</span>'}</td>
     ${pode ? `<td><button type="button" class="btn-sec btn-sm" data-mcr-reservar="${esc(l.equipamento_id)}" title="Reservar a ${esc(l.codigo)} para uma obra em negociação">Reservar</button>${l.reserva_id ? ` <button type="button" class="btn-sec btn-sm" data-mcr-conv="${esc(l.reserva_id)}" data-mcr-eq="${esc(l.equipamento_id)}" title="A reserva vira mobilização prevista">Converter</button>` : ""}</td>` : ""}
   </tr>`;
@@ -181,16 +181,16 @@ function mcrLigar(cont){
   cont.querySelectorAll("button[data-mcr-conv]").forEach(b => b.addEventListener("click", () => mcrAbrirReserva(b.dataset.mcrEq, b.dataset.mcrConv, true)));
 }
 
-// fase 189b: o modal de reserva também abre pelo Gráfico; redesenha a visão que estiver aberta
+
 function mcrRerender(){ if(_mobView === "grafico" && typeof renderGraficoMob === "function") renderGraficoMob(); else renderCronogramaMob(); }
 
 async function mcrRecarregar(){
   _mcrCarregado = false;
-  if(typeof carregarMobilizacoes === "function") await carregarMobilizacoes(true);   // renderMobilizacoes relê o cronograma
+  if(typeof carregarMobilizacoes === "function") await carregarMobilizacoes(true);
   else { await mcrCarregar(true); mcrRerender(); }
 }
 
-/* ---------- Previsão de término (D1, D9) ---------- */
+
 async function mcrPreverTermino(inp){
   const mob = inp.dataset.mcrTermino, data = inp.value;
   if(!mcrPodeEditar()){ aviso("app-aviso", "Seu cargo não pode alterar esta mobilização.", "erro"); return; }
@@ -202,13 +202,13 @@ async function mcrPreverTermino(inp){
   await mcrRecarregar();
 }
 
-/* ---------- Reserva (D2) ---------- */
+
 async function mcrCarregarOrcs(){
   if(_mcrOrcs) return _mcrOrcs;
   const ler = cols => sb.from("orcamentos").select(cols).in("status", ["rascunho", "enviado", "em_negociacao"]).order("data_orcamento", { ascending: false }).limit(500);
   let { data, error } = await ler("id,numero,referencia_obra,status,clientes(nome,nome_fantasia)");
   if(error) ({ data, error } = await ler("id,numero,referencia_obra,status"));
-  _mcrOrcs = error ? [] : (data || []);   // quem não lê o comercial fica só com o nome livre
+  _mcrOrcs = error ? [] : (data || []);
   return _mcrOrcs;
 }
 function mcrOrcRotulo(o){
@@ -298,7 +298,7 @@ async function mcrConverterReserva(){
   if(data) abrirMobilizacao(data);
 }
 
-/* ---------- Exportar .xlsx no leiaute da RG 11.15 (D10) ---------- */
+
 function mcrExportarXlsx(linhas){
   if(typeof XLSX === "undefined"){ aviso("app-aviso", "A biblioteca de planilhas não carregou. Recarregue a página.", "erro"); return; }
   if(!linhas.length){ aviso("app-aviso", "Nenhuma máquina com esses filtros para exportar.", "erro"); return; }
@@ -338,7 +338,7 @@ function mcrExportarXlsx(linhas){
   XLSX.writeFile(wb, `RG-11.15-cronograma-equipamentos-${hojeISO()}.xlsx`);
 }
 
-/* ---------- Listeners do modal ---------- */
+
 function ligarCronogramaMob(){
   $("btn-mcr-res-fechar")?.addEventListener("click", mcrFecharReserva);
   $("mcr-res-modal")?.addEventListener("click", e => { if(e.target.id === "mcr-res-modal") mcrFecharReserva(); });

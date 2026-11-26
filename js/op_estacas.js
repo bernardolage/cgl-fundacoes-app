@@ -1,8 +1,8 @@
-/* ====================================================================
-   App do operador (fase 129b) — op_estacas.js
-   Tela 6a: estacas do dia em estaca raiz e trado (o campo lança, linha do app_operador).
-   Tela 6b: estacas de hoje em hélice contínua e secante (só leitura: chegam do computador de bordo).
-   ==================================================================== */
+
+
+
+
+
 
 const ETAPAS = {
   estaca_raiz: [["perfurando", "Perfurando"], ["injetada", "Injetada"], ["argamassada", "Argamassada"]],
@@ -23,10 +23,10 @@ function proximaEstacaPrevista(){
   return (OP.snap.estacas_previstas || []).find(e => !feitas.has(String(e.numero).toUpperCase()) && e.status !== "executada" && e.status !== "concretada") || null;
 }
 
-let _estEditando = null;   // id da execução em edição ou "nova"
+let _estEditando = null;
 let _estEtapa = null;
 
-/* ---------- 6a. Raiz e trado ---------- */
+
 OP.telas.estacas = async function(){
   const s = OP.snap, box = $("op-estacas-conteudo");
   const tipo = s.rdo.tipo_servico;
@@ -134,7 +134,7 @@ async function salvarEstaca(){
     : { diametro_mm: "op-est-diam", volume_concreto_m3: "op-est-vol" };
   for(const [k, id] of Object.entries(mapa)) lidos[k] = $(id).value.trim();
   Object.assign(lidos, _estHoras);
-  // só o que mudou vai para o banco (e o que o aparelho via antes, para o conflito)
+
   const campos = {};
   for(const [k, val] of Object.entries(lidos)){
     const antes = x ? (k === "observacoes" ? obsSemEtapa(x.observacoes) : (x[k] ?? "")) : "";
@@ -143,11 +143,11 @@ async function salvarEstaca(){
   if(!x) campos.estaca_numero = numero;
   if(_estEtapa && _estEtapa !== etapaDaExecucao(x)) campos.etapa = _estEtapa;
   if(x && !Object.keys(campos).length){ _estEditando = null; renderTelaAtual(); return; }
-  // observação sem a etapa: o banco recoloca a marca [etapa: …]
+
   if("observacoes" in campos && !campos.etapa && etapaDaExecucao(x)) campos.etapa = etapaDaExecucao(x);
   const id = x?.id || novoId();
   const ant = x ? anteriores(x, Object.fromEntries(Object.keys(campos).filter(k => k !== "etapa").map(k => [k, 1]))) : null;
-  // espelho local
+
   const linha = x || { id, origem_dados: "app_operador", estaca_id: null };
   for(const [k, val] of Object.entries(campos)) if(k !== "etapa" && k !== "observacoes") linha[k] = val;
   if("observacoes" in campos || campos.etapa){
@@ -175,7 +175,7 @@ async function estacaForaDoProjeto(execId){
   renderTelaAtual();
 }
 
-/* ---------- 6b. Hélice contínua e secante ---------- */
+
 OP.telas.geo = async function(){
   const s = OP.snap, box = $("op-geo-conteudo");
   if(ehRaizOuTrado(s.rdo.tipo_servico)){ irPara("estacas"); return; }
@@ -225,7 +225,7 @@ async function geoContestar(id){
   renderTelaAtual();
 }
 
-/* ---------- Eventos ---------- */
+
 document.addEventListener("click", async (ev) => {
   const el = ev.target.closest("button");
   if(!el || el.disabled) return;
@@ -237,7 +237,7 @@ document.addEventListener("click", async (ev) => {
     return;
   }
   if(d.estAgora){
-    _estHoras[d.estAgora] = horaParedeAgora();   // fase 155a: hora de parede, como a ficha do RDO
+    _estHoras[d.estAgora] = horaParedeAgora();
     const p = $("op-est-horas");
     if(p) p.textContent = Object.entries(_estHoras).map(([k, v]) => (k === "perfuracao_inicio" ? "Início " : "Fim ") + horaDeParede(v)).join(" · ");
     return;

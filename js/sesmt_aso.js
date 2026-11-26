@@ -1,19 +1,19 @@
-/* ====================================================================
-   SESMT · ASO e clínicas (fase 185b, #247) — prefixo aso-
-   - Visão "Exames" no painel do SESMT (só quem lê saúde: SESMT e RH com MFA): ASOs e "por pessoa" (válido até).
-   - Ficha do ASO (estilo Odoo): tipo, data, clínica, obra, transcrição, exames da matriz pré-marcados com o preço
-     vigente da clínica, resultado (apto, apto com restrição, inapto) e o laudo no bucket sst-saude.
-   - Aba "SESMT" na ficha do fornecedor: tabela de preço da clínica por exame, com vigência (só quem opera o SESMT).
-   - Aba Segurança do funcionário: linha "ASO válido até" (sst_proximos_asos); o detalhe só com MFA.
-   - Relatório Custo SST (185a) soma os ASO por sst_custo_asos() (agregado, sem pessoa nem exame).
-   O banco faz as contas: preço, valor, válido até e o documento ASO nascem nos gatilhos (sst_aso_recalcular).
-   ==================================================================== */
 
-let _asoSub = "asos";        // asos | pessoas
-let _asoLista = [];          // sst_asos (+ nome e exames)
-let _asoProximos = [];       // retorno de sst_proximos_asos
+
+
+
+
+
+
+
+
+
+
+let _asoSub = "asos";
+let _asoLista = [];
+let _asoProximos = [];
 let _asoCarregado = false;
-let _asoEditId = null;       // ASO aberto na ficha
+let _asoEditId = null;
 let _asoAso = null;
 let _asoExames = [];
 
@@ -35,7 +35,7 @@ const ASO_VALIDADE = {
 };
 const ASO_DESTINO = { sesmt: "Centro SESMT (sede)", obra: "Obra" };
 
-/* SELECT de sst_asos e sst_aso_exames: sst_pode_ler_saude() = (opera o SESMT ou RH) e MFA */
+
 function asoPodeVer(){ return sstPodeOperar() || (!!usuarioAtual && usuarioAtual.cargo === "rh" && !ehSomenteLeitura()); }
 function asoTagResultado(r){ const o = ASO_RESULTADO[r]; return o ? `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>` : `<span class="tag cinza">sem resultado</span>`; }
 function asoTagValidade(st){ const o = ASO_VALIDADE[st] || ASO_VALIDADE.sem; return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`; }
@@ -46,7 +46,7 @@ function asoObraRot(id){ return id ? sstObraRotulo((_sstObras || []).find(o => o
 function asoFuncNome(a){ return (a && a.funcionario && a.funcionario.nome) || ((_sstFuncs || []).find(f => f.id === (a && a.funcionario_id)) || {}).nome || "—"; }
 function asoMfaMsg(){ return uiVazio("Os exames e os ASO são dado de saúde: entre de novo com o autenticador (MFA) para ver."); }
 
-/* ---------- carga ---------- */
+
 async function asoCarregar(forcar){
   if(_asoCarregado && !forcar) return true;
   const [l, p] = await Promise.all([
@@ -61,7 +61,7 @@ async function asoCarregar(forcar){
   return true;
 }
 
-/* ---------- visão Exames (pelo renderSesmt) ---------- */
+
 function asoFiltrosHTML(){
   return `<div class="serv-filtros" id="aso-filtros">
     <div class="serv-views" id="aso-sub" title="Como mostrar: um ASO por linha ou uma pessoa por linha com o ASO válido até">
@@ -127,7 +127,7 @@ function asoRenderConteudo(){
   cont.querySelectorAll("tr[data-id]").forEach(tr => tr.addEventListener("click", () => asoAbrir(tr.dataset.id)));
 }
 
-/* ---------- relatório Custo SST: linhas dos ASO (chamado por renderSstCustoSst do 185a) ---------- */
+
 async function asoCustoLinhas(){
   const { data, error } = await sb.rpc("sst_custo_asos");
   if(error) return [];
@@ -138,7 +138,7 @@ async function asoCustoLinhas(){
   }));
 }
 
-/* ---------- ficha do ASO ---------- */
+
 function asoMostrarFicha(){
   ["sst-painel", "sst-ficha-req", "sst-ficha-prog", "trn-ficha"].forEach(id => { if($(id)) $(id).style.display = "none"; });
   $("aso-ficha").style.display = "";
@@ -285,7 +285,7 @@ async function excluirAso(){
   asoFecharFicha();
 }
 
-/* ---------- exames do ASO ---------- */
+
 function asoRenderExames(){
   const cont = $("aso-exames"); if(!cont) return;
   const opera = sstPodeOperar();
@@ -348,7 +348,7 @@ async function asoTirarExame(e){
   await asoRecarregarAso();
 }
 
-/* ---------- laudo (bucket sst-saude, pasta <funcionario>/ASO) ---------- */
+
 function asoRenderLaudo(){
   const cont = $("aso-laudo"); if(!cont) return;
   const a = _asoAso || {}, opera = sstPodeOperar();
@@ -386,7 +386,7 @@ async function asoTirarLaudo(){
   sstAtivarTab("aso-ficha", "aso-notebook", "laudo");
 }
 
-/* ---------- aba Segurança do funcionário: ASO válido até ---------- */
+
 async function asoFichaFuncCarregar(fid){
   const cont = $("func-aso-bloco"); if(!cont || !fid) return;
   if(!podeVerSesmt()){ cont.innerHTML = ""; return; }
@@ -407,13 +407,13 @@ async function asoFichaFuncCarregar(fid){
       : uiVazio("Nenhum ASO registrado para esta pessoa."));
   cont.innerHTML = uiSecao("documento", "ASO", `
     ${opera && ve ? `<div class="form-acoes" style="margin:0 0 var(--esp-2);"><button type="button" class="btn-sec" id="btn-aso-ff-novo" title="Abre a ficha do ASO desta pessoa; os exames da matriz entram marcados">Registrar ASO</button></div>` : ""}
-    ${/* html */ linha}
-    ${/* html */ corpo}`, ve ? `${lista.length}` : "");
+    ${  linha}
+    ${  corpo}`, ve ? `${lista.length}` : "");
   cont.querySelectorAll("tr[data-aso]").forEach(tr => tr.addEventListener("click", () => asoAbrir(tr.dataset.aso)));
   $("btn-aso-ff-novo")?.addEventListener("click", () => asoNovo(fid));
 }
 
-/* ---------- ficha do fornecedor: aba SESMT (tabela de preço da clínica) ---------- */
+
 function asoFornAplicarVisibilidade(){
   const b = document.querySelector('#forn-notebook button[data-tab="sesmt"]');
   if(b) b.style.display = sstPodeOperar() && typeof fornEditId !== "undefined" && fornEditId ? "" : "none";
@@ -470,7 +470,7 @@ async function asoFornExcluirPreco(p){
   await asoFornCarregar();
 }
 
-/* ---------- ligação ---------- */
+
 function ligarSesmtAso(){
   document.querySelector('#forn-notebook button[data-tab="sesmt"]')?.addEventListener("click", asoFornCarregar);
   if(!$("aso-ficha")) return;

@@ -1,26 +1,26 @@
-/* ====================================================================
-   CGL Fundações — Sistema de Gestão
-   core.js — cliente Supabase, helpers, autenticação e navegação.
-   Carregado ANTES dos módulos. Não chama nada sozinho: a inicialização
-   fica em init.js, executado por último.
-   ==================================================================== */
 
-/* ---------- Conexão Supabase ---------- */
+
+
+
+
+
+
+
 const SUPABASE_URL = "https://xiirduialyewpqkwsfxx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_uef7GgPhtV5SSp-281PtNA_fD3ajHN4";
 
-/* Fase 87 (política de sessão, decisão do Bernardo em 16/10/2026): a sessão do Supabase vive no
-   sessionStorage, então vale só para a janela aberta (fechou o navegador, saiu). Com "Manter conectado
-   neste computador" marcado no login ela vai para o localStorage pelo prazo de
-   empresa_config.sessao_lembrar_dias (flag cgl_lembrar, com validade). Sessão antiga deixada no
-   localStorage sem a flag (anterior a esta fase) é apagada na primeira carga: todo mundo entra de novo
-   uma vez. Storage bloqueado (navegação privada) nunca derruba o app. */
+
+
+
+
+
+
 const SESSAO_LEMBRAR_CHAVE = "cgl_lembrar";
 function lembrarLer(){
   try {
     const r = JSON.parse(localStorage.getItem(SESSAO_LEMBRAR_CHAVE) || "null");
     if(r && r.ate && Date.now() < r.ate) return r;
-    if(r) localStorage.removeItem(SESSAO_LEMBRAR_CHAVE);   // venceu
+    if(r) localStorage.removeItem(SESSAO_LEMBRAR_CHAVE);
   } catch(_){}
   return null;
 }
@@ -37,7 +37,7 @@ const sessaoStorage = {
   getItem(k){
     try {
       if(lembrarAtivo()) return localStorage.getItem(k);
-      if(localStorage.getItem(k) != null) localStorage.removeItem(k);   // sessão antiga sem "manter conectado": encerra uma vez
+      if(localStorage.getItem(k) != null) localStorage.removeItem(k);
       return sessionStorage.getItem(k);
     } catch(_){ return null; }
   },
@@ -46,30 +46,30 @@ const sessaoStorage = {
 };
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storage: sessaoStorage } });
 
-/* Captura o hash da URL ANTES de o client consumi-lo: é ele que diz se
-   o usuário chegou por um link de convite ou de recuperação de senha
-   (#access_token=...&type=invite|recovery). Nesses casos o app abre um
-   diálogo para definir a senha — sem isso, o convidado entrava uma vez
-   e nunca mais conseguia logar. */
+
+
+
+
+
 const _hashChegada = location.hash || "";
-/* recovery/invite/signup abrem o diálogo de senha; magiclink também, porque
-   é o que usamos quando o reset por e-mail está no limite */
+
+
 const _chegouPorConvite = /type=(invite|recovery|signup|magiclink)/.test(_hashChegada);
-/* Fase 143: link de primeiro acesso (#primeiro-acesso=<token>). O token fica só em memória e sai do endereço na hora, para não
-   ficar no histórico. Pontuação colada no fim vem do texto da mensagem, e o token não tem esses caracteres. */
+
+
 const _primeiroAcessoToken = (() => {
   const m = /^#primeiro-acesso=(.*)$/.exec(_hashChegada);
   if(!m) return null;
   history.replaceState(null, "", location.pathname + location.search);
   return m[1].slice(0, 200).replace(/[.,;:!?)\]]+$/, "");
 })();
-/* link colado numa aba com o app já aberto só troca o #, sem carregar a página */
+
 window.addEventListener("hashchange", () => { if(location.hash.startsWith("#primeiro-acesso=")) location.reload(); });
 
-/* Consome o token que vem no hash (#access_token=...&refresh_token=...) e
-   estabelece a sessão explicitamente. Não dependemos do detectSessionInUrl
-   do supabase-js, que em fluxo PKCE ignora tokens no hash — era por isso que
-   o magic link chegava com token válido mas não logava. */
+
+
+
+
 async function consumirTokenDoHash(){
   const h = new URLSearchParams(_hashChegada.replace(/^#/, ""));
   const access_token  = h.get("access_token");
@@ -77,21 +77,21 @@ async function consumirTokenDoHash(){
   if(access_token && refresh_token){
     try {
       await sb.auth.setSession({ access_token, refresh_token });
-      /* limpa o token da barra de endereço (não deixa vazar em histórico) */
+
       history.replaceState(null, "", location.pathname + location.search);
-    } catch(e){ /* token expirado: segue para a tela de login normal */ }
+    } catch(e){   }
   }
 }
 
-/* ---------- Cache Global de Mapas ---------- */
+
 let mapaClientes = {};
 let mapaFornecedores = {};
 let mapaObras = {};
 
-/* Fase 182a (D4): etiqueta de exibição da obra, montada pelo sistema (vw_obras_etiqueta, lida em carregarObras):
-   "código · cliente · nome do projeto"; sem nome do projeto, "código · cliente · cidade/UF"; sem cidade, "código · cliente".
-   Só para listas, buscas, seletores e títulos: nunca gravar, nem usar em PDF, importação ou número de contrato (esses
-   continuam com obras.nome e mapaObras). obraRotulo aceita o id ou a linha da obra; sem etiqueta, cai em "código — nome". */
+
+
+
+
 let mapaObraEtiqueta = {};
 function obraRotulo(o){
   if(!o) return "";
@@ -100,18 +100,18 @@ function obraRotulo(o){
   if(typeof o === "string") return (mapaObras && mapaObras[o]) || "";
   return o.codigo ? `${o.codigo} — ${o.nome || ""}`.trim() : "";
 }
-/* mesma regra de public.obra_etiqueta(obras), para a ficha aberta antes de salvar */
+
 function obraEtiquetaMontar(o, cliente){
   const t = (v) => String(v == null ? "" : v).trim();
   const local = t(o.cidade) ? t(o.cidade) + (o.uf ? "/" + String(o.uf).toUpperCase() : "") : "";
   return [t(o.codigo), t(cliente), t(o.nome_projeto) || local].filter(Boolean).join(" · ");
 }
 
-/* ---------- Constantes ---------- */
-const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
-const UNIDADES = ["un","pc","cx","kg","g","ton","m","m2","m3","l","ml","sc","par","rl","jg","km","vb","diária","mês","h"]; // vb/diária/mês: fase 40 (proposta RG 11.8); km: lote S54 (#170, já existia no enum unidade_medida); h: lote S45 (L8), migration 20261020_loteS45_unidade_h. O enum tem um rótulo vazio: nunca oferecer aqui.
 
-/* Status de cada etapa do fluxo comercial: rótulo amigável + cor da tag */
+const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+const UNIDADES = ["un","pc","cx","kg","g","ton","m","m2","m3","l","ml","sc","par","rl","jg","km","vb","diária","mês","h"];
+
+
 const STATUS = {
   orcamento: {
     rascunho:      { label:"Rascunho",       cor:"cinza"    },
@@ -144,7 +144,7 @@ const STATUS = {
     enviada:   { label:"Enviada",   cor:"azul"     },
     aprovada:  { label:"Aprovada",  cor:"verde"    },
     faturada:  { label:"Faturada",  cor:"verde"    },
-    recebida:  { label:"Recebida",  cor:"verde"    },   // fase 91: recebimentos confirmados atingiram o líquido (gatilho)
+    recebida:  { label:"Recebida",  cor:"verde"    },
     rejeitada: { label:"Rejeitada", cor:"vermelho" }
   },
   rdo: {
@@ -157,15 +157,15 @@ const STATUS = {
     ferias:   { label:"Férias",   cor:"azul"     },
     demitido: { label:"Demitido", cor:"vermelho" }
   },
-  /* Acessórios (fase 47): condição da peça e onde ela está */
+
   equipamento: {
     disponivel:     { label:"Disponível",     cor:"verde"    },
     em_uso:         { label:"Em uso",         cor:"azul"     },
     em_manutencao:  { label:"Em manutenção",  cor:"ambar"    },
     inativo:        { label:"Inativo",        cor:"cinza"    },
-    vendido:        { label:"Vendido",        cor:"cinza"    },  // fase 96: nasce do registro da venda (js/vendas_bens.js)
-    vendido_reserva:   { label:"Vendido · reserva de domínio", cor:"ambar" },   // fase 180c: até o crédito da parcela de liberação
-    liberado_retirada: { label:"Vendido · liberado p/ retirada", cor:"azul" }   // fase 180c: vira "Vendido" na quitação
+    vendido:        { label:"Vendido",        cor:"cinza"    },
+    vendido_reserva:   { label:"Vendido · reserva de domínio", cor:"ambar" },
+    liberado_retirada: { label:"Vendido · liberado p/ retirada", cor:"azul" }
   },
   acessorio: {
     sem_avaliacao:      { label:"Sem avaliação",      cor:"cinza"    },
@@ -175,7 +175,7 @@ const STATUS = {
     em_manutencao:      { label:"Em manutenção",      cor:"azul"     },
     sucata:             { label:"Sucata",             cor:"vermelho" },
     baixado:            { label:"Baixado",            cor:"vermelho" },
-    vendido:            { label:"Vendido",            cor:"cinza"    }   // fase 180c: baixa junto com o bem vendido
+    vendido:            { label:"Vendido",            cor:"cinza"    }
   },
   acessorio_local: {
     patio:        { label:"Pátio",          cor:"verde"    },
@@ -187,14 +187,14 @@ const STATUS = {
     perdido:      { label:"Perdido",        cor:"vermelho" },
     desconhecido: { label:"Não localizado", cor:"cinza"    }
   },
-  /* Logística (fase 89): viagem de caminhão */
+
   viagem: {
     planejada:   { label:"Planejada",   cor:"cinza"    },
     em_transito: { label:"Em trânsito", cor:"ambar"    },
     concluida:   { label:"Concluída",   cor:"verde"    },
     cancelada:   { label:"Cancelada",   cor:"vermelho" }
   },
-  // fase 105b: NF-e de remessa/retorno emitida pelo app (movimentacoes_ativos.nf_status, gravado pela Focus NFe)
+
   nfe: {
     rascunho:    { label:"NF-e rascunho",    cor:"cinza"    },
     processando: { label:"NF-e processando", cor:"azul"     },
@@ -204,7 +204,7 @@ const STATUS = {
     denegada:    { label:"NF-e denegada",    cor:"vermelho" },
     inutilizada: { label:"NF-e inutilizada", cor:"cinza"    }
   },
-  // fase 105c: NFS-e da medição emitida pelo app (medicoes.nfse_status, gravado pela Focus NFe)
+
   nfse: {
     rascunho:    { label:"NFS-e rascunho",    cor:"cinza"    },
     processando: { label:"NFS-e processando", cor:"azul"     },
@@ -215,7 +215,7 @@ const STATUS = {
   }
 };
 
-/* Condições de tempo do RDO (manhã/tarde) */
+
 const CONDICAO_TEMPO = {
   bom:          "Bom",
   nublado:      "Nublado",
@@ -223,9 +223,9 @@ const CONDICAO_TEMPO = {
   chuva_forte:  "Chuva forte",
   impraticavel: "Impraticável"
 };
-/* Fase 179 (D1): na tela o clima tem 3 opções; o banco continua com os 5 valores de condicao_tempo.
-   valor gravado → opção; a opção grava o "padrão" dela, salvo se o valor já gravado for da mesma opção (nublado continua
-   nublado, chuva forte continua chuva forte). Cópia em js/op_core.js (o app do operador não carrega este arquivo). */
+
+
+
 const CLIMA_3 = { bom: "bom", nublado: "bom", chuva_fraca: "chuva", chuva_forte: "chuva", impraticavel: "impraticavel" };
 const CLIMA_3_OPCOES = [["bom", "Bom", "bom"], ["chuva", "Chuva", "chuva_fraca"], ["impraticavel", "Impraticável", "impraticavel"]];
 function climaOpcao(v){ return CLIMA_3[v] || ""; }
@@ -236,8 +236,8 @@ function climaGravar(opcao, atual){
   const o = CLIMA_3_OPCOES.find(x => x[0] === opcao);
   return o ? o[2] : null;
 }
-/* detalhe ao lado da opção: o do automático quando houver ("chuva forte, 7,2 mm"); senão o valor gravado quando ele é mais
-   fino que a opção (nublado, chuva forte) */
+
+
 function climaDetalhe(v, auto){
   const a = auto && auto.valor ? auto : null;
   const base = a ? a.valor : v;
@@ -247,9 +247,9 @@ function climaDetalhe(v, auto){
   if(!a && CLIMA_3_OPCOES.some(o => o[2] === base)) return "";
   return [rot, mm].filter(Boolean).join(", ");
 }
-/* Fase 179: estado do diário (vw_rdo_dia) e o texto da regra */
+
 const RDO_DIA_ESTADO = { produtivo: { label: "Produtivo", cor: "verde" }, parcial: { label: "Parcial", cor: "ambar" }, improdutivo: { label: "Improdutivo", cor: "vermelho" } };
-STATUS.rdo_dia = RDO_DIA_ESTADO;   // tagStatus("rdo_dia", estado)
+STATUS.rdo_dia = RDO_DIA_ESTADO;
 function rdoDiaRegraTexto(d){
   if(!d) return "";
   const n = (x) => Number(x || 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -258,10 +258,10 @@ function rdoDiaRegraTexto(d){
   return `Sem parâmetro na obra: ${n(d.metros_dia)} m e paradas de ${n(d.horas_paradas)} h (parcial a partir de ${n(d.limite_horas_parada)} h)`;
 }
 
-/* Categoria e recorrência dos contratos.
-   A natureza (cliente/fornecedor) continua na tabela, mas deixou de ser
-   escolhida na tela: o módulo Contratos é só de fornecedores e o contrato
-   do cliente nasce na aba Contrato da obra (fase 21). */
+
+
+
+
 const CONTRATO_CATEGORIA = {
   prestacao_servico: "Prestação de serviços",
   locacao:           "Locação",
@@ -271,9 +271,9 @@ const CONTRATO_CATEGORIA = {
   empreitada:        "Empreitada",
   consultoria:       "Consultoria",
   outro:             "Outro",
-  venda_bem:         "Venda de bem"   // fase 180c: nasce do registro da venda (aba Venda do bem), nunca à mão
+  venda_bem:         "Venda de bem"
 };
-/* fase 180c: os três status de bem vendido (reserva de domínio, liberado para retirada e vendido); todos com ativo = false */
+
 const EQP_STATUS_VENDIDO = ["vendido", "vendido_reserva", "liberado_retirada"];
 function bemVendido(e){ return !!e && (EQP_STATUS_VENDIDO.includes(e.status) || !!e.venda_id); }
 const RECORRENCIA = {
@@ -285,12 +285,12 @@ const RECORRENCIA = {
 };
 const INDICES_REAJUSTE = ["IPCA","IGP-M","INCC","IGP-DI","INPC","CDI"];
 
-/* ---------- Helpers ---------- */
+
 const $ = (id) => document.getElementById(id);
 const brl = (v) => Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const num = (v) => Number(v||0).toLocaleString("pt-BR",{maximumFractionDigits:3});
-/* duração em horas decimais → "h:mm" (lote S65-a, #297). Arredonda para minutos só aqui, depois de somar: 8,75 → "8:45",
-   -1,25 → "−1:15", 7,999 → "8:00". Zero devolve "—" (padrão) ou "0:00" com {zero:true}. Só dígitos, ":" e "−": seguro em HTML. */
+
+
 function horasHM(h, opt){
   const t = Math.round(Number(h || 0) * 60);
   if(!t) return opt && opt.zero ? "0:00" : "—";
@@ -298,40 +298,40 @@ function horasHM(h, opt){
   return `${t < 0 ? "−" : ""}${Math.floor(a / 60)}:${String(a % 60).padStart(2, "0")}`;
 }
 
-/* escapa texto antes de injetar em innerHTML (evita quebrar o HTML) */
+
 function esc(s){
   return String(s ?? "").replace(/[&<>"']/g, c => (
     {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
   ));
 }
 
-/* converte data ISO (yyyy-mm-dd) para dd/mm/aaaa */
+
 function dataBR(d){
   if(!d) return "—";
   const p = String(d).slice(0,10).split("-");
-  // fase 99a: escapado, porque o checar-xss confia no dataBR dentro de HTML (data normal sai igual)
+
   return esc(p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d);
 }
 
-/* data de hoje em formato ISO (yyyy-mm-dd) no FUSO LOCAL, para preencher
-   campos <input type=date> e gravar datas. NÃO usar toISOString(): ele é UTC
-   e, no Brasil (UTC-3), das 21h às 00h devolve o dia seguinte — gravava RDO,
-   medição e NF com a data de amanhã. */
+
+
+
+
 function dataLocalISO(d){
   const x = d instanceof Date ? d : new Date(d);
   return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
 }
 function hojeISO(){ return dataLocalISO(new Date()); }
-/* hoje ± n dias, em ISO local (n negativo = passado) */
+
 function addDiasISO(n){
   const h = new Date();
   return dataLocalISO(new Date(h.getFullYear(), h.getMonth(), h.getDate() + n));
 }
 
-/* mostra um aviso temporário (ok) ou fixo (erro) */
+
 function aviso(elId, msg, tipo){
   const el = $(elId);
-  // fase 79: o usuário de revisão (auditor) é barrado pela RLS em toda gravação; a mensagem diz isso em vez do erro técnico
+
   if(tipo === "erro" && typeof ehSomenteLeitura === "function" && ehSomenteLeitura()
      && /row-level security|permission denied|42501|sem permiss|não foi possível (salvar|gravar|abrir|mudar|excluir)/i.test(String(msg || "")))
     msg = "Usuário de revisão não grava.";
@@ -340,7 +340,7 @@ function aviso(elId, msg, tipo){
   if(tipo === "ok") setTimeout(()=>{ el.className = "aviso"; }, 4000);
 }
 
-/* monta as <option> de um <select> a partir de uma lista de objetos */
+
 function preencherSelect(sel, itens, valor, texto, placeholder){
   const ph = placeholder != null ? `<option value="">${esc(placeholder)}</option>` : "";
   sel.innerHTML = ph + itens.map(i =>
@@ -348,35 +348,35 @@ function preencherSelect(sel, itens, valor, texto, placeholder){
   ).join("");
 }
 
-/* devolve as <option> de um grupo de status (core STATUS) */
+
 function opcoesStatus(grupo){
   return Object.entries(STATUS[grupo])
     .map(([v,o]) => `<option value="${esc(v)}">${esc(o.label)}</option>`).join("");
 }
 
-/* devolve a tag colorida de um status */
+
 function tagStatus(grupo, valor){
   const o = (STATUS[grupo] || {})[valor];
   if(!o) return `<span class="tag cinza">${esc(valor||"—")}</span>`;
   return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`;
 }
 
-/* Situação ativo/inativo — UMA semântica para Clientes, Fornecedores e
-   Usuários (antes: cinza numa tela, vermelho noutra, e "ativo" nem aparecia).
-   O glifo (●/○) é redundância à cor, para daltônicos. */
+
+
+
 function tagSituacao(ativo){
   return ativo === false
     ? `<span class="tag cinza" title="Inativo">○ inativo</span>`
     : `<span class="tag verde" title="Ativo">● ativo</span>`;
 }
 
-/* devolve as <option> de um objeto simples { valor: "Rótulo" } */
+
 function opcoesDe(obj){
   return Object.entries(obj)
     .map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
 }
 
-/* ---------- Selects fixos ---------- */
+
 function montarSelects(){
   $("cli-uf").innerHTML = '<option value="">—</option>' +
     UFS.map(u=>`<option value="${esc(u.toLowerCase())}">${esc(u)}</option>`).join("");
@@ -397,27 +397,27 @@ function montarSelects(){
   $("con-categoria").innerHTML = opcoesDe(CONTRATO_CATEGORIA);
   $("con-recorrencia").innerHTML = opcoesDe(RECORRENCIA);
   $("lista-indices").innerHTML = INDICES_REAJUSTE.map(i=>`<option value="${esc(i)}">`).join("");
-  /* aba Contrato da ficha da obra (contrato do cliente — fase 21) */
+
   $("obr-con-categoria").innerHTML = opcoesDe(CONTRATO_CATEGORIA);
   $("obr-con-status").innerHTML = opcoesStatus("contrato");
 }
 
-/* ---------- Carga de Selects Comuns ---------- */
-/* clientes -> selects de orçamento e obra */
+
+
 async function carregarClientesSelects(){
   const { data } = await sb.from("clientes").select("id,nome").order("nome");
   const lista = data || [];
   mapaClientes = {};
   lista.forEach(c => mapaClientes[c.id] = c.nome);
-  ["orc-cliente","obr-cliente","con-cliente"].forEach(id=>{   // fase 180a: con-cliente = contrato de receita
+  ["orc-cliente","obr-cliente","con-cliente"].forEach(id=>{
     const el = $(id);
     if(el) preencherSelect(el, lista, "id", "nome", "— selecione —");
   });
-  const op = $("obr-obra-para");   // fase 182a: vazio = o próprio cliente
+  const op = $("obr-obra-para");
   if(op){ const v = op.value; preencherSelect(op, lista, "id", "nome", "— o próprio cliente —"); op.value = v; }
 }
 
-/* fornecedores ativos -> select de contrato */
+
 async function carregarFornecedoresSelects(){
   const { data } = await sb.from("fornecedores")
     .select("id,razao_social").eq("ativo",true).order("razao_social");
@@ -428,13 +428,13 @@ async function carregarFornecedoresSelects(){
   if(el) preencherSelect(el, lista, "id", "razao_social", "— selecione —");
 }
 
-/* profiles ativos -> selects de responsável. O da obra (fase 75) lista só a engenharia:
-   é o engenheiro que o gestor do serviço indica e que recebe o "Para regularizar" da obra. */
+
+
 const CARGOS_RESP_OBRA = ["engenheiro", "assistente_engenharia", "diretor"];
 async function carregarResponsaveis(){
   const { data } = await sb.from("profiles").select("id,nome,cargo").eq("ativo",true).order("nome");
   const lista = data || [];
-  ["orc-responsavel","con-responsavel","orc-neg-resp"].forEach(id=>{   // fase 187c: quem retorna na aba Negociação
+  ["orc-responsavel","con-responsavel","orc-neg-resp"].forEach(id=>{
     const el = $(id);
     if(el) preencherSelect(el, lista, "id", "nome", "— não informado —");
   });
@@ -442,32 +442,32 @@ async function carregarResponsaveis(){
   if(obr) preencherSelect(obr, lista.filter(p => CARGOS_RESP_OBRA.includes(p.cargo)), "id", "nome", "— não informado —");
 }
 
-/* ---------- Sugestão de numeração sequencial ---------- */
+
 function sugerirNumeros(){
   const proximo = (tbId, prefixo) => {
     const el = $(tbId);
     if(!el) return prefixo + "0001";
     const linhas = el.querySelectorAll("tr").length;
-    /* ignora a linha de "nenhum registro" */
+
     const temDados = el.querySelector(".vazio") ? 0 : linhas;
     return prefixo + String(temDados + 1).padStart(4,"0");
   };
   const orcNum = $("orc-numero");
   if(orcNum && !orcNum.value) orcNum.value = proximo("tab-orcamentos","ORC-");
-  /* con-numero é sugerido pelo próprio módulo (proximoNumeroContrato).
-     obr-codigo NÃO é sugerido: o <tbody> #tab-obras é sempre esvaziado pelo
-     render, então a contagem dava "OB-0001" (já existente → erro de UNIQUE).
-     O código da obra segue o padrão da CGL (ex.: 7822-2025) e é digitado. */
+
+
+
+
 }
 
-/* Executa fn() com o botão desabilitado até terminar — evita clique duplo em
-   Salvar (que duplicava execuções de RDO, entradas de estoque e movimentações).
-   Aceita o id do botão ou o elemento. Reentrância é ignorada. */
-/* Fase 86: só um salvar que passou libera a atualização do app (limpa a marca de formulário sujo):
-   botão de gravação (id ou texto), fn resolvida sem exceção e nenhum aviso de erro visível depois dela
-   (validação que avisa e retorna). Gerar PDF, importar, exportar e buscar nunca limpam. */
+
+
+
+
+
+
 const BOTAO_GRAVACAO_RE = /salvar|gravar|confirmar|aprovar|concluir|finalizar|enviar|registrar|lan[cç]ar|marcar|baixa|receber|entregar/i;
-/* Fase 149: o menu "Mais" da ficha (<details class="ficha-mais">) fecha ao clicar fora, ao escolher um item e com Esc. */
+
 document.addEventListener("click", e => {
   document.querySelectorAll("details.ficha-mais[open]").forEach(d => {
     if(!d.contains(e.target) || e.target.closest(".ficha-mais-menu")) d.open = false;
@@ -492,10 +492,10 @@ async function comBotaoTravado(btnOuId, fn){
   }
 }
 
-/* Uploads (regra do CLAUDE.md; hotfix 98, saiu de obra_abas.js): o supabase-js ignora `contentType` quando o corpo é
-   File e manda o `type` do próprio arquivo, que o navegador deixa vazio ou "application/octet-stream" (PDF salvo pelo
-   Windows, .dwg, .dxf) ou troca (.zip = "application/x-zip-compressed"), e o bucket recusa. O MIME sai da extensão e o
-   corpo é reembalado em Blob. Usado em obra_abas.js (documentos da obra) e contratos.js (anexos de contrato). */
+
+
+
+
 const MIME_POR_EXTENSAO = {
   pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -503,30 +503,30 @@ const MIME_POR_EXTENSAO = {
   doc: "application/msword", xls: "application/vnd.ms-excel", txt: "text/plain", csv: "text/csv",
   dwg: "image/vnd.dwg", dxf: "image/vnd.dxf", zip: "application/zip"
 };
-/* extensão do nome do arquivo em minúsculas; entra no caminho do storage, então só letras/dígitos (1-5), senão "bin" */
+
 function extensaoArquivo(file){
   const partes = String((file && file.name) || "").split(".");
   return (partes.length > 1 && (partes.pop().toLowerCase().match(/^[a-z0-9]{1,5}$/) || [])[0]) || "bin";
 }
-/* MIME pela extensão quando ela é conhecida; senão o que o navegador deu; senão application/octet-stream */
+
 function mimeDoArquivo(file, ext){
   const e = ext || extensaoArquivo(file);
   if(MIME_POR_EXTENSAO[e]) return MIME_POR_EXTENSAO[e];
   return String((file && file.type) || "").toLowerCase() || "application/octet-stream";
 }
-/* corpo do upload com o MIME certo: o próprio File quando o type já bate, senão um Blob com o MIME */
+
 function corpoComMime(file, mime){ return file.type === mime ? file : new Blob([file], { type: mime }); }
-/* recusa de policy: insert na tabela (42501) ou upload no Storage ("new row violates row-level security policy", 403) */
+
 function ehErroDePermissao(err){
   const e = err || {};
   return e.code === "42501" || String(e.statusCode || "") === "403" || e.status === 403
     || /row-level security|permission denied/i.test(String(e.message || e.error || err || ""));
 }
 
-/* Leitura por IA (edge function) com limite de tempo no cliente (lote S39, chamados #28 #20 #21).
-   A function morre por tempo sem devolver nada em PDF grande; sem o limite o modal ficava parado. */
+
+
 const IA_LIMITE_MS = 150000;
-/* lote S48 (#128): limiteMs opcional — a leitura de RDO (extrair-rdo-arquivo v3.6, até 32.000 tokens de saída) espera mais */
+
 function iaInvocarComLimite(nome, body, msgTempo, limiteMs){
   let t = null;
   const tempo = new Promise((_, rej) => {
@@ -535,28 +535,28 @@ function iaInvocarComLimite(nome, body, msgTempo, limiteMs){
   return Promise.race([sb.functions.invoke(nome, { body }), tempo]).finally(() => clearTimeout(t));
 }
 
-/* ====================== IDENTIDADE VISUAL DOS PDFs (lote S41, chamado #36) ======================
-   Um ponto só para logo e selo ISO 9001 nos três geradores (proposta, medição, pedido de compra).
-   Estilo inline com hex: o PDF é renderizado fora do CSS do app (exceção permitida para PDF).
-   - pdfCabecalhoHTML(titulo, subtitulo): logo oficial (18 mm) e, se houver, título ao lado.
-   - pdfRodapeHTML(): rodapé com o selo para a pré-visualização em HTML e a impressão.
-   - pdfGerar(elemento, opcoes): html2pdf com margem para o rodapé, sem cortar linha
-     (tr, p, li, .nao-quebrar) e com selo + "CGL Fundações · Empresa certificada ISO 9001"
-     carimbados pelo jsPDF em TODA página (html2pdf fatia uma imagem só; rodapé em HTML
-     sairia só na última página). */
+
+
+
+
+
+
+
+
+
 const PDF_LOGO_SRC = "img/logo-cgl.png";
 const PDF_SELO_SRC = "img/selo-iso9001.png";
 const PDF_RODAPE_TEXTO = "CGL Fundações · Empresa certificada ISO 9001";
 const PDF_SELO_MM = 16;
-const PDF_BASE_MIN_MM = 25;   // espaço no pé da página para o selo e o texto
+const PDF_BASE_MIN_MM = 25;
 const PX_POR_MM = 96 / 25.4;
 
-/* Margens [topo, esquerda, base, direita] em mm para uma largura útil pedida.
-   O html2pdf 0.10.1 empurra a linha para a página seguinte usando floor(altura em px) e fatia o
-   canvas com floor(largura do canvas × altura/largura): com medidas quebradas as duas contas
-   divergem ~1,5 px por página e a borda da linha empurrada aparecia no pé da página anterior,
-   crescendo a cada página. Largura e altura úteis em px inteiros (+0,04 px de folga contra o
-   arredondamento) e o canvas com largura fixa fazem as duas contas darem o mesmo número. */
+
+
+
+
+
+
 function pdfMargens(larguraMm, topoMm){
   const largPx = Math.round(larguraMm * PX_POR_MM);
   const altPx  = Math.floor((297 - topoMm - PDF_BASE_MIN_MM) * PX_POR_MM);
@@ -566,7 +566,7 @@ function pdfMargens(larguraMm, topoMm){
   return { margem: [topoMm, lado, 297 - topoMm - alt, lado], largPx };
 }
 
-/* URL absoluta: a pré-visualização abre em about:blank e não resolveria caminho relativo */
+
 function pdfUrl(caminho){ return new URL(caminho, document.baseURI).href; }
 
 function pdfCabecalhoHTML(titulo = "", subtitulo = ""){
@@ -585,7 +585,7 @@ function pdfRodapeHTML(){
   </div>`;
 }
 
-/* carrega uma imagem da mesma origem; com `lado` devolve PNG reduzido (selo de 1080 px vira ~300 px) */
+
 const _pdfImgCache = {};
 function pdfCarregarImagem(caminho, lado){
   const chave = caminho + "|" + (lado || "");
@@ -606,7 +606,7 @@ function pdfCarregarImagem(caminho, lado){
   return _pdfImgCache[chave];
 }
 
-/* selo e texto no pé de cada página do jsPDF */
+
 function pdfCarimbarRodape(pdf, selo, margem){
   const larg = pdf.internal.pageSize.getWidth();
   const alt  = pdf.internal.pageSize.getHeight();
@@ -619,14 +619,14 @@ function pdfCarimbarRodape(pdf, selo, margem){
     pdf.line(esq, alt - 14, xSelo - 3, alt - 14);
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.setTextColor(85);
     pdf.text(PDF_RODAPE_TEXTO, esq, alt - 10);
-    pdf.text(`Página ${i} de ${total}`, esq + pdf.getTextWidth(PDF_RODAPE_TEXTO) + 6, alt - 10);   // lote S42 (L2): vale para os três PDFs
+    pdf.text(`Página ${i} de ${total}`, esq + pdf.getTextWidth(PDF_RODAPE_TEXTO) + 6, alt - 10);
     if(selo) pdf.addImage(selo, "PNG", xSelo, ySelo, PDF_SELO_MM, PDF_SELO_MM, "selo-iso9001", "FAST");
   }
 }
 
-/* Fase 187d (#306): PDF com texto nativo, escrito pela API do jsPDF que vem dentro do bundle do html2pdf (nenhuma
-   biblioteca nova). O bundle não expõe o jsPDF em window; a porta é o worker do html2pdf, que cria o documento a partir
-   de um elemento. Um div de 1 px vira a página 1, que é apagada: sobra o documento A4 vazio, em mm. */
+
+
+
 async function pdfNovoDocumento(){
   if(typeof html2pdf === "undefined") throw new Error("Biblioteca html2pdf não carregada.");
   const el = document.createElement("div");
@@ -640,9 +640,9 @@ async function pdfNovoDocumento(){
   return pdf;
 }
 
-/* A fonte padrão do jsPDF (Helvetica) escreve em WinAnsi: acento, ç, º, ³, –, “ ” e • saem como texto. Um caractere
-   fora dela faria o jsPDF gravar a frase inteira em 16 bits e o PDF sairia ilegível, então ele é trocado aqui.
-   Espaço inquebrável (o brl() põe um depois do R$) vira espaço comum, para o Ctrl+F achar "R$ 1.234,56". */
+
+
+
 const _PDF_WINANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
 const _PDF_TROCAS = { "≥": ">=", "≤": "<=", "−": "-", "→": "->", "←": "<-", "✓": "X", "✔": "X", " ": " ", " ": " ",
   " ": " ", "\t": " ", "​": "", "\r": "" };
@@ -651,17 +651,17 @@ function pdfTextoWinAnsi(s){
     c => c in _PDF_TROCAS ? _PDF_TROCAS[c] : (_PDF_WINANSI_EXTRA.includes(c) ? c : "?"));
 }
 
-/* gera e baixa o PDF; `elemento` é um container temporário (o rodapé HTML dele é retirado).
-   opcoes: filename, largura (mm úteis, padrão 190), topo (mm, padrão 12) */
+
+
 async function pdfGerar(elemento, opcoes = {}){
   if(typeof html2pdf === "undefined") throw new Error("Biblioteca html2pdf não carregada.");
   const { margem, largPx } = pdfMargens(opcoes.largura || 190, opcoes.topo || 12);
-  /* logo pré-carregado para o html2canvas não fotografar a imagem vazia; sem selo o PDF sai assim mesmo */
+
   await pdfCarregarImagem(PDF_LOGO_SRC).catch(() => null);
   const selo = await pdfCarregarImagem(PDF_SELO_SRC, 300).catch(() => null);
   elemento.querySelectorAll(".pdf-rodape").forEach(n => n.remove());
-  /* fase 138: o PDF sai sempre claro. O container usa var(--…) e resolveria pelos tokens do tema da tela;
-     força o claro no <html> enquanto o html2canvas fotografa e restaura o tema no finally, mesmo com erro. */
+
+
   const temaAntes = document.documentElement.dataset.theme;
   document.documentElement.dataset.theme = "claro";
   try{
@@ -669,7 +669,7 @@ async function pdfGerar(elemento, opcoes = {}){
       margin:      margem,
       filename:    opcoes.filename || "documento.pdf",
       image:       { type: "jpeg", quality: 0.95 },
-      // lote S42 (L3): letterRendering desenha letra por letra e embaralhava "NBR-7212 e NBR-12.655" na quebra de linha
+
       html2canvas: { scale: 2, useCORS: true, letterRendering: false, width: largPx },
       jsPDF:       { unit: "mm", format: "a4", orientation: "portrait" },
       pagebreak:   { mode: ["css", "legacy"], avoid: ["tr", "p", "li", ".nao-quebrar"] }
@@ -680,8 +680,8 @@ async function pdfGerar(elemento, opcoes = {}){
   }
 }
 
-/* A API devolve no máximo 1.000 linhas por leitura, sem aviso, mesmo com .limit() maior. montar() traz select, filtros e a ordem
-   da tela; chave (coluna ou lista de colunas, tem de ser única) desempata para as páginas serem estáveis. Uma página de cada vez. */
+
+
 async function lerTudo(montar, chave = "id"){
   const out = [];
   for(let de = 0; out.length === de; de += 1000){
@@ -693,16 +693,16 @@ async function lerTudo(montar, chave = "id"){
   return { data: out, error: null };
 }
 
-/* Fase 141: chips de motivo. Botões role="radio" dentro de um role="radiogroup": clique, setas, Home/End, Espaço e Enter.
-   opcoes: [{ valor, rotulo }]. Devolve { get valor(), definir(v) }; aoMudar(v) roda só quando a pessoa escolhe. */
+
+
 const MOTIVOS_REFURADA = [
   { valor: "obstrucao", rotulo: "Obstrução" }, { valor: "desmoronamento", rotulo: "Desmoronamento" }, { valor: "desvio_locacao", rotulo: "Desvio de locação" },
   { valor: "ferramenta_quebrou", rotulo: "Ferramenta quebrou" }, { valor: "maquina_parou", rotulo: "Máquina parou" }, { valor: "projeto_alterado", rotulo: "Projeto alterado" },
   { valor: "erro_operacional", rotulo: "Erro operacional" }, { valor: "teste", rotulo: "Teste" },
-  { valor: "concreto", rotulo: "Concreto" }, { valor: "armacao", rotulo: "Armação" }, { valor: "outro", rotulo: "Outro" }   // fase 145a: concreto e armação
+  { valor: "concreto", rotulo: "Concreto" }, { valor: "armacao", rotulo: "Armação" }, { valor: "outro", rotulo: "Outro" }
 ];
 function motivoRefuradaLbl(v){ return (MOTIVOS_REFURADA.find(m => m.valor === v) || {}).rotulo || v || ""; }
-/* Fase 145a: cobrança do refuro. Quem decide é o engenheiro da obra; a responsabilidade sugerida pelo motivo só pré-marca o chip. */
+
 const REFURO_COBRANCA = {
   pendente:        { label: "Aguarda decisão",    cor: "ambar" },
   cobrar:          { label: "Cobrar",             cor: "verde" },
@@ -745,15 +745,15 @@ function chipsMotivo(container, opcoes, valor, aoMudar){
   return { get valor(){ return atual; }, definir(v){ atual = v ?? null; pintar(); } };
 }
 
-/* lote S60 (#177): rascunho local. sessionStorage de propósito: pedido tem preço, e computador compartilhado não deve guardá-lo depois de
-   fechada a janela. Nada vai ao banco; a chave leva o id do usuário, e sair da sessão apaga tudo. */
+
+
 const RASCUNHO_PREFIXO = "rascunho:";
 function rascunhoChave(tipo, id){ return `${RASCUNHO_PREFIXO}${usuarioAtual?.id || "anon"}:${tipo}:${id || "novo"}`; }
 function rascunhoGuardar(chave, dados){ try { sessionStorage.setItem(chave, JSON.stringify({ em: new Date().toISOString(), dados })); return true; } catch(_){ return false; } }
 function rascunhoLer(chave){ try { const t = sessionStorage.getItem(chave); return t ? JSON.parse(t) : null; } catch(_){ return null; } }
 function rascunhoApagar(chave){ try { sessionStorage.removeItem(chave); } catch(_){} }
-/* lote S69-i (#342): rascunho que sobrevive a outra aba e a fechar o navegador (localStorage, chave com o id do usuário) e
-   vence em 7 dias. Só para o que não tem preço (a requisição); o pedido continua no sessionStorage acima. */
+
+
 const RASCUNHO_LOCAL_DIAS = 7;
 function rascunhoGuardarLocal(chave, dados){ try { localStorage.setItem(chave, JSON.stringify({ em: new Date().toISOString(), dados })); return true; } catch(_){ return false; } }
 function rascunhoLerLocal(chave){
@@ -765,7 +765,7 @@ function rascunhoLerLocal(chave){
   } catch(_){ return null; }
 }
 function rascunhoApagarLocal(chave){ try { localStorage.removeItem(chave); } catch(_){} }
-/* Sair (e a sessão vencida) apaga os rascunhos das duas guardas; no localStorage, também os vencidos de outros usuários */
+
 function rascunhoLimparTodos(){
   try { Object.keys(sessionStorage).filter(k => k.startsWith(RASCUNHO_PREFIXO)).forEach(k => sessionStorage.removeItem(k)); } catch(_){}
   try {
@@ -773,7 +773,7 @@ function rascunhoLimparTodos(){
     Object.keys(localStorage).filter(k => k.startsWith(RASCUNHO_PREFIXO)).forEach(k => { if(k.startsWith(meu)) localStorage.removeItem(k); else rascunhoLerLocal(k); });
   } catch(_){}
 }
-/* "Há um rascunho de 14:32 (ontem) ..." para a faixa: hora, e o dia quando não é hoje */
+
 function rascunhoQuando(em){
   const d = new Date(em), hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   return dataLocalISO(d) === hojeISO() ? hora : `${hora} de ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
@@ -783,7 +783,7 @@ function rascunhoPergunta(em, alteradoEm, deQue){
   const aviso = alteradoEm && new Date(alteradoEm) > new Date(em) ? `Atenção: o registro foi alterado no banco às ${hora(alteradoEm)}, depois desse rascunho. Restaurar traz o rascunho para a tela; ao salvar, ele substitui o que foi gravado.\n\n` : "";
   return `${aviso}Há um rascunho de ${hora(em)} ${deQue}, ainda não salvo.\n\nOK: restaurar o rascunho.\nCancelar: descartar.`;
 }
-/* lote S60 (#254): responsável principal e outros responsáveis (funcionarios.id) em reparo e fabricação */
+
 function respTodos(principal, extras, nomeDe){
   return [...new Set([principal, ...(extras || [])].filter(Boolean))].map(id => nomeDe(id) || "(inativo)");
 }
@@ -799,8 +799,8 @@ function respExtrasRender({ wrap, sel, extras, principal, funcs, pode, aoMudar }
   w.querySelectorAll("button[data-id]").forEach(b => b.addEventListener("click", () => aoMudar(extras.filter(x => x !== b.dataset.id))));
 }
 
-/* Debounce para campos de busca: re-renderizar a lista inteira a cada tecla
-   travava nas listas grandes (produtos, estacas). 150 ms é imperceptível. */
+
+
 function debounce(fn, ms = 150){
   let t = null;
   return function(...args){
@@ -809,20 +809,20 @@ function debounce(fn, ms = 150){
   };
 }
 
-/* Lote S47 (#112): ordenação pelo cabeçalho, para reaproveitar em qualquer lista.
-   colunas: { chave: { valor: (linha) => número | texto | data ISO, tipo: "num" | "texto" | "data", dirInicial?: "asc"|"desc" } }
-   estado:  { chave: "orc-ordem" (sessionStorage: vale para a janela aberta), padrao: { col, dir } }
-   Uso:  const ord = ordenarTabela(colunas, estado);
-         lista = ord.aplicar(lista);                    // cópia ordenada (vazio sempre por último; empate mantém a ordem)
-         `<thead><tr>${ord.th("cliente", "Cliente")}…`  // <th> com seta (aria-sort) e data-ordena
-         ord.ligar(container, render);                  // clique/Enter no cabeçalho alterna asc ↔ desc e chama render() */
+
+
+
+
+
+
+
 function ordenarTabela(colunas, estado){
   const chave = estado && estado.chave ? estado.chave : null;
   const dirOk = (d) => d === "desc" ? "desc" : "asc";
   let atual = { col: estado?.padrao?.col || null, dir: dirOk(estado?.padrao?.dir) };
   if(chave){
     try { const s = JSON.parse(sessionStorage.getItem(chave) || "null"); if(s && colunas[s.col]) atual = { col: s.col, dir: dirOk(s.dir) }; }
-    catch(_e){ /* sessionStorage bloqueado ou valor velho: fica o padrão */ }
+    catch(_e){   }
   }
   const vazio = (v) => v == null || v === "" || (typeof v === "number" && !Number.isFinite(v));
   const comparar = (a, b, tipo) => {
@@ -851,7 +851,7 @@ function ordenarTabela(colunas, estado){
     alternar(col){
       if(!colunas[col]) return;
       atual = atual.col === col ? { col, dir: atual.dir === "asc" ? "desc" : "asc" } : { col, dir: dirOk(colunas[col].dirInicial) };
-      if(chave){ try { sessionStorage.setItem(chave, JSON.stringify(atual)); } catch(_e){ /* ok */ } }
+      if(chave){ try { sessionStorage.setItem(chave, JSON.stringify(atual)); } catch(_e){   } }
     },
     ligar(container, aoMudar){
       const el = typeof container === "string" ? $(container) : container;
@@ -868,16 +868,16 @@ function ordenarTabela(colunas, estado){
   return api;
 }
 
-/* ====================== ACESSIBILIDADE (Onda 3) ======================
-   Um único inicializador cobre o app inteiro sem tocar nos templates:
-   1. <label> sem `for` dentro de .campo passa a apontar para o campo seguinte
-      (clicar no rótulo foca; leitor de tela associa).
-   2. Buscas/filtros/selects sem rótulo ganham aria-label (do placeholder ou
-      da 1ª opção); botões "×" viram "Fechar".
-   3. Tudo que é clicável mas é <div>/<tr>/<circle> (linhas, cards, statusbar,
-      KPIs, planta) ganha tabindex=0 + role=button — via MutationObserver,
-      então vale também para o que os módulos renderizam depois.
-   4. Enter/Espaço num desses elementos dispara o mesmo click do mouse. */
+
+
+
+
+
+
+
+
+
+
 const ACIONAVEIS = ".linha-clicavel, .serv-kan-card, .odoo-statusbar .stage, .ind-click, .dash-card.clicavel, .dash-pendencia-item.clicavel, .dash-linha-obra, .dash-ativ-item, #est-planta-svg .estaca-circ";
 function marcarAcionaveis(raiz){
   const alvo = raiz && raiz.querySelectorAll ? raiz : document;
@@ -906,14 +906,14 @@ function rotularControles(raiz){
 function iniciarAcessibilidade(){
   rotularControles(document);
   marcarAcionaveis(document);
-  // Renders posteriores (innerHTML dos módulos) passam pelo observer
+
   const obs = new MutationObserver(muts => {
     for(const m of muts){
       m.addedNodes.forEach(n => { if(n.nodeType === 1){ marcarAcionaveis(n); rotularControles(n); } });
     }
   });
   obs.observe(document.body, { childList: true, subtree: true });
-  // Teclado: Enter/Espaço = click (reaproveita os handlers já existentes)
+
   document.addEventListener("keydown", (ev) => {
     if(ev.key !== "Enter" && ev.key !== " ") return;
     const el = ev.target;
@@ -925,12 +925,12 @@ function iniciarAcessibilidade(){
 }
 
 
-/* ====================== AUTENTICAÇÃO ====================== */
-/* Fase 93b: funcionário entra com o CPF. O usuário dele no Auth tem o e-mail técnico
-   <cpf só dígitos>@funcionarios.cglfundacoes.com.br (domínio interno, sem caixa postal), criado pelo RH na aba
-   Acesso da ficha do funcionário. O campo "E-mail ou CPF" aceita os dois: só dígitos (com ou sem pontos e traço),
-   11 deles, vira o e-mail técnico aqui; qualquer outra coisa segue como e-mail. O e-mail técnico nunca vai para a
-   tela: fica nesta função e em `_loginCpfDigitos` (para recusar senha igual ao CPF). */
+
+
+
+
+
+
 const LOGIN_CPF_DOMINIO = "funcionarios.cglfundacoes.com.br";
 let _loginCpfDigitos = null;
 function loginPareceCpf(v){
@@ -947,11 +947,11 @@ $("form-login").addEventListener("submit", async (e)=>{
   e.preventDefault();
   const btn = $("btn-entrar");
   btn.disabled = true; btn.textContent = "Entrando...";
-  // fase 87: "Manter conectado neste computador" decide onde a sessão vai viver; tem que estar gravado
-  // antes do signIn, que é quem grava a sessão. O prazo da empresa é aplicado depois do login.
+
+
   if($("login-lembrar") && $("login-lembrar").checked) lembrarGravar(POL_SESSAO_PADRAO.lembrar_dias); else lembrarApagar();
   const { error } = await sb.auth.signInWithPassword({
-    email: loginParaEmail($("login-email").value),   // fase 93b: CPF vira o e-mail técnico
+    email: loginParaEmail($("login-email").value),
     password: $("login-senha").value
   });
   btn.disabled = false; btn.textContent = "Entrar";
@@ -962,7 +962,7 @@ $("form-login").addEventListener("submit", async (e)=>{
     else aviso("login-aviso","Falha no login: "+(error.message||"erro desconhecido"),"erro");
     return;
   }
-  // Verifica se é necessário step MFA (usuário já tem TOTP cadastrado)
+
   const { data: aalData } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
   if(aalData?.nextLevel === "aal2" && aalData?.currentLevel !== "aal2"){
     mostrarDesafioMFALogin();
@@ -971,14 +971,14 @@ $("form-login").addEventListener("submit", async (e)=>{
   iniciarApp();
 });
 
-/* ---------- Esqueci minha senha ----------
-   Envia o link de redefinição; o retorno chega com #type=recovery e o
-   modal "Defina sua senha" (fase 24) cuida do resto. O e-mail sai pelo
-   serviço embutido do Supabase (limite de poucos envios/hora), por isso
-   o botão trava por 60s após cada envio. */
+
+
+
+
+
 $("btn-esqueci-senha")?.addEventListener("click", async ()=>{
   const email = $("login-email").value.trim().toLowerCase();
-  // fase 93b: login por CPF não tem caixa postal; a senha nova vem do RH (aba Acesso da ficha do funcionário)
+
   if(loginPareceCpf(email) || emailEhLoginCpf(email)){
     aviso("login-aviso","Quem entra com o CPF não redefine a senha por e-mail: peça ao RH um link de acesso.","aviso");
     return;
@@ -1014,9 +1014,9 @@ $("btn-ver-senha").addEventListener("click", ()=>{
   $("btn-ver-senha").textContent = oculto ? "ocultar" : "mostrar";
 });
 
-/* ===== fase 143: tela de primeiro acesso =====
-   Abre no lugar do login, mesmo com sessão aberta no aparelho. Abrir não gasta o link: só "Criar minha senha" consome. Depois de
-   criar, a pessoa entra pela tela normal, com CPF e senha nova. A function pública primeiro-acesso confere tudo de novo. */
+
+
+
 async function paChamar(corpo){
   const resp = await fetch(`${SUPABASE_URL}/functions/v1/primeiro-acesso`, {
     method: "POST",
@@ -1025,7 +1025,7 @@ async function paChamar(corpo){
   });
   return resp.json().catch(() => ({}));
 }
-/* "conferindo" | "form" | "invalido" | "rede" */
+
 function paEstado(estado){
   $("pa-form").style.display = estado === "form" ? "" : "none";
   $("btn-pa-tentar").style.display = estado === "rede" ? "" : "none";
@@ -1071,7 +1071,7 @@ async function paCriarSenha(){
   catch(_){ aviso("pa-aviso", "Sem conexão. A senha não foi criada, e o link continua valendo. Tente de novo.", "erro"); return; }
   if(r.link_invalido){ paLinkNaoVale(r.error); return; }
   if(!r.ok){ aviso("pa-aviso", r.error || "Não foi possível criar a senha. Tente de novo.", "erro"); return; }
-  // sessão de outra pessoa aberta neste aparelho: sai só daqui, para a tela de entrada aparecer
+
   try { await sb.auth.signOut({ scope: "local" }); } catch(_){}
   $("pa-tela").style.display = "none";
   $("pa-senha").value = ""; $("pa-senha2").value = "";
@@ -1093,19 +1093,19 @@ $("btn-pa-ver-senha").addEventListener("click", () => {
   $("btn-pa-ver-senha").textContent = oculto ? "ocultar" : "mostrar";
 });
 
-/* ===== fase 138: tema claro/escuro (FO-01) =====
-   js/tema.js (no <head>) já carimbou data-theme="escuro" no <html> antes da primeira pintura; aqui ficam a troca
-   pelo botão e a gravação. Preferência por navegador em localStorage "cgl-tema" (claro | escuro), nada no banco.
-   O tema é só tokens em css/estilo.css: nenhum módulo decide cor por JS (lê o token por getComputedStyle se precisar). */
+
+
+
+
 const TEMA_CHAVE = "cgl-tema";
 function temaAtual(){ return document.documentElement.dataset.theme === "escuro" ? "escuro" : "claro"; }
-/* carimba o <html>, grava a escolha e sincroniza os botões (ícone, title e aria-pressed) */
+
 function aplicarTema(tema){
   const escuro = tema === "escuro";
   if(escuro) document.documentElement.dataset.theme = "escuro";
-  else delete document.documentElement.dataset.theme;   // o claro é o padrão do CSS: sem atributo
+  else delete document.documentElement.dataset.theme;
   try{ localStorage.setItem(TEMA_CHAVE, escuro ? "escuro" : "claro"); }
-  catch(_){ /* storage bloqueado: a escolha vale até recarregar */ }
+  catch(_){   }
   temaSincronizarBotoes();
 }
 function temaSincronizarBotoes(){
@@ -1115,10 +1115,10 @@ function temaSincronizarBotoes(){
     btn.setAttribute("aria-pressed", escuro ? "true" : "false");
     btn.title = titulo;
     btn.setAttribute("aria-label", titulo);
-    // o ícone (sol no escuro, lua no claro) vem do CSS pelo data-theme da raiz (fase 193b)
+
   });
 }
-/* liga o clique dos botões (#btn-tema no cabeçalho, #btn-tema-login no login); idempotente, chamado na carga e em iniciarApp() */
+
 function ligarTema(){
   document.querySelectorAll(".btn-tema").forEach(btn => {
     if(btn.dataset.temaLigado) return;
@@ -1127,12 +1127,12 @@ function ligarTema(){
   });
   temaSincronizarBotoes();
 }
-ligarTema();   // tela de login: antes de autenticar
+ligarTema();
 
-/* lote S59 (D7, D8): os valores em dinheiro de KPIs e totais abrem cobertos, para todos os cargos; cada janela nova abre oculta.
-   Proteção contra quem olha a tela, não controle de acesso. O texto continua no DOM dentro do .val-sens, então PDF e .xlsx não mudam. */
-/* Decisão de 24/11/2026 (hotfix 347): o olho cobre só KPI e total de maior valor; a composição de um registro (.custos-resumo:
-   reparo, OS, OF, pedido, pernas da mobilização) fica sempre à mostra para quem já pode ler o valor. */
+
+
+
+
 const VAL_SENS_CHAVE = "cgl_valores_visiveis";
 const VAL_SENS_ZONAS = ".ind, .dash-card, .sb-num, tfoot, #pat-conteudo, [data-val-sens]";
 const VAL_SENS_FORA = ".val-sens, svg, option, select, textarea, script, style";
@@ -1215,36 +1215,36 @@ function ligarValSens(){
     try { if(_valSensVisivel) sessionStorage.setItem(VAL_SENS_CHAVE, "1"); else sessionStorage.removeItem(VAL_SENS_CHAVE); } catch(_){}
   };
   $("btn-val-sens")?.addEventListener("click", () => trocar(!_valSensVisivel));
-  // hotfix 347: o botão "Mostrar valores" do aviso uiValoresOcultos (aba Custos de reparo, OS e OF) faz o mesmo que o olho
+
   document.addEventListener("click", e => { if(e.target.closest?.("[data-val-mostrar]")) trocar(true); });
 }
 ligarValSens();
 
 $("btn-sair").addEventListener("click", async ()=>{
-  appLimparSujo();   // fase 86: sair abandona o que estava na tela
-  _polSaindo = true; // fase 87: saída voluntária, sem aviso de "sessão encerrada" na tela de login
-  polSessaoLimpar(); // fase 87: esquece "manter conectado" e os marcos da sessão
-  rascunhoLimparTodos();   // lote S60 (#177)
+  appLimparSujo();
+  _polSaindo = true;
+  polSessaoLimpar();
+  rascunhoLimparTodos();
   await sb.auth.signOut();
   location.reload();
 });
 
-/* perfil do usuário logado — preenchido em iniciarApp() */
+
 let usuarioAtual = null;
 
 async function iniciarApp(){
   const { data:{ user } } = await sb.auth.getUser();
   if(!user) return;
-  /* fase 99b: sessão restaurada (manter conectado, recarga da aba) de quem tem fator verificado mas não fez o
-     desafio nesta sessão: pede o código antes de entrar, para qualquer cargo (antes só o login por senha pedia) */
+
+
   if(await mfaPrecisaDesafio()){ $("tela-app").style.display = "none"; $("tela-login").style.display = ""; mostrarDesafioMFALogin(); return; }
-  // fase 93b: login_cpf e senha_provisoria entram na leitura; se a migration da 93b ainda não estiver no banco
-  // (42703: coluna não existe), lê sem elas para ninguém ficar sem perfil
-  // hotfix 147: traz a função cadastrada pelo RH (funcionarios.funcao, pela FK profiles.funcionario_id); o embed vem
-  // nulo para quem não tem funcionário ligado. Sem a relação (PGRST200) ou sem coluna (42703), lê como antes
-  const perfilCols = "id,nome,cargo,ativo,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate";   // hotfix 113: módulos extras
-  // fase 159a: login por CPF lê o próprio perfil pela RPC campo_meu_perfil. Com o portão da API ligado (159b) o operador
-  // não lê a tabela profiles, e é esta leitura que o manda para o operador.html. Sem a RPC, ou para os demais, a leitura de sempre.
+
+
+
+
+  const perfilCols = "id,nome,cargo,ativo,login_cpf,senha_provisoria,modulos_extras,modulos_extras_ate";
+
+
   let perfil = null, perfilErr = null;
   if(emailEhLoginCpf(user.email)){
     const rp = await sb.rpc("campo_meu_perfil");
@@ -1259,74 +1259,74 @@ async function iniciarApp(){
     ({ data:perfil, error:perfilErr } = await sb.from("profiles").select("id,nome,cargo,ativo").eq("id",user.id).single());
   }
 
-  /* bloqueia acesso de usuários desativados. Fase 62: com o is_ativo() nas policies o
-     desativado não lê nem o próprio perfil (a consulta volta sem linha, PGRST116) */
+
+
   if((perfil && perfil.ativo === false) || (!perfil && perfilErr?.code === "PGRST116")){
     await sb.auth.signOut();
     aviso("login-aviso","Seu usuário está desativado. Fale com a diretoria.","erro");
     return;
   }
 
-  /* fase 129b: o operador usa o app de campo (operador.html), feito para o celular; engenharia e encarregado
-     continuam aqui e têm o link "Modo campo" no rodapé do menu */
+
+
   if(perfil?.cargo === "operador"){ location.replace("operador.html"); return; }
   const lnkCampo = $("lnk-modo-campo");
   if(lnkCampo) lnkCampo.hidden = !["encarregado", "engenheiro", "assistente_engenharia", "admin", "diretor"].includes(perfil?.cargo);
 
-  // fase 93b: o e-mail técnico do login por CPF não aparece na tela (carrega o CPF)
+
   _loginCpfDigitos = emailEhLoginCpf(user.email) ? String(user.email).split("@")[0] : null;
   const rotuloSemPerfil = _loginCpfDigitos ? "Funcionário" : user.email;
   usuarioAtual = perfil || { id:user.id, nome:rotuloSemPerfil, cargo:null, ativo:true };
-  // hotfix 147: a função do RH fica em usuarioAtual.funcao (null sem funcionário ligado); o cargo continua sendo o
-  // perfil de acesso (permissão). Login por CPF com função mostra "nome · função"; os demais, como antes
+
+
   usuarioAtual.funcao = String(perfil?.funcionario?.funcao || "").trim() || null;
   const nome = !perfil ? rotuloSemPerfil
     : (perfil.login_cpf && usuarioAtual.funcao) ? (perfil.nome + " · " + usuarioAtual.funcao)
     : (perfil.nome + " · " + perfil.cargo);
   $("usr-nome").textContent = nome;
 
-  /* Cargos de gestão: diretor tem acesso total (has_role() no banco
-     também devolve true para ele em qualquer verificação) */
+
+
   const ehDiretorOuAdmin = perfil && ["diretor","admin"].includes(perfil.cargo);
 
   aplicarMenuPorCargo(perfil);
-  ligarTema();   // fase 138: botão do cabeçalho em dia com o tema carimbado pelo tema.js
+  ligarTema();
 
   $("tela-login").style.display = "none";
   $("tela-app").style.display = "flex";
 
-  /* fase 86: a aba passa a conferir versao.json e se atualiza sozinha depois de cada publicação */
+
   iniciarVerificacaoVersao();
 
-  /* fase 87: prazos da empresa, vigia de inatividade / sessão máxima / revogação e MFA obrigatório por cargo */
+
   await carregarPoliticaSessao();
-  if(!iniciarPoliticaSessao()) return;   // um prazo já tinha estourado ao abrir: saiu para o login
-  /* fase 176: o assistente chama quem tem chamado esperando a sua resposta (js/assistente.js) */
+  if(!iniciarPoliticaSessao()) return;
+
   if(typeof astIniciarCobranca === "function") astIniciarCobranca();
   const mfaObrigatorio = await exigirMFAObrigatorio(perfil);
 
-  /* P0 — alertar diretor/admin sem MFA configurado (quando o cargo não está na lista do obrigatório) */
+
   if(ehDiretorOuAdmin && !mfaObrigatorio) verificarMFAAdmin();
 
-  /* fase 93b: senha definida pelo RH é provisória — troca obrigatória antes de qualquer outra coisa */
+
   if(perfil?.senha_provisoria && !mfaObrigatorio) await exigirTrocaSenhaProvisoria();
-  /* Chegou por link de convite ou recuperação: definir a senha agora */
+
   else if(_chegouPorConvite) abrirDefinirSenha();
 
   await carregarTudo();
-  await appRestaurarTela();   // recarregou por versão nova: volta para a mesma tela, aba e obra
+  await appRestaurarTela();
 }
 
-/* ---------- Definição de senha (convite / recuperação) ---------- */
+
 function abrirDefinirSenha(){
   const m = $("senha-modal");
   if(m) m.style.display = "flex";
 }
 
-/* Fase 93b: a senha que o RH digitou na aba Acesso é provisória (profiles.senha_provisoria). O mesmo modal
-   do convite abre em modo obrigatório: sem fechar, menu travado (body.senha-provisoria, conferido em
-   ativarSecao) e o resto do app só carrega depois que a senha nova é gravada e a RPC
-   rh_login_marcar_senha_trocada() zera a flag. Senha igual ao CPF é recusada. */
+
+
+
+
 let _senhaProvisoriaResolver = null;
 function exigirTrocaSenhaProvisoria(){
   return new Promise((resolve) => {
@@ -1358,7 +1358,7 @@ $("btn-senha-salvar")?.addEventListener("click", async ()=>{
   }
   $("senha-nova").value = ""; $("senha-confirma").value = "";
   $("senha-modal").style.display = "none";
-  if(_senhaProvisoriaResolver){   // fase 93b: zera a flag e libera o app
+  if(_senhaProvisoriaResolver){
     const { error: rpcErr } = await sb.rpc("rh_login_marcar_senha_trocada");
     if(rpcErr) console.warn("rh_login_marcar_senha_trocada:", rpcErr.message);
     if(usuarioAtual) usuarioAtual.senha_provisoria = false;
@@ -1368,8 +1368,8 @@ $("btn-senha-salvar")?.addEventListener("click", async ()=>{
   aviso("app-aviso","🔐 Senha definida. Use-a nos próximos acessos.","ok");
 });
 
-/* ====================== NAVEGAÇÃO ====================== */
-// Controle do menu lateral (sidebar) no mobile
+
+
 const toggleBtn = $("btn-menu-toggle");
 const closeBtn = $("btn-menu-close");
 const overlay = $("sidebar-overlay");
@@ -1391,15 +1391,15 @@ if (overlay) {
   overlay.addEventListener("click", closeSidebar);
 }
 
-// O código que veio do Odoo (ODOO-009464) não aparece colado no nome do produto: continua na busca, na coluna Código, na ficha e na exportação.
-// semCodOdoo limpa a descrição já gravada; código próprio (sem ODOO-) continua aparecendo.
+
+
 function semCodOdoo(txt){ return String(txt ?? "").replace(/^ODOO-\d+\s*[—·-]\s*/, ""); }
 function prodTxt(p){
   if(!p) return "";
   const cod = String(p.codigo || "");
   return cod && !cod.startsWith("ODOO-") ? `${cod} — ${p.nome || ""}` : (p.nome || "");
 }
-// Lista de busca: nome repetido na mesma lista mostra o código, para não escolher o produto errado
+
 function prodBuscaHtml(p, lista){
   const cod = String(p.codigo || "");
   const repetido = !!lista && lista.filter(x => x.nome === p.nome).length > 1;
@@ -1407,7 +1407,7 @@ function prodBuscaHtml(p, lista){
   return `<span title="${esc(cod)}">${mostra ? `<strong>${esc(cod)}</strong> — ` : ""}${esc(p.nome)}</span>`;
 }
 
-// fase 148: o texto de abertura de cada tela (.ajuda-tela) fica fechado e abre pelo "?" ao lado do título
+
 function ajudaTelaAtualizar(secEl){
   const btn = $("btn-ajuda-tela");
   if(!btn) return;
@@ -1422,7 +1422,7 @@ $("btn-ajuda-tela")?.addEventListener("click", () => {
   $("btn-ajuda-tela").setAttribute("aria-expanded", aberta ? "true" : "false");
 });
 
-// fase 148: menu só com ícones em tela grande; a escolha fica neste navegador
+
 const MENU_RECOLHIDO_CHAVE = "cgl_menu_recolhido";
 function menuRecolher(sim){
   const btn = $("btn-menu-recolher");
@@ -1432,7 +1432,7 @@ function menuRecolher(sim){
   btn.setAttribute("aria-pressed", sim ? "true" : "false");
   btn.setAttribute("aria-label", txt);
   btn.title = txt;
-  // trilho de ícones: o nome de cada item fica no title (fase 193b); o mouseover abaixo refaz se o rótulo mudar por cargo
+
   document.querySelectorAll(".sidebar-nav button").forEach(b => { b.title = sim ? (b.querySelector("span")?.textContent || "").trim() : ""; });
 }
 try { menuRecolher(localStorage.getItem(MENU_RECOLHIDO_CHAVE) === "1"); } catch(_){}
@@ -1441,17 +1441,17 @@ $("btn-menu-recolher")?.addEventListener("click", () => {
   menuRecolher(sim);
   try { localStorage.setItem(MENU_RECOLHIDO_CHAVE, sim ? "1" : "0"); } catch(_){}
 });
-// recolhido, o nome do módulo aparece ao parar o mouse (o rótulo pode mudar por cargo, então é lido na hora)
+
 document.querySelector(".sidebar-nav")?.addEventListener("mouseover", ev => {
   const b = ev.target.closest("button");
   if(b) b.title = $("tela-app")?.classList.contains("menu-recolhido") ? (b.querySelector("span")?.textContent || "").trim() : "";
 });
 
-// Navegação entre seções. ativarSecao(secao, botao) é o que o clique no menu faz; a fase 89 usa a
-// mesma função para seções SEM item no menu (Movimentações de Ativos virou ficha do documento da viagem).
+
+
 function ativarSecao(secao, b){
-  if(document.body.classList.contains("mfa-obrigatorio")) return;   // fase 87: menu travado até concluir o MFA
-  if(document.body.classList.contains("senha-provisoria")) return;  // fase 93b: idem até trocar a senha provisória
+  if(document.body.classList.contains("mfa-obrigatorio")) return;
+  if(document.body.classList.contains("senha-provisoria")) return;
   if(b){
     document.querySelectorAll(".sidebar-nav button").forEach(x=>{ x.classList.remove("ativo"); x.removeAttribute("aria-current"); });
     b.classList.add("ativo");
@@ -1462,22 +1462,22 @@ function ativarSecao(secao, b){
   const secId = "sec-" + secao;
   const secEl = $(secId);
   if(secEl) secEl.classList.add("ativa");
-  // aviso da tela anterior não deve seguir para a próxima
+
   const av = $("app-aviso");
   if(av){ av.textContent = ""; av.className = "aviso"; }
-  // fase 86: o que estava na seção foi salvo ou abandonado; e trocar de seção também confere se saiu
-  // versão nova (no máximo uma consulta a cada 30 s)
+
+
   appLimparSujo();
   verificarVersaoApp(30000);
-  // Carga sob demanda: a posição de estoque (aba legada) só ao abrir a seção
+
   if(secao === "estoque" && typeof carregarPosicaoEstoque === "function") carregarPosicaoEstoque();
 
-  // Atualiza o título no cabeçalho: usa o h2 da seção (nome completo, ex.: "Diário de
-  // Obra (RDO)") e cai no rótulo do menu quando a seção não tem h2
+
+
   const spanText = b ? b.querySelector("span") : null;
   const h2 = secEl ? secEl.querySelector(":scope > h2:first-child") : null;
   const titulo = (h2 && h2.textContent.trim()) || (spanText && spanText.textContent.trim());
-  // fase 193b: a barra superior mostra a trilha "grupo do menu › tela"; o último item é o h1 #app-secao-titulo
+
   if(titulo && $("app-trilha") && typeof uiBreadcrumb === "function") {
     const grupo = b ? (b.closest(".nav-grupo")?.getAttribute("aria-label") || "") : "";
     $("app-trilha").innerHTML = uiBreadcrumb([{ texto: grupo }, { texto: titulo }], { tituloId: "app-secao-titulo" });
@@ -1488,83 +1488,83 @@ function ativarSecao(secao, b){
 
   closeSidebar();
 }
-// fase 147: o link "Pular para o conteúdo" leva o foco sem mexer no endereço
+
 $("btn-pular-conteudo")?.addEventListener("click", ev=>{ ev.preventDefault(); $("app-conteudo")?.focus(); });
 document.querySelectorAll(".sidebar-nav button").forEach(b=>{
   b.addEventListener("click", ()=> ativarSecao(b.dataset.secao, b));
 });
-/* Seções que existem sem item no menu (fase 89): abrem só por atalho (link, ficha da viagem) e o acesso é
-   decidido pela função de gate. Movimentações de Ativos = ficha do documento (nota/MDF-e) da viagem. */
+
+
 const SECOES_SEM_MENU = { movimentacoes: () => podeVerMovimentacoes() };
 
-/* Navega para uma seção via o botão da nav (reusa o handler acima, que
-   ativa a seção e o título). Usado pelos atalhos clicáveis do dashboard. */
-/* Fase 49: módulos comerciais (catálogo de serviços e orçamentos) — só diretoria e comercial */
+
+
+
 const SECOES_COMERCIAIS = ["servicos", "orcamentos"];
-/* Fase 53: Movimentações de Ativos (remessa/retorno de máquinas e acessórios) — diretoria, admin, logística, gestor de acessórios e almoxarife.
-   Os demais cargos seguem gerando remessa/retorno pela mobilização, sem precisar da tela.
-   Fase 105b: o financeiro entra (decisão 6: emite e cancela a NF-e de remessa, que vive na ficha do documento). */
+
+
+
 function podeVerMovimentacoes(){
   return !!usuarioAtual && ["diretor", "admin", "logistica", "gestor_acessorios", "gestor_manutencao", "almoxarife", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
 function podeVerComercial(){
   return !!usuarioAtual && ["diretor", "comercial", "auditor"].includes(usuarioAtual.cargo);
 }
-/* Hotfix 113 (21/10/2026): módulo liberado além do cargo, por usuário e com validade (profiles.modulos_extras /
-   modulos_extras_ate; só diretoria/admin gravam, tela Configurações › Usuários e acessos). Espelha tem_modulo_extra() do banco. Hoje só
-   "orcamentos" (o Frederico Vaz apoia o Thales nas férias dele). Serviços continua só comercial/diretoria. */
+
+
+
 function temModuloExtra(modulo){
   if(!usuarioAtual || !Array.isArray(usuarioAtual.modulos_extras) || !usuarioAtual.modulos_extras.includes(modulo)) return false;
   const ate = usuarioAtual.modulos_extras_ate;
   return !ate || String(ate).slice(0, 10) >= (typeof hojeISO === "function" ? hojeISO() : new Date().toISOString().slice(0, 10));
 }
-// Lote S57b (#211): o extra "orcamentos_leitura" abre a tela só para ler (Pedro e Sergio); a escrita continua no
-// cargo comercial/diretor ou no extra "orcamentos" (orcPodeEditar em js/orcamentos.js; a RLS barra no banco).
+
+
 function podeVerOrcamentos(){ return podeVerComercial() || temModuloExtra("orcamentos") || temModuloExtra("orcamentos_leitura"); }
-/* Lote S55 (#180): seção do menu que um módulo extra libera mesmo quando o cargo a esconde (SECOES_OCULTAS_POR_CARGO).
-   Orçamentos já fazia isso por podeVerOrcamentos (hotfix 113); Compras entra pelo módulo "compras" (Maria Eduarda:
-   requisição e recebimento de NF). Entradas novas aqui, sem reestruturar (a fase 109a também acrescenta). */
+
+
+
 const SECOES_POR_MODULO_EXTRA = { orcamentos: "orcamentos", orcamentos_leitura: "orcamentos", compras: "compras" };
 function secaoLiberadaPorExtra(secao){
   return Object.entries(SECOES_POR_MODULO_EXTRA).some(([modulo, sec]) => sec === secao && temModuloExtra(modulo));
 }
-/* Fase 109a (D1/D2, 27/10/2026): SESMT. Opera = cargo sesmt, admin/diretor ou módulo extra "sesmt" (a Iasmym é engenheiro
-   e faz SESMT); nunca o auditor. Lê = quem opera + rh + auditor. Espelham sst_pode_operar()/sst_pode_ler() do banco; o
-   dado de saúde (ASO, exame) ainda exige sessão com MFA (sst_pode_ler_saude), conferida no banco. */
+
+
+
 function sstPodeOperar(){
   if(!usuarioAtual || ehSomenteLeitura()) return false;
   return ["diretor", "admin", "sesmt"].includes(usuarioAtual.cargo) || temModuloExtra("sesmt");
 }
 function podeVerSesmt(){ return sstPodeOperar() || (!!usuarioAtual && ["rh", "auditor"].includes(usuarioAtual.cargo)); }
-/* Fase 55: Contratos & Contas a pagar (contratos de fornecedor, títulos a pagar, lançamentos avulsos, exportação
-   para o Compor 90). Quem não está aqui vê os valores só como custo, na aba Custos da obra e do equipamento. */
-/* 22/09/2026 (diretoria): somatórios patrimoniais (valor de reposição dos acessórios, FIPE da frota) só para o cargo diretor.
-   Fase 79: o auditor (usuário de revisão, só leitura) também vê, para conferir a Sala de Comando inteira. */
+
+
+
+
 function ehDiretoria(){ return !!usuarioAtual && ["diretor", "auditor"].includes(usuarioAtual.cargo); }
-/* Fase 79 (Bernardo, 15/10/2026): cargo auditor = usuário de revisão. Vê o que a diretoria vê (menos dados sensíveis
-   de funcionário) e não grava nada: a RLS barra; a classe body.so-leitura só esconde os botões de gravação. */
+
+
 function ehSomenteLeitura(){ return !!usuarioAtual && usuarioAtual.cargo === "auditor"; }
 function podeVerContasPagar(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "auditor"].includes(usuarioAtual.cargo);
 }
-/* Fase 180a (D1): módulo Contratos com dois lados. Receita (contrato de cliente e venda de bem) espelha pode_ler_comercial()
-   do banco: comercial, financeiro, auditor, diretor e o módulo extra "orcamentos" (admin fora desde 11/11/2026). Despesa
-   (fornecedor, assinatura) espelha pode_ler_contas_pagar() = podeVerContasPagar(). O item do menu aparece para quem lê um
-   dos lados; o jurídico lê os dois (fase 180d: contratos_select e contrato_pode_ler no banco). */
+
+
+
+
 function podeVerContratosReceita(){
   return !!usuarioAtual && (["diretor", "comercial", "financeiro", "auditor", "juridico"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos"));
 }
 function podeVerContratosDespesa(){ return podeVerContasPagar() || ehJuridico(); }
-/* Fase 180d (D2): cargo jurídico (Badaró). Lê e edita contratos dos dois lados e vê o valor de cada contrato, mas nunca
-   valor somado (rodapé de soma, KPI de valor, carteira); no banco, as views de soma do módulo saem vazias para ele
-   (eh_juridico). podeVerSomaContratos() é a trava das somas do módulo Contratos: a soma continua só para quem já a via
-   (cada tela mantém a regra dela, como podeVerContasPagar) e nunca para o jurídico. */
+
+
+
+
 function ehJuridico(){ return !!usuarioAtual && usuarioAtual.cargo === "juridico"; }
 function podeVerSomaContratos(){ return !!usuarioAtual && !ehJuridico(); }
 function podeVerContratos(){ return podeVerContratosReceita() || podeVerContratosDespesa(); }
-/* Fase 156a: Apontamentos da oficina. Quem grava hora em cada tipo de documento, espelhando as policies de reparo_horas,
-   manutencao_horas (manutencao_pode_operar) e fabricacao_horas (fabricacao_pode_operar). O item do menu aparece para quem
-   grava em pelo menos um tipo e para o auditor (só leitura); nasce escondido no index.html. */
+
+
+
 const APT_CARGOS_GRAVAM = {
   RP: ["diretor", "admin", "mecanico", "engenheiro", "gestor_acessorios", "gestor_manutencao", "logistica"],
   OS: ["diretor", "admin", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"],
@@ -1572,29 +1572,29 @@ const APT_CARGOS_GRAVAM = {
 };
 function podeVerApontamentos(){
   if(!usuarioAtual) return false;
-  // fase 188b: o RH preenche o expediente da oficina (botão "Expediente da oficina" do menu Apontamento)
+
   return ["auditor", "rh"].includes(usuarioAtual.cargo) || Object.values(APT_CARGOS_GRAVAM).some(l => l.includes(usuarioAtual.cargo));
 }
-/* Fase 76: Centros de custo internos (setores e obras internas): quem lê custos de compras e acessórios */
+
 function podeVerCentrosCusto(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "comprador", "gestor_acessorios", "gestor_manutencao", "gestor_frota", "auditor"].includes(usuarioAtual.cargo);
 }
-/* Fase 90 (áudios do Julio, 18/10/2026): o valor contratado da obra vive em obras_financeiro, que no banco só
-   pode_ler_financeiro() lê (admin, engenheiro, assistente de engenharia, comercial, financeiro, auditor; diretor por
-   has_role). O front espelha a lista para não desenhar coluna, chip e campo vazios para quem não lê. */
+
+
+
 function podeVerValorObra(){
   return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
-/* Lote S67-g (#347, Bernardo 23/11/2026): a mão de obra de reparo, OS e OF sai do custo/hora de cada funcionário. O R$ da MO
-   e o total que a contém só para quem lê o financeiro e os gestores do módulo (numa ficha com um funcionário só, MO ÷ horas
-   chegaria perto do salário); os demais veem horas e material. */
+
+
+
 function podeVerCustoMO(){
   return podeVerValorObra() || (!!usuarioAtual && ["gestor_manutencao", "gestor_acessorios"].includes(usuarioAtual.cargo));
 }
 function brlMO(v){ return podeVerCustoMO() ? brl(v || 0) : "—"; }
-/* lote S67-h: o R$ da mão de obra (custo_horas) e o total (custo_real) de reparo, OS e OF vêm da vw_custo_mo, que os
-   devolve nulos para quem não passa em pode_ver_custo_mo() (espelho de podeVerCustoMO); a leitura direta das duas colunas
-   sai da API. tipo = "reparo" | "os" | "of". Completa as linhas no lugar: até 300 linhas lê pelos ids, acima lê o tipo inteiro */
+
+
+
 async function anexarCustoMO(tipo, linhas){
   const lista = [].concat(linhas || []).filter(Boolean);
   if(!lista.length) return lista;
@@ -1610,7 +1610,7 @@ async function anexarCustoMO(tipo, linhas){
   lista.forEach(x => { const c = mapa.get(x.id); x.custo_horas = c ? c.custo_horas : null; x.custo_real = c ? c.custo_real : null; });
   return lista;
 }
-/* horas que entram sem custo (sem funcionário ou sem salário cadastrado): escreve no elemento alvo, se houver */
+
 async function moHorasSemValor(tipo, id, alvo){
   if(!id) return;
   const { data, error } = await sb.rpc("custo_mo_horas_sem_valor", { p_tipo: tipo, p_id: id });
@@ -1618,129 +1618,129 @@ async function moHorasSemValor(tipo, id, alvo){
   if(!el || error || !(Number(data) > 0)) return;
   el.textContent = `· ${num(data)} h sem custo (sem funcionário ou sem salário cadastrado)`;
 }
-/* Valor de aquisição restrito (Bernardo, 11/11/2026): o valor e a data de aquisição do bem e o resultado da venda (venda menos
-   aquisição) são só da diretoria, do financeiro e do auditor; ADMIN NÃO LÊ. Moram em equipamentos_financeiro, que no banco só
-   pode_ler_valor_bem() lê e só pode_gravar_valor_bem() grava (diretor e financeiro). O front espelha as duas listas para não
-   desenhar campo, coluna e chip a quem não lê. semValorBem() tira os dois campos de um registro de equipamentos lido com "*":
-   enquanto a coluna antiga existir no banco, ela não chega à tela nem volta numa gravação. FIPE continua aberta. */
+
+
+
+
+
 function podeVerValorBem(){ return !!usuarioAtual && ["diretor", "financeiro", "auditor"].includes(usuarioAtual.cargo); }
 function podeGravarValorBem(){ return !!usuarioAtual && ["diretor", "financeiro"].includes(usuarioAtual.cargo); }
 function semValorBem(reg){ if(reg && typeof reg === "object"){ delete reg.valor_aquisicao; delete reg.data_aquisicao; } return reg; }
-/* Fase 98: permutas (obra paga em imóvel: teto, crédito, saldo, documentos). Espelha pode_ler_permutas() do banco:
-   sem engenharia nem comercial, ao contrário de podeVerValorObra(). */
-/* Fase 190a (D1): Encontro de Contas (caixa por funcionário). Espelha o lado por cargo de ec_pode_ler() do banco: quem lê
-   financeiro, menos o comercial. O gestor da obra lê no banco o caixa de quem está alocado nas obras dele; hoje todos os
-   gestores são engenheiros, que já estão na lista. */
+
+
+
+
+
 function podeVerEncontroContas(){
   return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
 function podeVerPermutas(){
   return !!usuarioAtual && ["diretor", "admin", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
-/* Fase 93c: "Horas e alocação" (horas do RDO a liberar, fechamento do mês, alocação por obra). Quem libera é o
-   engenheiro responsável da obra ou o gestor do serviço (rh_horas_liberar() no banco); encarregado só vê; RH fecha o
-   mês e lança na folha; logística confere a alocação. Espelha rh_pode_ler_horas() do banco, menos gestor de frota.
-   "Minhas horas de viagem" (sec-rhv) é de todos. */
+
+
+
+
 function podeVerHorasRH(){
   return !!usuarioAtual && ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado", "rh", "logistica", "auditor"].includes(usuarioAtual.cargo);
 }
-/* Fase 97 (Bernardo, 20/10/2026, decisão 2): Patrimônio (valor de mercado dos bens) só para diretor e auditor; ADMIN
-   NÃO VÊ. Espelha pode_ler_patrimonio() do banco, que ainda exige a sessão com MFA (aal2). */
+
+
 function podeVerPatrimonio(perfil){
   const p = perfil || usuarioAtual;
   return !!p && ["diretor", "auditor"].includes(p.cargo);
 }
-/* Fase 105 (Bernardo, 22/10/2026, decisão 6): emitem e cancelam NF-e de remessa e NFS-e, e editam os dados fiscais da
-   empresa, o gestor de acessórios, o financeiro e a logística; ADMIN FORA. Espelha fiscal_pode_emitir() do banco.
-   Fase 105c: a NFS-e da medição ainda exige ler a medição (pode_ler_financeiro), conferido pela function focus-nfe. */
+
+
+
 function podeEmitirFiscal(){
   return !!usuarioAtual && ["diretor", "gestor_acessorios", "gestor_manutencao", "financeiro", "logistica"].includes(usuarioAtual.cargo);
 }
-/* Módulos que um cargo não usa e por isso saem do menu (o atalho por irParaSecao também é barrado).
-   22/09/2026 (Bernardo com a Ju): RH fica com Início, Funcionários, Mobilizações, Frota, RDO e Chamados. */
+
+
 const SECOES_OCULTAS_POR_CARGO = {
   rh: ["medicoes", "acessorios", "reparos", "fabricacao", "equipamentos", "obras", "compras", "estoque", "separacoes", "produtos", "fornecedores", "clientes"],
-  // fase 77 (Bernardo, 07/10/2026): gestor de frota cuida de frota, equipamentos, manutenção e compras da frota
+
   gestor_frota: ["acessorios", "reparos", "fabricacao", "medicoes"],
-  // fase 79: auditor (usuário de revisão) vê tudo, menos a gestão de logins
+
   auditor: ["usuarios"],
-  // fase 90 (Bernardo, 19/10/2026): auxiliar de almoxarifado = equipe do Julio. Fica só com Início (fila de separação),
-  // Estoque, Separações, Produtos, Reparos (aba Peças) e Chamados; o resto sai do menu e irParaSecao barra.
-  // lote S67-d (#332): Compras volta ao menu para receber material (sem criar pedido); Produtos com custo e arquivar.
+
+
+
   auxiliar_almoxarifado: ["clientes", "fornecedores", "funcionarios", "servicos", "orcamentos", "contratos", "contaspagar", "centros",
     "carteira", "obras", "mobilizacoes", "equipamentos", "frota", "acessorios", "fabricacao", "medicoes", "rdo", "usuarios", "rhh"],
-  // fase 92 (Bernardo, 19/10/2026, decisão 1): gestor da manutenção (Bruno) cuida de OS, planos, checklists, equipamentos, frota
-  // e das compras do setor; medições e contas a pagar (podeVerContasPagar) ficam fora.
-  // fase 197 (Bernardo, 19/11/2026): Obras volta ao menu dele (mesma liberação de acessórios do Walison); Clientes sai (não precisa).
+
+
+
   gestor_manutencao: ["medicoes", "clientes"],
-  // fase 180d (D2): jurídico fica com Contratos; sem folha, RH nem financeiro geral (a RLS já barra o dado)
+
   juridico: ["medicoes", "contaspagar", "carteira", "centros", "funcionarios", "rhh"]
 };
-/* Fase 97: Patrimônio sai do menu de todo cargo que não é diretor nem auditor (admin incluído). O item também nasce
-   escondido no index.html e só aplicarMenuPorCargo o mostra (podeVerPatrimonio), então cargo novo fica sem ele. */
+
+
 ["admin", "engenheiro", "assistente_engenharia", "comercial", "financeiro", "comprador", "almoxarife", "auxiliar_almoxarifado",
  "gestor_acessorios", "gestor_frota", "gestor_manutencao", "mecanico", "encarregado", "operador", "rh", "sesmt", "logistica",
  "visualizador"].forEach(c => { (SECOES_OCULTAS_POR_CARGO[c] = SECOES_OCULTAS_POR_CARGO[c] || []).push("patrimonio"); });
-/* Mostra/esconde os itens do menu conforme o cargo. Chamado no login; isolado para poder ser testado. */
+
 function aplicarMenuPorCargo(perfil){
   const ehDiretorOuAdmin = !!perfil && ["diretor","admin"].includes(perfil.cargo);
-  /* item "Configurações" (seção usuarios) só aparece para diretor/admin */
+
   const navUsr = $("nav-usuarios");
   if(navUsr) navUsr.style.display = ehDiretorOuAdmin ? "" : "none";
 
-  /* "Carteira" (controle de contratos & pendências): só diretoria.
-     As pendências que interessam à engenharia aparecem dentro da ficha
-     da Obra (aba Contrato) e como badge na lista de obras. */
-  // Carteira: só cargo diretor (admin ficou de fora em 02/09/2026 a pedido da diretoria;
-  // as pendências por contrato continuam visíveis na aba Contrato da Obra para todos)
+
+
+
+
+
   const navCart = $("nav-carteira");
   if(navCart) navCart.style.display = (perfil && ["diretor", "auditor"].includes(perfil.cargo)) ? "" : "none";
 
-  // Fase 49 (Bernardo, 21/09/2026): Catálogo de Serviços e Orçamentos só para diretoria e comercial.
-  // Os demais cargos não veem os itens no menu; irParaSecao() também barra atalhos de outras telas.
+
+
   SECOES_COMERCIAIS.forEach(s => {
     const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
-    if(b) b.style.display = (s === "orcamentos" ? podeVerOrcamentos() : podeVerComercial()) ? "" : "none";   // hotfix 113: Orçamentos também por módulo extra
+    if(b) b.style.display = (s === "orcamentos" ? podeVerOrcamentos() : podeVerComercial()) ? "" : "none";
   });
-  // Fase 53 → 89: Movimentações de Ativos saiu do menu (19/10/2026); é a ficha do documento da viagem, aberta de
-  // dentro de Logística, da obra, do equipamento e do acessório. podeVerMovimentacoes() gateia só a ficha (irParaSecao).
-  // Fase 55 (Bernardo, 21/09/2026): Contratos & Contas a pagar só para diretoria, admin, financeiro e comprador
+
+
+
   const navCon = document.querySelector('.sidebar-nav button[data-secao="contratos"]');
-  // Fase 180a (D6): Contratos (quem lê Receita ou Despesa) e Contas a pagar (podeVerContasPagar) em itens separados
+
   if(navCon) navCon.style.display = podeVerContratos() ? "" : "none";
   const navCap = document.querySelector('.sidebar-nav button[data-secao="contaspagar"]');
   if(navCap) navCap.style.display = podeVerContasPagar() ? "" : "none";
   const navCcu = document.querySelector('.sidebar-nav button[data-secao="centros"]');
   if(navCcu) navCcu.style.display = podeVerCentrosCusto() ? "" : "none";
-  // Fase 190a: Encontro de Contas só para quem lê financeiro, menos o comercial; nasce escondido no index.html
+
   const navEcc = $("nav-encontro-contas");
   if(navEcc) navEcc.style.display = podeVerEncontroContas() ? "" : "none";
-  // Fase 156a: Apontamentos da oficina só para quem grava hora em RP, OS ou OF, e o auditor (só leitura)
+
   const navApt = $("nav-apontamentos");
   if(navApt) navApt.style.display = podeVerApontamentos() ? "" : "none";
-  // Fase 93c: "Horas e alocação" só para quem libera, confere ou fecha horas (lista em podeVerHorasRH)
+
   const navRhh = $("nav-rhh");
   if(navRhh) navRhh.style.display = podeVerHorasRH() ? "" : "none";
-  // Fase 109a: SESMT só para quem lê (cargo sesmt ou módulo extra, rh, admin/diretor, auditor); nasce escondido no index.html
+
   const navSst = $("nav-sesmt");
   if(navSst) navSst.style.display = podeVerSesmt() ? "" : "none";
-  // Fase 97: Patrimônio só diretor e auditor (admin não); a lista de ocultas abaixo reforça para os demais cargos
+
   const navPat = $("nav-patrimonio");
   if(navPat) navPat.style.display = podeVerPatrimonio(perfil) ? "" : "none";
-  // Fase 95: criar mobilização (botão do quadro e "Criar mobilização" da aba Contrato da obra) só para quem grava em
-  // mobilizacoes (MOB_CARGOS_EDITAM em js/mobilizacoes.js, que já está carregado quando o login chama esta função)
+
+
   const podeMob = typeof MOB_CARGOS_EDITAM !== "undefined" && !!perfil && MOB_CARGOS_EDITAM.includes(perfil.cargo);
   ["btn-mob-nova", "btn-obr-criar-mob"].forEach(id => { const b = $(id); if(b) b.style.display = podeMob ? "" : "none"; });
 
-  // Só esconde: reexibir aqui mostraria "Configurações" (oculto do auditor) a todos os cargos. Sair recarrega a página.
-  // Lote S55 (#180): seção liberada por módulo extra válido (SECOES_POR_MODULO_EXTRA) não é escondida pelo cargo.
+
+
   (SECOES_OCULTAS_POR_CARGO[perfil?.cargo] || []).forEach(s => {
     if(secaoLiberadaPorExtra(s)) return;
     const b = document.querySelector(`.sidebar-nav button[data-secao="${s}"]`);
     if(b) b.style.display = "none";
   });
 
-  // Fase 79: usuário de revisão — faixa no topo e botões de gravação escondidos (body.so-leitura no CSS)
+
   const soLeitura = !!perfil && perfil.cargo === "auditor";
   document.body.classList.toggle("so-leitura", soLeitura);
   let faixa = $("faixa-so-leitura");
@@ -1755,10 +1755,10 @@ function aplicarMenuPorCargo(perfil){
 }
 function irParaSecao(secao){
   const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"]`);
-  // item escondido do menu (Configurações, Carteira, Serviços, Orçamentos…) = módulo fora do perfil: não navega por atalho
+
   if(b && b.style.display === "none"){ aviso("app-aviso", "Seu perfil não tem acesso a este módulo.", "erro"); return false; }
   if(b){ b.click(); return true; }
-  // fase 89: seção sem item no menu (ficha do documento de movimentação) — o gate decide, o item ativo do menu fica
+
   if(SECOES_SEM_MENU[secao] && $("sec-" + secao)){
     if(!SECOES_SEM_MENU[secao]()){ aviso("app-aviso", "Seu perfil não tem acesso a este módulo.", "erro"); return false; }
     ativarSecao(secao, null);
@@ -1767,12 +1767,12 @@ function irParaSecao(secao){
   return false;
 }
 
-/* Chamado #4 (Thales, 15/09/2026): a obra é clicável em qualquer tela.
-   linkObra(obraId, texto) devolve um <a class="link-obra"> que abre a ficha da
-   obra; sem obraId devolve só o texto. O clique é tratado aqui, em fase de
-   captura, para não disparar o clique da linha/card que contém o link
-   (ex.: abrir a medição em vez da obra). Fecha drawers/modais abertos antes
-   de navegar (chamado, mobilização, import de RDO). */
+
+
+
+
+
+
 function linkObra(obraId, texto){
   const t = texto != null ? texto : (mapaObras[obraId] || "—");
   if(!obraId) return esc(t);
@@ -1792,9 +1792,9 @@ document.addEventListener("click", (e) => {
   else { irParaSecao("obras"); if(typeof abrirObra === "function") abrirObra(id); }
 }, true);
 
-/* Fase 80 (pedido do Bernardo, 15/10/2026): peça, TAG, produto e movimentação clicáveis em qualquer
-   tela, no mesmo padrão de linkObra. linkX(id, texto) devolve um <a class="link-cad"> que abre o
-   cadastro; sem id devolve só o texto. Clique tratado em captura, como o da obra. */
+
+
+
 function linkCadastro(tipo, id, texto, titulo){
   const t = texto != null ? texto : "—";
   if(!id) return esc(t);
@@ -1804,13 +1804,13 @@ function linkAcessorio(id, texto){ return linkCadastro("acessorio", id, texto, "
 function linkEquipamento(id, texto){ return linkCadastro("equipamento", id, texto, "Abrir a ficha do equipamento"); }
 function linkProduto(id, texto){ return linkCadastro("produto", id, texto, "Abrir o cadastro do produto"); }
 function linkMovimentacao(id, texto){ return linkCadastro("movimentacao", id, texto, "Abrir a nota (documento da viagem)"); }
-function linkReparo(id, texto){ return linkCadastro("reparo", id, texto, "Abrir o reparo"); }   // fase 82
-function linkFabricacao(id, texto){ return linkCadastro("fabricacao", id, texto, "Abrir a ordem de fabricação"); }   // fase 84
-function linkViagem(id, texto){ return linkCadastro("viagem", id, texto, "Abrir a viagem (Logística)"); }   // fase 89
-function linkManutencao(id, texto){ return linkCadastro("manutencao", id, texto, "Abrir a OS de manutenção"); }   // fase 92
-function linkSeparacao(id, texto){ return linkCadastro("separacao", id, texto, "Abrir a separação"); }   // lote S58 (#233)
-/* lote S59: documento da saída de estoque. Com vínculo em vw_estoque_saida_vinculo vira link com o número; sem vínculo (ou sem leitura da
-   origem, a RLS não devolve a linha) fica o texto gravado na saída. */
+function linkReparo(id, texto){ return linkCadastro("reparo", id, texto, "Abrir o reparo"); }
+function linkFabricacao(id, texto){ return linkCadastro("fabricacao", id, texto, "Abrir a ordem de fabricação"); }
+function linkViagem(id, texto){ return linkCadastro("viagem", id, texto, "Abrir a viagem (Logística)"); }
+function linkManutencao(id, texto){ return linkCadastro("manutencao", id, texto, "Abrir a OS de manutenção"); }
+function linkSeparacao(id, texto){ return linkCadastro("separacao", id, texto, "Abrir a separação"); }
+
+
 function linkDocumentoSaida(mov, vinculo){
   const v = vinculo || {};
   return v.tipo === "manutencao" ? linkManutencao(v.ref_id, v.numero)
@@ -1821,7 +1821,7 @@ function linkDocumentoSaida(mov, vinculo){
 }
 async function carregarVinculosSaida(ids){
   const mapa = new Map(), lista = [...new Set(ids.filter(Boolean))];
-  for(let i = 0; i < lista.length; i += 300){   // .in() recusa mais de ~630 UUIDs
+  for(let i = 0; i < lista.length; i += 300){
     const { data, error } = await sb.from("vw_estoque_saida_vinculo").select("movimentacao_id,tipo,ref_id,numero").in("movimentacao_id", lista.slice(i, i + 300));
     if(error){ console.warn("vínculo das saídas:", error.message); return mapa; }
     (data || []).forEach(v => mapa.set(v.movimentacao_id, v));
@@ -1840,7 +1840,7 @@ document.addEventListener("click", async (e) => {
   if(typeof fecharChamado === "function" && $("cham-modal") && $("cham-modal").style.display !== "none") fecharChamado();
   if(!irParaSecao(LINK_CAD_SECAO[tipo])) return;
   if(tipo === "acessorio" && typeof abrirAcessorio === "function"){
-    // a seção carrega o catálogo ao abrir; espera ele chegar (até 20 s)
+
     for(let i = 0; i < 80 && !(typeof _aceCarregado !== "undefined" && _aceCarregado); i++) await new Promise(r => setTimeout(r, 250));
     abrirAcessorio(id);
   }
@@ -1850,16 +1850,16 @@ document.addEventListener("click", async (e) => {
   else if(tipo === "reparo" && typeof abrirReparo === "function") abrirReparo(id);
   else if(tipo === "fabricacao" && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
   else if(tipo === "viagem" && typeof abrirViagem === "function") abrirViagem(id, null);
-  else if(tipo === "manutencao" && typeof abrirManutencao === "function") abrirManutencao(id);   // fase 92
-  else if(tipo === "separacao" && typeof abrirSeparacao === "function") abrirSeparacao(id);   // lote S58 (#233)
+  else if(tipo === "manutencao" && typeof abrirManutencao === "function") abrirManutencao(id);
+  else if(tipo === "separacao" && typeof abrirSeparacao === "function") abrirSeparacao(id);
 }, true);
 
-/* códigos de documento: início (bloco testado por scripts/testar-loteS63a.mjs)
-   Lote S63a (#272): número de documento citado num texto livre (descrição e comentários do chamado) vira link para a
-   ficha. linkificarCodigos(html) recebe texto JÁ escapado por esc() e só embrulha o código num <a class="link-cod">;
-   nunca recebe texto cru. Depois de pôr o HTML na tela, resolverCodigosDoc(caixa) faz uma consulta `in` por tipo com os
-   números encontrados: o que tem documento ganha o id; o que não tem (ou que a RLS não deixa ler) volta a ser texto.
-   Tipo novo (OS, BM, OF...) = uma linha em CODIGOS_DOC: `re` sem grupos, sem âncoras, casando só o código. */
+
+
+
+
+
+
 const CODIGOS_DOC = [
   { tipo: "pc", re: "PC-\\d{4}-\\d{5}", tabela: "pedidos_compra", coluna: "numero", titulo: "Abrir o pedido de compra",
     rotulo: "Pedido", abrir: async (id) => {
@@ -1868,14 +1868,14 @@ const CODIGOS_DOC = [
       if(typeof abrirPedido === "function") await abrirPedido(id);
     } }
 ];
-// código colado em letra, dígito, "_" ou "-" (XPC-..., PC-...-A, PC-2026-014600) não é código
+
 const _CODIGOS_DOC_RE = new RegExp("(?<![\\w-])(?:" + CODIGOS_DOC.map(p => "(" + p.re + ")").join("|") + ")(?![\\w-])", "g");
 function linkificarCodigos(html){
   return String(html ?? "").replace(_CODIGOS_DOC_RE, (m, ...g) => {
     const p = CODIGOS_DOC[g.findIndex((v, i) => i < CODIGOS_DOC.length && v !== undefined)];
     if(!p) return m;
-    // m vem do texto já escapado e só tem o que o padrão casa; o `/* html */` evita escapar duas vezes
-    return `<a href="#" class="link-cod" data-cod="${esc(p.tipo)}" data-cod-num="${/* html */ m}" title="${esc(p.titulo)}">${/* html */ m}</a>`;
+
+    return `<a href="#" class="link-cod" data-cod="${esc(p.tipo)}" data-cod-num="${  m}" title="${esc(p.titulo)}">${  m}</a>`;
   });
 }
 async function resolverCodigosDoc(caixa){
@@ -1886,7 +1886,7 @@ async function resolverCodigosDoc(caixa){
     const p = CODIGOS_DOC.find(x => x.tipo === tipo); if(!p) continue;
     const nums = [...new Set(els.map(el => el.dataset.codNum))];
     const { data, error } = await sb.from(p.tabela).select(`id,${p.coluna}`).in(p.coluna, nums);
-    if(error){ console.warn("códigos de documento:", error.message); continue; }   // fica link; o clique tenta de novo
+    if(error){ console.warn("códigos de documento:", error.message); continue; }
     const ids = new Map((data || []).map(r => [r[p.coluna], r.id]));
     els.forEach(el => {
       const id = ids.get(el.dataset.codNum);
@@ -1910,40 +1910,40 @@ document.addEventListener("click", async (e) => {
   if(typeof fecharChamado === "function" && $("cham-modal") && $("cham-modal").style.display !== "none") fecharChamado();
   await p.abrir(id);
 }, true);
-/* códigos de documento: fim */
 
-/* ====================== ATUALIZAÇÃO AUTOMÁTICA DO APP (fase 86) ======================
-   Pedido do Bernardo em 16/10/2026: depois de cada publicação ninguém pode continuar numa versão
-   antiga. A saída é recarregar a aba, nunca deslogar: o login vive no storage do navegador (fase 87:
-   sessionStorage, ou localStorage com "manter conectado") e sobrevive ao reload, então ninguém digita
-   senha nem MFA de novo. `scripts/publicar-app.sh` grava `versao.json`
-   ao lado do index.html publicado e carimba a <meta name="app-versao"> com o commit; aqui o app
-   compara os dois.
-   - APP_VERSAO = conteúdo da meta. No repo fonte é "dev" e a verificação não roda.
-   - verificarVersaoApp(): lê versao.json sem cache logo após o login, a cada 5 min, ao voltar para a
-     aba e ao trocar de seção. Falha de rede ou arquivo ausente é ignorada em silêncio.
-   - appAtualizacaoPendente(info): a faixa "Nova versão disponível [Atualizar]" fica fixa no topo.
-     Recarga sozinha (contagem de 5 s, botão "Agora") só quando ninguém está usando a tela: aba em
-     segundo plano OU 10 min sem tecla ou clique, e ainda sem modal aberto e sem formulário alterado.
-     Formulário alterado nunca é recarregado sozinho (24/11/2026: o teto de 30 min derrubava RDO em
-     preenchimento); qualquer tecla ou clique durante a contagem cancela.
-   - Antes de recarregar, appGuardarTela() grava em sessionStorage a seção, as abas internas ativas,
-     a obra aberta e a rolagem; appRestaurarTela() reabre tudo no fim do iniciarApp(). Sem isso a
-     recarga voltava sempre ao Início ("o sistema me tirou da aba", 24/11/2026).
-   - appFormSujo(): input/change em input, select ou textarea dentro de <section> ou de modal marca
-     body.dataset.sujo. Limpam a marca: um salvar que passou (comBotaoTravado com botão de gravação,
-     sem exceção e sem aviso de erro na tela), a troca de seção, o Sair e o fechamento de modal/drawer.
-     Busca e filtro (.serv-filtros, .lista-topo, type=search) não contam: não é trabalho perdido.
-   - Na carga: se versao.json já está à frente da meta (o navegador entregou um index.html do cache
-     do Pages, max-age 600), recarrega uma vez com ?v=<versao>; guarda em sessionStorage.
-   - Depois de recarregar por atualização, avisa uma vez "Sistema atualizado em DD/MM HH:MM: …". */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const APP_VERSAO = (document.querySelector('meta[name="app-versao"]') || {}).content || "dev";
-const APP_VERSAO_INTERVALO_MS = 5 * 60 * 1000;   // consulta periódica
-const APP_VERSAO_OCIOSO_MS    = 10 * 60 * 1000;  // sem tecla ou clique há tanto: a tela não está em uso
+const APP_VERSAO_INTERVALO_MS = 5 * 60 * 1000;
+const APP_VERSAO_OCIOSO_MS    = 10 * 60 * 1000;
 const APP_VERSAO_CONTAGEM_S   = 5;
 const APP_TELA_CHAVE          = "cgl_tela_antes_recarga";
-const APP_TELA_VALIDADE_MS    = 10 * 60 * 1000;  // tela guardada mais velha que isso não é reaberta
-let _appVersaoNova = null;          // versao.json da atualização pendente
+const APP_TELA_VALIDADE_MS    = 10 * 60 * 1000;
+let _appVersaoNova = null;
 let _appVersaoUltimaConsulta = 0;
 let _appVersaoTimerContagem = null;
 let _appVersaoTimerVigia = null;
@@ -1952,7 +1952,7 @@ let _appUltimaInteracao = Date.now();
 
 function appVersaoAtiva(){ return APP_VERSAO !== "dev"; }
 
-/* lê o versao.json publicado; null quando não há rede, arquivo ou JSON válido */
+
 async function lerVersaoPublicada(){
   try {
     const r = await fetch("versao.json?ts=" + Date.now(), { cache: "no-store" });
@@ -1962,7 +1962,7 @@ async function lerVersaoPublicada(){
   } catch(_){ return null; }
 }
 
-/* "DD/MM HH:MM" no fuso do navegador a partir do ISO UTC do versao.json */
+
 function dataHoraBR(iso){
   const d = iso ? new Date(iso) : null;
   if(!d || isNaN(d.getTime())) return "";
@@ -1970,9 +1970,9 @@ function dataHoraBR(iso){
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/* lote S65-h (#323): texto do chip "Aberto por" das fichas de reparo, fabricação e manutenção.
-   o = a ordem (codigo_externo, created_at); autor = { nome } do embed em profiles (ou null).
-   Importada: tem código do Odoo ou nasceu nas cargas de 19 e 20/10/2026 (feitas com o login do diretor). */
+
+
+
 const CARGAS_ODOO_ORDENS = ["2026-10-19", "2026-10-20"];
 function autorOrdemTexto(o, autor){
   if(!o || !o.id) return usuarioAtual?.nome ? `${usuarioAtual.nome} (ao salvar)` : "—";
@@ -1982,12 +1982,12 @@ function autorOrdemTexto(o, autor){
   return "Autor não registrado";
 }
 
-/* sessionStorage pode estar bloqueado (navegação privada): nunca deixar isso derrubar o app */
+
 function sessaoLer(chave){ try { return sessionStorage.getItem(chave); } catch(_){ return null; } }
 function sessaoGravar(chave, valor){ try { sessionStorage.setItem(chave, valor); } catch(_){} }
 function sessaoApagar(chave){ try { sessionStorage.removeItem(chave); } catch(_){} }
 
-/* ---- formulário alterado e modal aberto ---- */
+
 const APP_MODAIS = ".modal-fundo, #modal-mfa";
 const APP_SUJO_IGNORAR = ".serv-filtros, .lista-topo, input[type=search]";
 function appModalAberto(){
@@ -1996,17 +1996,17 @@ function appModalAberto(){
 function appFormSujo(){ return document.body.dataset.sujo === "1"; }
 function appMarcarSujo(){ document.body.dataset.sujo = "1"; }
 function appLimparSujo(){ delete document.body.dataset.sujo; }
-/* algum aviso de erro visível (#app-aviso ou o aviso do modal/seção aberta): o salvar não passou */
+
 function appAvisoComErro(){
   return Array.from(document.querySelectorAll(".aviso.erro")).some(a => getComputedStyle(a).display !== "none");
 }
-/* ninguém está usando a tela: aba em segundo plano ou 10 min sem tecla ou clique */
+
 function appTelaOciosa(){
   return document.visibilityState === "hidden" || Date.now() - _appUltimaInteracao >= APP_VERSAO_OCIOSO_MS;
 }
 function appPodeRecarregar(){ return appTelaOciosa() && !appModalAberto() && !appFormSujo(); }
 
-/* ---- tela antes da recarga: seção, abas internas ativas, obra aberta e rolagem ---- */
+
 const APP_ABAS_ATIVAS = "button[data-tab].ativo, button[data-tab].ativa, button[data-sub].ativo, button[data-sub].ativa, button[data-aba].ativa, button[data-aba].ativo";
 function appVisivel(el){ return !!(el && el.offsetParent !== null); }
 function appGuardarTela(){
@@ -2025,7 +2025,7 @@ function appGuardarTela(){
     rolagem: rola ? rola.scrollTop : 0, rolagemJanela: window.scrollY, em: Date.now()
   }));
 }
-/* espera o botão da aba aparecer (fichas e abas montadas depois de uma consulta ao banco) */
+
 async function appEsperarElemento(seletor, ms){
   const fim = Date.now() + ms;
   while(Date.now() < fim){
@@ -2035,7 +2035,7 @@ async function appEsperarElemento(seletor, ms){
   }
   return null;
 }
-/* chamada no fim do iniciarApp(): reabre a tela gravada por appGuardarTela() antes da recarga */
+
 async function appRestaurarTela(){
   let t = null;
   try { t = JSON.parse(sessaoLer(APP_TELA_CHAVE) || "null"); } catch(_){}
@@ -2052,7 +2052,7 @@ async function appRestaurarTela(){
       if(b && !b.classList.contains("ativo") && !b.classList.contains("ativa")) b.click();
     }
   } catch(e){ console.warn("restaurar tela:", e.message); }
-  // a rolagem por último, quando a tela já tem altura; um quadro depois para o layout assentar
+
   requestAnimationFrame(() => {
     const rola = $("app-conteudo");
     if(rola && t.rolagem) rola.scrollTop = t.rolagem;
@@ -2060,38 +2060,38 @@ async function appRestaurarTela(){
   });
 }
 
-/* ---- consulta ---- */
+
 async function verificarVersaoApp(minimoMs){
   if(!_appVersaoIniciado) return;
   if(minimoMs && Date.now() - _appVersaoUltimaConsulta < minimoMs) return;
   _appVersaoUltimaConsulta = Date.now();
-  verificarSessaoRevogada();   // fase 87: na mesma cadência, confere se a sessão foi encerrada pela diretoria
+  verificarSessaoRevogada();
   if(!appVersaoAtiva()) return;
   const info = await lerVersaoPublicada();
   if(!info || info.versao === APP_VERSAO) return;
   appAtualizacaoPendente(info);
 }
 
-/* registra que a aba vai recarregar por causa desta versão: evita recarregar em laço enquanto o
-   Pages ainda entrega o index.html velho e deixa o aviso "Sistema atualizado" para a próxima carga */
+
+
 function appRegistrarRecarga(info){
   sessaoGravar("cgl_versao_tentativa", JSON.stringify({ versao: info.versao, em: Date.now() }));
   sessaoGravar("cgl_versao_avisar", JSON.stringify({ de: APP_VERSAO, info }));
 }
 
 function appAtualizacaoPendente(info){
-  if(_appVersaoNova){ _appVersaoNova = info; return; }   // já tratando: só atualiza o que vai ser mostrado
+  if(_appVersaoNova){ _appVersaoNova = info; return; }
   let tentativa = null;
   try { tentativa = JSON.parse(sessaoLer("cgl_versao_tentativa") || "null"); } catch(_){}
-  // esta aba já recarregou por esta versão há menos de 5 min e o index.html continuou velho (CDN do
-  // Pages propagando): espera a próxima verificação em vez de recarregar de novo
+
+
   if(tentativa && tentativa.versao === info.versao && Date.now() - tentativa.em < APP_VERSAO_INTERVALO_MS) return;
   _appVersaoNova = info;
   appVersaoAvaliar();
   if(!_appVersaoTimerVigia) _appVersaoTimerVigia = setInterval(appVersaoAvaliar, 1000);
 }
 
-/* a cada segundo enquanto houver atualização pendente: conta 5 s (tela ociosa) ou segura a faixa */
+
 function appVersaoAvaliar(){
   if(!_appVersaoNova) return;
   if(appPodeRecarregar()){
@@ -2112,7 +2112,7 @@ function appVersaoContar(){
   }, 1000);
 }
 
-/* faixa no topo do viewport (mesmo lugar do banner de MFA); reaproveita .aviso.atencao */
+
 function appVersaoFaixa(segundos){
   let f = $("app-faixa-versao");
   if(!f){
@@ -2143,13 +2143,13 @@ function appRecarregarAgora(){
   location.reload();
 }
 
-/* depois de recarregar por atualização: "Sistema atualizado em …" uma vez por versão, no #app-aviso
-   (sem o timeout de aviso(): a mensagem fica até a próxima troca de tela) */
+
+
 function avisarVersaoAtualizada(){
   let reg = null;
   try { reg = JSON.parse(sessaoLer("cgl_versao_avisar") || "null"); } catch(_){}
   if(!reg || !reg.info) return;
-  if(APP_VERSAO === reg.de) return;   // ainda na versão velha (cache): o aviso fica para a próxima carga
+  if(APP_VERSAO === reg.de) return;
   sessaoApagar("cgl_versao_avisar");
   if(sessaoLer("cgl_versao_avisada") === APP_VERSAO) return;
   sessaoGravar("cgl_versao_avisada", APP_VERSAO);
@@ -2161,7 +2161,7 @@ function avisarVersaoAtualizada(){
   el.className = "aviso ok";
 }
 
-/* chamado em iniciarApp(): liga a verificação periódica, o rastro de formulário sujo e de interação */
+
 function iniciarVerificacaoVersao(){
   if(_appVersaoIniciado) return;
   _appVersaoIniciado = true;
@@ -2171,12 +2171,12 @@ function iniciarVerificacaoVersao(){
   ["input", "change"].forEach(ev => document.addEventListener(ev, e => {
     const el = e.target;
     if(!el || !el.matches || !el.matches("input, select, textarea")) return;
-    if(!el.closest("section, " + APP_MODAIS)) return;   // login e campos soltos não contam
+    if(!el.closest("section, " + APP_MODAIS)) return;
     if(el.closest(APP_SUJO_IGNORAR)) return;
     appMarcarSujo();
   }, true));
   ["keydown", "pointerdown"].forEach(ev => document.addEventListener(ev, () => { _appUltimaInteracao = Date.now(); }, { capture: true, passive: true }));
-  // modal/drawer fechou (display volta a none): o que estava nele foi salvo ou abandonado
+
   const obs = new MutationObserver(muts => {
     for(const m of muts){
       if(m.target.matches && m.target.matches(APP_MODAIS) && getComputedStyle(m.target).display === "none") appLimparSujo();
@@ -2185,54 +2185,54 @@ function iniciarVerificacaoVersao(){
   document.querySelectorAll(APP_MODAIS).forEach(m => obs.observe(m, { attributes: true, attributeFilter: ["style", "class"] }));
 
   verificarVersaoApp();
-  // lote S57b (#218): o mesmo timer de 5 min e a volta à aba atualizam o badge de menções do item Início (js/dashboard.js)
+
   setInterval(() => { verificarVersaoApp(); if(typeof dashAtualizarBadgeMencoes === "function") dashAtualizarBadgeMencoes(); }, APP_VERSAO_INTERVALO_MS);
   document.addEventListener("visibilitychange", () => {
-    if(document.visibilityState !== "visible"){ appVersaoAvaliar(); return; }   // foi para segundo plano: pode atualizar
-    _appUltimaInteracao = Date.now();   // voltou para a aba: está usando de novo, nada de recarregar na cara
+    if(document.visibilityState !== "visible"){ appVersaoAvaliar(); return; }
+    _appUltimaInteracao = Date.now();
     if(_appVersaoTimerContagem){ clearInterval(_appVersaoTimerContagem); _appVersaoTimerContagem = null; appVersaoAvaliar(); }
     verificarVersaoApp(30000);
     if(typeof dashAtualizarBadgeMencoes === "function") dashAtualizarBadgeMencoes();
   });
 }
 
-/* Na carga (antes do login): index.html velho vindo do cache com versao.json já novo → recarrega uma
-   vez com ?v=<versao>. Chegada por convite/recuperação fica de fora para não perder o token do hash
-   (a verificação normal cuida depois do login). Roda aqui porque precisa ser o mais cedo possível. */
+
+
+
 (async function verificarVersaoNaCarga(){
-  if(!appVersaoAtiva() || _chegouPorConvite || _primeiroAcessoToken !== null) return;   // fase 143: recarregar perderia o token
+  if(!appVersaoAtiva() || _chegouPorConvite || _primeiroAcessoToken !== null) return;
   const info = await lerVersaoPublicada();
   if(!info || info.versao === APP_VERSAO) return;
   let tentativa = null;
   try { tentativa = JSON.parse(sessaoLer("cgl_versao_tentativa") || "null"); } catch(_){}
-  if(tentativa && tentativa.versao === info.versao) return;   // já tentou uma vez: sem laço; a verificação periódica segue
+  if(tentativa && tentativa.versao === info.versao) return;
   appRegistrarRecarga(info);
   location.replace(location.pathname + "?v=" + encodeURIComponent(info.versao) + location.hash);
 })();
 
-/* ====================== POLÍTICA DE SESSÃO (fase 87) ======================
-   Decisão do Bernardo em 16/10/2026: ninguém fica logado por acaso. Prazos em empresa_config (mudam
-   em Configurações › Segurança, sem código): sessao_inatividade_min (240), sessao_maxima_h (12),
-   sessao_lembrar_dias (7) e sessao_mfa_cargos ({diretor,admin,rh,financeiro}).
-   - Inatividade: keydown, pointerdown, touchstart, scroll e a volta para a aba marcam atividade
-     (cgl_ultima_atividade no mesmo storage da sessão: compartilhado entre abas quando é localStorage).
-     Vigia a cada 60 s; faltando 5 min, faixa "Sua sessão encerra em N min por inatividade [Continuar]";
-     no limite, signOut local e tela de login com o motivo.
-   - Sessão máxima: cgl_login_em gravado no primeiro SIGNED_IN; faltando 5 min, faixa (sem Continuar:
-     não dá para estender); no limite, sai. Formulário com alteração não salva (appFormSujo) só muda o
-     texto da faixa: a saída acontece mesmo assim (a regra é de segurança).
-   - Ao abrir o app (inclusive com "manter conectado"), os dois prazos são conferidos antes de qualquer
-     coisa: estourou, volta ao login.
-   - Auditor (usuário de revisão) fica fora da inatividade e do limite; entra na revogação.
-   - Revogação: sessao_ok(login_em) a cada 5 min junto com a verificação da fase 86 (e aqui a cada
-     5 ticks quando o app roda em "dev"); falso → sai com "Sessões encerradas pela diretoria".
-   - SIGNED_OUT vindo do Supabase com o app aberto (refresh recusado porque a sessão foi apagada,
-     Time-box ou Inactivity do painel, saída em outra aba) → volta ao login com aviso.
-   - MFA obrigatório: cargo em sessao_mfa_cargos sem aal2 → modal de cadastro em modo obrigatório
-     ("Sair" no lugar de Cancelar) e menu travado (body.mfa-obrigatorio) até concluir. Quem já tem MFA
-     passa pelo desafio no login (fluxo da fase 24).
-   O servidor reforça (painel do Supabase: JWT 10 min, Time-box 12 h, Inactivity 4 h). */
-const POL_SESSAO_PADRAO = { inatividade_min: 240, maxima_h: 12, lembrar_dias: 7, mfa_cargos: ["diretor", "admin", "rh", "financeiro", "juridico"] };   // fase 180d: + juridico
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const POL_SESSAO_PADRAO = { inatividade_min: 240, maxima_h: 12, lembrar_dias: 7, mfa_cargos: ["diretor", "admin", "rh", "financeiro", "juridico"] };
 const POL_TICK_MS = 60 * 1000;
 const POL_AVISO_MS = 5 * 60 * 1000;
 const POL_REVOGACAO_TICKS = 5;
@@ -2252,11 +2252,11 @@ function polGravar(chave, valor){ try { polStore().setItem(chave, valor); } catc
 function polApagar(chave){ try { localStorage.removeItem(chave); sessionStorage.removeItem(chave); } catch(_){} }
 function polSessaoLimpar(){
   polApagar("cgl_login_em"); polApagar("cgl_ultima_atividade"); lembrarApagar();
-  try { sessionStorage.removeItem(VAL_SENS_CHAVE); } catch(_){}   // lote S59: quem entrar depois nesta janela encontra os valores cobertos
+  try { sessionStorage.removeItem(VAL_SENS_CHAVE); } catch(_){}
 }
 function polIsento(){ return ehSomenteLeitura(); }
 
-/* prazos da empresa; sem leitura (rede, RLS) ficam os padrões */
+
 async function carregarPoliticaSessao(){
   try {
     const { data } = await sb.from("empresa_config")
@@ -2270,19 +2270,19 @@ async function carregarPoliticaSessao(){
       };
     }
   } catch(_){}
-  // "manter conectado" foi gravado no login com o prazo padrão; agora vale o prazo da empresa, contado do login
+
   const lembrar = lembrarLer();
   if(lembrar) lembrarGravar(polSessao.lembrar_dias, lembrar.desde);
 }
 
 function polMarcarAtividade(forcar){
   const agora = Date.now();
-  if(!forcar && agora - _polUltimaGravacao < 5000) return;   // sem gravar a cada tecla
+  if(!forcar && agora - _polUltimaGravacao < 5000) return;
   _polUltimaGravacao = agora;
   polGravar("cgl_ultima_atividade", String(agora));
 }
 
-/* chamado em iniciarApp(). Devolve false quando um prazo já tinha estourado ao abrir (saiu para o login). */
+
 function iniciarPoliticaSessao(){
   if(!polLer("cgl_login_em")) polGravar("cgl_login_em", String(Date.now()));
   if(polVigiar(true) === false) return false;
@@ -2292,19 +2292,19 @@ function iniciarPoliticaSessao(){
     document.addEventListener(ev, () => polMarcarAtividade(false), { capture: true, passive: true }));
   document.addEventListener("visibilitychange", () => {
     if(document.visibilityState !== "visible") return;
-    if(polVigiar(false) === false) return;   // estourou enquanto a aba estava escondida
+    if(polVigiar(false) === false) return;
     polMarcarAtividade(true);
   });
   _polTimer = setInterval(() => polVigiar(false), POL_TICK_MS);
   return true;
 }
 
-/* a cada 60 s (e ao abrir, e ao voltar para a aba). Devolve false quando saiu. */
+
 function polVigiar(naAbertura){
   if(!usuarioAtual || _polSaindo) return true;
   if(!naAbertura){
     _polTicks++;
-    // em produção a verificação da fase 86 já chama a cada 5 min; em "dev" ela não roda
+
     if(_polTicks % POL_REVOGACAO_TICKS === 0 && !appVersaoAtiva()) verificarSessaoRevogada();
   }
   if(polIsento()) return true;
@@ -2321,7 +2321,7 @@ function polVigiar(naAbertura){
   return true;
 }
 
-/* faixa no topo do viewport: mesmo lugar e mesma classe da faixa de versão (fase 86) */
+
 function polFaixa(motivo, restaMs){
   let f = $("app-faixa-sessao");
   if(!f){
@@ -2347,55 +2347,55 @@ function polFaixa(motivo, restaMs){
 }
 function polFaixaFechar(){ const f = $("app-faixa-sessao"); if(f) f.style.display = "none"; }
 
-/* sai desta janela (signOut local: as outras janelas e aparelhos têm o próprio prazo) e volta ao login
-   com o motivo. chamarSignOut = false quando o Supabase já avisou SIGNED_OUT. */
+
+
 async function sairPorPolitica(motivo, chamarSignOut){
   if(_polSaindo) return;
   _polSaindo = true;
   appLimparSujo();
   sessaoGravar("cgl_saida_motivo", motivo);
-  rascunhoLimparTodos();   // lote S60 (#177)
+  rascunhoLimparTodos();
   polSessaoLimpar();
   if(chamarSignOut !== false){ try { await sb.auth.signOut({ scope: "local" }); } catch(_){} }
   location.reload();
 }
 
-/* sessao_ok(): falso quando a sessão foi encerrada (por usuário ou geral) ou o usuário foi desativado */
+
 async function verificarSessaoRevogada(){
   if(!usuarioAtual || _polSaindo) return;
   try {
     const loginEm = Number(polLer("cgl_login_em")) || null;
     const { data, error } = await sb.rpc("sessao_ok", { p_login_em: loginEm ? new Date(loginEm).toISOString() : null });
-    if(error) return;   // rede ou erro: não derruba ninguém por isso
+    if(error) return;
     if(data === false) sairPorPolitica("revogada");
   } catch(_){}
 }
 
-/* cargo em sessao_mfa_cargos sem aal2 → cadastro obrigatório. Devolve true quando o MFA foi exigido (a tela ficou
-   travada até cadastrar, ou o usuário adiou dentro da carência e viu a faixa).
-   Fase 99b: o cadastro acontece ANTES de entrar (iniciarApp espera esta promessa para carregar os dados) e há
-   carência de empresa_config.mfa_carencia_dias (7) contada do primeiro login exigido (RPC mfa_carencia_status):
-   dentro dela, "Depois" uma vez por dia e faixa com os dias restantes; vencida, não entra sem cadastrar. Sem a RPC
-   (migration não aplicada) fica a regra da fase 87, sem carência. */
+
+
+
+
+
+
 async function exigirMFAObrigatorio(perfil){
   if(!perfil || !(polSessao.mfa_cargos || []).includes(perfil.cargo)) return false;
   let nivel = null;
   try { const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); nivel = data || null; } catch(_){ return false; }
   if(!nivel || nivel.currentLevel === "aal2") return false;
-  if(nivel.nextLevel === "aal2"){   // tem fator verificado mas entrou sem o desafio (não deveria): sai e pede de novo
+  if(nivel.nextLevel === "aal2"){
     sairPorPolitica("mfa");
     return true;
   }
-  return await mfaExigirComCarencia(perfil);   // fase 99b (fim do arquivo)
+  return await mfaExigirComCarencia(perfil);
 }
 
-/* marcos da sessão e saída avisada pelo Supabase */
+
 sb.auth.onAuthStateChange((evento, sessao) => {
   if(evento === "SIGNED_IN" && sessao && !polLer("cgl_login_em")) polGravar("cgl_login_em", String(Date.now()));
   if(evento === "SIGNED_OUT" && usuarioAtual && !_polSaindo) sairPorPolitica("encerrada", false);
 });
 
-/* na carga: a tela de login mostra por que a sessão anterior acabou */
+
 (function avisarSaidaAnterior(){
   const m = sessaoLer("cgl_saida_motivo");
   if(!m) return;
@@ -2403,26 +2403,26 @@ sb.auth.onAuthStateChange((evento, sessao) => {
   if($("login-aviso")) aviso("login-aviso", POL_MOTIVOS[m] || POL_MOTIVOS.encerrada, "aviso");
 })();
 
-/* ====================== CARGA GERAL ====================== */
+
 async function carregarTudo(){
-  // 1. Carrega cadastros base
+
   await Promise.all([
     carregarClientes(),
     carregarCategorias(),
     carregarFornecedores(),
     carregarListaFornecedores()
   ]);
-  // 2. Carrega produtos (depende das categorias)
+
   await carregarProdutos();
-  
-  // 3. Preenche selects comuns e inicializa mapas globais
+
+
   await Promise.all([
     carregarClientesSelects(),
     carregarFornecedoresSelects(),
     carregarResponsaveis()
   ]);
-  
-  // 4. Carrega os módulos comerciais separados
+
+
   await Promise.all([
     carregarOrcamentos(),
     carregarContratos(),
@@ -2430,8 +2430,8 @@ async function carregarTudo(){
     carregarMedicoes()
   ]);
 
-  // 5+6. Módulos operacionais e usuários — em paralelo (dependem só de obras,
-  // já carregadas no passo 4; antes eram 4 ondas sequenciais de latência)
+
+
   const ehGestao = usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo);
   await Promise.all([
     typeof carregarFuncionarios  === "function" ? carregarFuncionarios()  : null,
@@ -2441,25 +2441,25 @@ async function carregarTudo(){
     (ehGestao && typeof carregarUsuarios === "function") ? carregarUsuarios() : null
   ]);
 
-  // 7. Atualiza dashboard e sugestões sequenciais
+
   await carregarDashboard();
   sugerirNumeros();
 
-  // 8. Acessibilidade global (rótulos, aria-label, teclado nos clicáveis)
+
   iniciarAcessibilidade();
 }
 
-/* ============================================================
-   DRAG & DROP em kanbans (genérico — todos os módulos)
-   Uso:
-     habilitarDragKanban({
-       container: "#med-conteudo .serv-kanban",   // selector do wrapper
-       tabela: "medicoes",                          // tabela do banco
-       coluna: "status",                            // coluna de status
-       onUpdate: (id, novoStatus) => { ... },      // opcional, recarrega
-       confirmar: true                              // pede confirmação antes de salvar
-     });
-   ============================================================ */
+
+
+
+
+
+
+
+
+
+
+
 function habilitarDragKanban(opts){
   const cont = typeof opts.container === "string" ? document.querySelector(opts.container) : opts.container;
   if(!cont) return;
@@ -2506,7 +2506,7 @@ function habilitarDragKanban(opts){
       if(opts.confirmar){
         if(!confirm(`Mover este card para "${novoStatus}"?`)) return;
       }
-      // Atualiza no banco
+
       const { error } = await sb.from(tabela).update({ [coluna]: novoStatus, updated_at: new Date().toISOString() }).eq("id", id);
       if(error){
         aviso("app-aviso", `Não foi possível mover: ${error.message}`, "erro");
@@ -2520,7 +2520,7 @@ function habilitarDragKanban(opts){
   });
 }
 
-/* ====================== SEGURANÇA — MFA ====================== */
+
 async function verificarMFAAdmin(){
   try {
     const { data, error } = await sb.auth.mfa.listFactors();
@@ -2531,7 +2531,7 @@ async function verificarMFAAdmin(){
     document.getElementById("mfa-aviso-banner")?.remove();
     const banner = document.createElement("div");
     banner.id = "mfa-aviso-banner";
-    // lote S45 (L4): estilo na classe .aviso-mfa (css/estilo.css), com tokens da paleta; antes era hex inline
+
     banner.innerHTML = `
       <div class="aviso-mfa">
         <strong>⚠ Segurança:</strong>
@@ -2539,16 +2539,16 @@ async function verificarMFAAdmin(){
         <button type="button" class="aviso-mfa-btn aviso-mfa-configurar">Configurar agora</button>
         <button type="button" class="aviso-mfa-btn aviso-mfa-fechar">Fechar</button>
       </div>`;
-    // fase 99a: a CSP (script-src 'self') não roda onclick inline; os dois botões ligam por addEventListener
+
     banner.querySelector(".aviso-mfa-configurar").addEventListener("click", () => abrirModalMFA());
     banner.querySelector(".aviso-mfa-fechar").addEventListener("click", () => banner.remove());
-    // Dentro do viewport (coluna flex de altura fixa): o banner ocupa espaço e o <main> encolhe.
-    // Antes ia no <body>, empurrava a tela inteira para baixo e escondia o rodapé da sidebar.
+
+
     ($("app-viewport") || document.body).prepend(banner);
   } catch(_){}
 }
 
-/* ====================== MFA — DESAFIO NO LOGIN ====================== */
+
 function mostrarDesafioMFALogin(){
   $("form-login").style.display = "none";
   $("mfa-desafio").style.display = "";
@@ -2581,9 +2581,9 @@ async function confirmarDesafioMFALogin(){
   }
 }
 
-/* ====================== MFA — ENROLAMENTO (admin) ====================== */
+
 let _mfaFactorId = null;
-let _mfaObrigatorio = false;   // fase 87: cargo em sessao_mfa_cargos sem MFA cadastrado
+let _mfaObrigatorio = false;
 
 async function abrirModalMFA(obrigatorio){
   const modal = $("modal-mfa");
@@ -2600,7 +2600,7 @@ async function abrirModalMFA(obrigatorio){
   $("mfa-secret-area").style.display = "none";
   _mfaFactorId = null;
   try {
-    // Remove fatores não verificados anteriores para poder re-enrolar
+
     const { data: fatores } = await sb.auth.mfa.listFactors();
     for(const f of (fatores?.totp || []).filter(f => f.status !== "verified")){
       await sb.auth.mfa.unenroll({ factorId: f.id });
@@ -2611,7 +2611,7 @@ async function abrirModalMFA(obrigatorio){
     const qr = data.totp.qr_code;
     if(qr && qr.startsWith("<svg")){
       qrArea.innerHTML = `<div style="display:inline-block;padding:12px;background:var(--sup-0);
-        border:1px solid var(--borda);border-radius:6px;">${/* html */ qr}</div>`;
+        border:1px solid var(--borda);border-radius:6px;">${  qr}</div>`;
     } else {
       qrArea.innerHTML = `<img src="${esc(qr)}" alt="QR Code MFA"
         style="width:200px;height:200px;border:1px solid var(--borda);padding:8px;border-radius:6px;" />`;
@@ -2642,9 +2642,9 @@ async function verificarCodigoMFA(){
     $("mfa-aviso-banner")?.remove();
     aviso("app-aviso","✅ MFA ativado! Sua conta agora está protegida com dois fatores.","ok");
     _mfaFactorId = null;
-    _mfaObrigatorio = false;                               // fase 87: a sessão agora é aal2; menu liberado
+    _mfaObrigatorio = false;
     document.body.classList.remove("mfa-obrigatorio");
-    mfaLiberarEntrada();                                   // fase 99b: iniciarApp segue e carrega os dados
+    mfaLiberarEntrada();
   } catch(err){
     aviso("mfa-modal-aviso", err.message || "Código inválido. Tente novamente.","erro");
     btn.disabled = false;
@@ -2652,7 +2652,7 @@ async function verificarCodigoMFA(){
   }
 }
 
-/* — Wiring dos eventos MFA — */
+
 $("btn-mfa-desafio-ok")?.addEventListener("click", confirmarDesafioMFALogin);
 $("btn-mfa-desafio-cancelar")?.addEventListener("click", async () => {
   await sb.auth.signOut();
@@ -2666,7 +2666,7 @@ $("mfa-desafio-codigo")?.addEventListener("keydown", e => {
 
 $("btn-mfa-verificar")?.addEventListener("click", verificarCodigoMFA);
 $("btn-mfa-cancelar")?.addEventListener("click", () => {
-  if(_mfaObrigatorio){ sairPorPolitica("mfa"); return; }   // fase 87: sem cadastrar não entra; "Sair" volta ao login
+  if(_mfaObrigatorio){ sairPorPolitica("mfa"); return; }
   $("modal-mfa").style.display = "none";
   _mfaFactorId = null;
 });
@@ -2678,19 +2678,19 @@ $("mfa-codigo-input")?.addEventListener("keydown", e => {
   if(e.key === "Enter") verificarCodigoMFA();
 });
 
-/* ====================== FASE 99b — MFA NO LOGIN COM CARÊNCIA (21/10/2026) ======================
-   Decisão 3 do Bernardo (spec docs/specs/fase-99-seguranca-owasp.md): MFA obrigatório no login para os cargos de
-   empresa_config.sessao_mfa_cargos (diretor, admin, rh, financeiro), com carência de mfa_carencia_dias (7).
-   - iniciarApp espera exigirMFAObrigatorio(): o cadastro (QR + código) acontece antes de carregar os dados.
-   - A carência conta do primeiro login em que o MFA foi exigido (RPC mfa_carencia_status, tabela mfa_carencias).
-     Dentro dela o modal oferece "Depois (N dias)" uma vez por dia (localStorage cgl_mfa_adiado_<id> = hoje);
-     nos outros logins do mesmo dia entra direto, com a faixa vermelha contando os dias. Vencida: sem "Depois",
-     só cadastrar ou sair.
-   - Quem já tem fator passa pelo desafio no login por senha e, desde esta fase, também ao reabrir a aba com a
-     sessão guardada ("manter conectado"): mfaPrecisaDesafio() no começo de iniciarApp.
-   - Operador, encarregado e mecânico (login por CPF) não estão na lista: nada muda para eles. */
-let _mfaLiberarResolver = null;   // promessa em que iniciarApp espera o cadastro ou o "Depois"
-let _mfaCarencia = null;          // retorno de mfa_carencia_status() deste login
+
+
+
+
+
+
+
+
+
+
+
+let _mfaLiberarResolver = null;
+let _mfaCarencia = null;
 
 async function mfaPrecisaDesafio(){
   try {
@@ -2699,7 +2699,7 @@ async function mfaPrecisaDesafio(){
   } catch(_){ return false; }
 }
 
-/* null quando a RPC não existe ou falhou: vale a regra da fase 87 (sem carência) */
+
 async function mfaLerCarencia(){
   try {
     const { data, error } = await sb.rpc("mfa_carencia_status");
@@ -2720,8 +2720,8 @@ function mfaDiasTxt(n){ return `${n} dia${n === 1 ? "" : "s"}`; }
 async function mfaExigirComCarencia(perfil){
   const car = await mfaLerCarencia();
   _mfaCarencia = car;
-  if(car && car.exige === false) return false;                   // a lista do banco não inclui o cargo
-  if(car && car.tem_fator){ sairPorPolitica("mfa"); return true; } // fator cadastrado em outra aba: entra de novo com o desafio
+  if(car && car.exige === false) return false;
+  if(car && car.tem_fator){ sairPorPolitica("mfa"); return true; }
   const emCarencia = !!car && car.vencida === false && Number(car.dias_restantes) > 0;
   if(emCarencia && mfaAdiadoHoje()){ mfaFaixaCarencia(car); return true; }
   return new Promise(resolve => {
@@ -2748,7 +2748,7 @@ function mfaAjustarModal(car, emCarencia){
   }
 }
 
-/* "Depois": fecha o modal, libera o menu e deixa entrar; amanhã o modal volta */
+
 function mfaAdiar(){
   mfaMarcarAdiado();
   $("modal-mfa").style.display = "none";
@@ -2760,7 +2760,7 @@ function mfaAdiar(){
   if(f) f(true);
 }
 
-/* chamada por verificarCodigoMFA() quando o fator foi ativado */
+
 function mfaLiberarEntrada(){
   const dep = $("btn-mfa-depois");
   if(dep) dep.style.display = "none";
@@ -2768,8 +2768,8 @@ function mfaLiberarEntrada(){
   if(f) f(true);
 }
 
-/* faixa da carência: mesmo lugar e mesma classe do banner de MFA do admin (id mfa-aviso-banner, que
-   verificarCodigoMFA já remove ao concluir) */
+
+
 function mfaFaixaCarencia(car){
   document.getElementById("mfa-aviso-banner")?.remove();
   const n = Number(car?.dias_restantes) || 0;
@@ -2794,15 +2794,15 @@ function mfaFaixaCarencia(car){
 
 $("btn-mfa-depois")?.addEventListener("click", mfaAdiar);
 
-/* ====================== FASE 99b — KPIs FINANCEIROS POR CARGO ======================
-   Decisão 4 do Bernardo (21/10/2026): ler o valor do que se lança (medição, obra: pode_ler_financeiro(), espelhado
-   em podeVerValorObra) é diferente de ver os SOMATÓRIOS financeiros. Os somatórios (Sala de Comando: "Medido no
-   período" e "A receber"; Medições: indicadores A receber / Vencidas / Recebido no mês e os da visão Caução;
-   Equipamentos › Vendas: indicadores; Carteira: KPIs em R$) passam a financeiro e auditor, diretor sempre (o admin
-   saiu em 21/10/2026 a pedido do Bernardo: somatório financeiro é só da diretoria e do financeiro):
-   espelha pode_ver_kpi_financeiro() do banco. Engenheiro, assistente e comercial continuam vendo o valor de cada
-   medição e obra.
-   KPI_FIN_RESTRITO = false desliga a regra nova: cada tela volta à regra que tinha antes (o argumento). */
+
+
+
+
+
+
+
+
+
 const KPI_FIN_RESTRITO = true;
 function podeVerKpiFinanceiro(regraAnterior){
   if(!KPI_FIN_RESTRITO){
@@ -2812,16 +2812,16 @@ function podeVerKpiFinanceiro(regraAnterior){
   return !!usuarioAtual && ["diretor", "financeiro", "auditor"].includes(usuarioAtual.cargo);
 }
 
-/* ---------- fase 101 (#85): texto do documento → TAG do cadastro ----------
-   "TAG 99", "TAG-99", "Máquina 107", "Equipamento 099", "EQP 66", "HC-66", "66-HC", "99 RZ" → { numero: "99", familia: "RZ"|null }.
-   equipamentos.codigo é "NN-XX" (99-RZ, 55B-CM): o número casa com zeros à esquerda ignorados e, quando o texto traz a
-   família (HC, RZ…), ela desempata. eqCasarTexto devolve { exato, proximo, candidatos } e NUNCA vincula sozinho: quem
-   chama mostra a sugestão e a pessoa confirma (exato = o número bate; proximo = o número mais perto, de preferência entre
-   as máquinas da obra). Usado na prévia do import do RDO. */
+
+
+
+
+
+
 function eqNormalizarTexto(texto){
   const t = String(texto || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase()
     .replace(/\b(TAG|MAQUINA|MAQ|EQUIPAMENTO|EQUIP|EQP|EQ|PERFURATRIZ)\b\.?/g, " ").replace(/[º°#:]/g, " ").replace(/\bN[O]?\b\.?/g, " ").trim();
-  // família antes (HC-66) ou depois (66-HC, 99 RZ) do número; letra colada ao número (55B) faz parte dele
+
   let m = t.match(/(?:^|[^0-9A-Z])([A-Z]{2,3})[\s\-./]*0*(\d{1,4})(?![0-9])/);
   if(m) return { numero: m[2].replace(/^0+(?=\d)/, "") || "0", familia: m[1] };
   m = t.match(/0*(\d{1,4})([A-Z](?![A-Z]))?(?:[\s\-./]+([A-Z]{2,3}))?/);
@@ -2838,7 +2838,7 @@ function eqCasarTexto(texto, lista, preferidosIds){
   if(!bruto || !Array.isArray(lista) || !lista.length) return vazio;
   const pref = new Set(preferidosIds || []);
   const up = bruto.toUpperCase().replace(/\s+/g, "");
-  // código ou código externo idêntico também é exato (mas continua sendo só sugestão)
+
   const igual = lista.find(e => [e.codigo, e.codigo_externo].filter(Boolean).some(c => String(c).toUpperCase().replace(/\s+/g, "") === up));
   const { numero, familia } = eqNormalizarTexto(bruto);
   if(igual) return { ...vazio, numero, familia, exato: igual, candidatos: [igual] };
@@ -2851,14 +2851,14 @@ function eqCasarTexto(texto, lista, preferidosIds){
   if(cands.length > 1) cands = filtra(cands, x => ["perfuratriz", "bate_estaca"].includes(x.e.tipo));
   if(cands.length === 1) return { ...vazio, numero, familia, exato: cands[0].e, candidatos: [cands[0].e] };
   if(cands.length > 1) return { ...vazio, numero, familia, candidatos: cands.map(x => x.e) };
-  // sem número igual: o mais perto (primeiro entre as máquinas da obra, depois perfuratriz/bate-estaca, depois todas)
+
   const n = parseInt(numero, 10);
   const universo = [comNum.filter(x => pref.has(x.e.id)), comNum.filter(x => ["perfuratriz", "bate_estaca"].includes(x.e.tipo)), comNum].find(u => u.length) || [];
   const ord = universo.map(x => ({ ...x, d: Math.abs(parseInt(x.numero, 10) - n) + (familia && x.familia !== familia ? 0.5 : 0) }))
     .sort((a, b) => a.d - b.d);
   return { ...vazio, numero, familia, proximo: ord.length ? ord[0].e : null, candidatos: ord.slice(0, 3).map(x => x.e) };
 }
-/* "TAG-99 (exata)" / "107-RZ (mais próximo)" para a prévia; '' quando não há sugestão */
+
 function eqSugestaoTxt(r){
   if(r && r.exato) return `${r.exato.codigo} (exata)`;
   if(r && r.proximo) return `${r.proximo.codigo} (mais próximo)`;

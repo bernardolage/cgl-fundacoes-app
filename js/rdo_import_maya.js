@@ -1,21 +1,21 @@
-/* ====================================================================
-   Import do "Relatório Diário" do Maya (.xlsx) — fase 46 (16/09/2026)
-   O Maya (sistema de gerenciamento usado hoje) exporta uma planilha com:
-     • Estacas            — Item | Estaca | Data | Diâmetro | Prof. exec. | Perfuração (h) | Concretagem (h) | Torque | Operador | Máquina
-     • Resumo das Estacas — ignorado (é derivado)
-     • Observações        — Estaca | Observação  (texto por estaca)
-     • Ocorrências        — Item | Data | Ocorrência | Paralisado? | Em Razão do Cliente? | Período (h) | Operador | Máquina | Descrição
-   Blocos COMPLEMENTARES (o Maya não traz; a equipe acrescenta na mesma planilha,
-   em qualquer aba, com o mesmo padrão "título na coluna A + cabeçalho + linhas"):
-     • Abastecimento      — Data | Máquina | Combustível | Quantidade (L) | Horímetro | Observação
-     • Fim do Expediente  — Data | Hora | Descrição   (também aceita "Encerramento")
-     • Injeção (fase 101) — Data | Estaca | Cimento | Areia | Água (L) | Volume injetado (m³) | Pressão  (raiz)
-   Tudo vira o MESMO contrato v3 (dias[]) que a Edge Function extrair-rdo-arquivo
-   devolve e segue pelo preview de conferência do import por IA (montarPreviewDias
-   em rdo.js). Dias só com ocorrência (manutenção, paralisação) também viram RDO —
-   sem estacas, com equipe, observações e abastecimento.
-   Depende de SheetJS (XLSX) já carregado no index.html.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function _ehArquivoXlsx(file){
   const ext = (file.name.split(".").pop() || "").toLowerCase();
   return ext === "xlsx" || ext === "xls" || /spreadsheetml|ms-excel/i.test(file.type || "");
@@ -47,22 +47,22 @@ function mayaNum(s){
   const n = Number(t);
   return isFinite(n) ? n : null;
 }
-/* "Sim" → true, "Não" → false; em branco, traço ou qualquer outro texto ("não informado", "n/a") → null (não informado).
-   Fase 166: só resposta dada vira resposta; nada vira "não" por omissão. */
+
+
 function mayaSimNao(s){
   const t = mayaNorm(s).replace(/[.!?]+$/, "");
   return /^s(im)?$/.test(t) ? true : /^n(ao)?$/.test(t) ? false : null;
 }
-/* "PC.110 - REF" / "PC.101 - REFORÇO" / "E12R" → { numero: "PC.110", refuro: true } */
+
 function mayaEstaca(raw){
   const t = String(raw == null ? "" : raw).trim();
-  const m = t.match(/^(.*?)\s*[-–]\s*(REF\S*|R)\s*$/i); // " - REF", " - REFORÇO", " - REFURO"…
+  const m = t.match(/^(.*?)\s*[-–]\s*(REF\S*|R)\s*$/i);
   if(m) return { numero: m[1].trim(), refuro: true, raw: t };
-  const r = t.match(/^(.*\d)\s*R$/i); // "E12R" (padrão dos boletins)
+  const r = t.match(/^(.*\d)\s*R$/i);
   if(r) return { numero: r[1].trim(), refuro: true, raw: t };
   return { numero: t, refuro: false, raw: t };
 }
-/* "Das 12h30 às 13h30: Horário de almoço" → minutos de intervalo (regra RH: tempo real, piso 30 no cálculo) */
+
 function mayaIntervaloAlmoco(descricao){
   const m = String(descricao || "").match(/(\d{1,2})h(\d{2})?\s*(?:às|as|a|-)\s*(\d{1,2})h(\d{2})?\s*:?\s*[^.]*almo[çc]o/i);
   if(!m) return null;
@@ -70,7 +70,7 @@ function mayaIntervaloAlmoco(descricao){
   const d = fim - ini;
   return d > 0 && d <= 240 ? d : null;
 }
-/* Localiza um bloco pelo título na coluna A (em qualquer aba) e devolve as linhas como objetos pelo cabeçalho normalizado */
+
 function mayaBloco(abas, titulos){
   const alvos = (Array.isArray(titulos) ? titulos : [titulos]).map(mayaNorm);
   for(const linhas of abas){
@@ -97,17 +97,17 @@ const mayaCampo = (o, ...prefixos) => {
   return "";
 };
 
-/* Abas (array de arrays de arrays) → { dias[], ... } no contrato v3 */
+
 function mayaParaDias(abas){
   const estacasBl = mayaBloco(abas, "Estacas");
   if(!estacasBl) throw new Error("Não encontrei o bloco \"Estacas\" na planilha. Exporte o Relatório Diário do Maya em .xlsx sem alterar o layout.");
   const obsBl   = mayaBloco(abas, ["Observações", "Observacoes"]) || [];
   const ocorBl  = mayaBloco(abas, ["Ocorrências", "Ocorrencias"]) || [];
   const abastBl = mayaBloco(abas, ["Abastecimento", "Abastecimentos"]) || [];
-  const injBl   = mayaBloco(abas, ["Injeção", "Injecao", "Injeção de argamassa", "Injecao de argamassa"]) || [];   // fase 101 (#99)
+  const injBl   = mayaBloco(abas, ["Injeção", "Injecao", "Injeção de argamassa", "Injecao de argamassa"]) || [];
   const fimBl   = mayaBloco(abas, ["Fim do Expediente", "Fim de Expediente", "Encerramento", "Fim do expediente / Encerramento"]) || [];
 
-  // Obra: qualquer linha antes de "Estacas" (1ª aba) com "Obra: xxx"
+
   let obra = "";
   const primeira = abas[0] || [];
   const iEst = primeira.findIndex(r => mayaNorm(r[0]) === "estacas");
@@ -151,7 +151,7 @@ function mayaParaDias(abas){
     });
   });
 
-  // Observações por estaca: casa pelo nome cru (inclui " - REF") em todos os dias em que a estaca aparece
+
   obsBl.forEach(o => {
     const raw = String(mayaCampo(o, "estaca") || "").trim(), txt = String(mayaCampo(o, "observac") || "").trim();
     if(!raw || !txt) return;
@@ -162,7 +162,7 @@ function mayaParaDias(abas){
     if(!achou) duvidas.push(`Observação da estaca "${raw}" sem estaca correspondente: "${txt.slice(0, 60)}${txt.length > 60 ? "…" : ""}"`);
   });
 
-  // Ocorrências por dia: viram observações do RDO + entrada/saída do operador + intervalo de almoço
+
   ocorBl.forEach(o => {
     const iso = mayaDataISO(mayaCampo(o, "data"));
     if(!iso) return;
@@ -170,17 +170,17 @@ function mayaParaDias(abas){
     const periodo = mayaPeriodo(mayaCampo(o, "periodo"));
     const desc = String(mayaCampo(o, "descric") || "").trim();
     const tipo = String(mayaCampo(o, "ocorrencia") || "").trim();
-    // fase 166: sim vira sim, não vira não, e célula em branco ou coluna ausente fica nulo (não informado), nunca "não"
+
     const paralisado = mayaSimNao(mayaCampo(o, "paralisado"));
     const cliente = mayaSimNao(mayaCampo(o, "em razao", "razao"));
-    // fase 94 (#77): a ocorrência leva a máquina no texto, porque o dia vira um diário por máquina e as
-    // observações do dia ficam no diário da máquina principal
+
+
     const maq = String(mayaCampo(o, "maquina") || "").trim() || null;
     const cab = [maq ? `Máquina ${maq}` : null, tipo ? `Ocorrência: ${tipo}` : null, paralisado ? "Paralisado: sim" : null, cliente ? "Em razão do cliente: sim" : null,
       periodo.ini ? `Período ${periodo.ini}–${periodo.fim}` : null].filter(Boolean).join(" · ");
     d._ocorr.push((cab ? `[${cab}] ` : "") + desc);
-    // fase 129c: a ocorrência também sai estruturada; o import grava em `ocorrencias` (a tabela que a ficha, a aba da obra e a
-    // medição leem) e o texto acima só volta às observações se o banco recusar a gravação
+
+
     d.paradas.push({ maquina: maq, tipo: tipo || null, descricao: desc || tipo || null, paralisado, em_razao_cliente: cliente,
       periodo_inicio: periodo.ini, periodo_fim: periodo.fim, texto: (cab ? `[${cab}] ` : "") + desc });
     if(maq && !d.maquina) d.maquina = maq;
@@ -190,7 +190,7 @@ function mayaParaDias(abas){
     if(iv != null && d.intervalo_minutos == null) d.intervalo_minutos = iv;
   });
 
-  // Fim do expediente / encerramento (bloco complementar): observação do dia + saída da equipe quando faltar
+
   fimBl.forEach(o => {
     const iso = mayaDataISO(mayaCampo(o, "data"));
     if(!iso) return;
@@ -202,7 +202,7 @@ function mayaParaDias(abas){
     if(hora) Object.values(d._ops).forEach(p => { if(!p.hora_saida) p.hora_saida = hora; });
   });
 
-  // Abastecimento (bloco complementar, vem do diário do operador): por dia e máquina
+
   abastBl.forEach(o => {
     const iso = mayaDataISO(mayaCampo(o, "data"));
     if(!iso) return;
@@ -217,8 +217,8 @@ function mayaParaDias(abas){
     if(maq && !d.maquina) d.maquina = maq;
   });
 
-  // fase 101 (#99): bloco complementar "Injeção" (raiz) — Data | Estaca | Cimento | Areia | Água (L) | Volume injetado (m³) | Pressão.
-  // Vira o mesmo "injecao" do contrato v3 (casado por estaca em iaInjecaoDaEstaca, rdo.js).
+
+
   injBl.forEach(o => {
     const iso = mayaDataISO(mayaCampo(o, "data"));
     const est = mayaEstaca(mayaCampo(o, "estaca"));
@@ -236,7 +236,7 @@ function mayaParaDias(abas){
   const lista = Object.values(dias).sort((a, b) => a.data.localeCompare(b.data));
   lista.forEach(d => {
     d.equipe = Object.values(d._ops);
-    d.observacoes = d._fim.join("\n") || null;   // fase 129c: as ocorrências vão para a tabela (d.paradas)
+    d.observacoes = d._fim.join("\n") || null;
     if(d.estacas.length){
       const diams = [...new Set(d.estacas.map(e => e.diametro_mm).filter(Boolean))].sort((a, b) => a - b);
       const ref = d.estacas.filter(e => e.refuro).length;
@@ -269,7 +269,7 @@ async function processarArquivoXlsxMaya(file){
   try {
     if(typeof XLSX === "undefined") throw new Error("Biblioteca de planilhas não carregou. Recarregue a página e tente de novo.");
     const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false });
-    // 1ª aba = a que tem "Relatório" no nome (export do Maya); as demais podem trazer os blocos complementares
+
     const nomes = [...wb.SheetNames].sort((a, b) => (/relat/i.test(b) ? 1 : 0) - (/relat/i.test(a) ? 1 : 0));
     const abas = nomes.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: "" }));
     const data = mayaParaDias(abas);
@@ -278,7 +278,7 @@ async function processarArquivoXlsxMaya(file){
     await montarPreviewDias(data, "xlsx_maya", obraSel);
   } catch(err){
     aviso("app-aviso", "Planilha do Maya: " + err.message, "erro");
-    if($("csv-aviso")) aviso("csv-aviso", "Planilha do Maya: " + err.message, "erro"); // o modal cobre o aviso geral
+    if($("csv-aviso")) aviso("csv-aviso", "Planilha do Maya: " + err.message, "erro");
     console.error("Planilha do Maya:", err);
   } finally {
     if(btn){ btn.disabled = false; btn.textContent = txtBtn; }

@@ -1,24 +1,24 @@
-/* ====================================================================
-   js/estacas_raiz_conf.js — fase 184a (#293 e #241): a estaca raiz pelo histórico de trechos.
-   Carregado depois do js/estacas.js. Fase 184b (prefixo exc-): corrige, descarta e restaura execução só pelas RPCs
-   execucao_corrigir, execucao_descartar e execucao_restaurar (engenharia e diretor; medição fechada recusa no banco).
 
-   1) Vista "Trechos" da aba Estacas (prefixo ert-): uma linha por trecho de rdo_raiz_solo, nas colunas da aba
-      ESTACAS DO PERÍODO da RG 11.1, com filtros, o resumo por estaca (profundidade máxima e equipamento) e a planilha.
-   2) Conferência da raiz (prefixo crz-): na aba Alteradas, a estaca raiz deixa de ser "SUSPEITO" só por ter várias
-      execuções e passa a ter a situação pelo histórico, numa função só (confRaizClassificar):
-        normal      (verde)    várias execuções em dias ou ferramentas diferentes, com avanço coerente;
-        etapa       (amarelo)  trechos sobrepostos com a mesma ferramenta e sem etapa; início maior que o fim;
-                               trecho sem início ou sem fim;
-        duplicidade (laranja)  duas linhas com a mesma data, RDO, máquina, ferramenta, início e fim;
-        vinculo     (vermelho) execução de outra obra, ou dois nomes de campo na mesma estaca do projeto sem
-                               vínculo confirmado.
-      Medida da engenharia (aba TRAVESSIA da RG 11.1): profundidade máxima = o maior "final" (nunca a soma);
-      revestimento e rocha (tricone + martelo) são somas, porque são serviços diferentes; refuro à parte.
-      Hélice não muda: continua a regra antiga (confClassificarGrupo).
-   As funções de cálculo (confRaizLinhas, confRaizClassificar, confClassificarGrupo, ertMontar) não leem a tela
-   nem o banco: o teste scripts/testar-fase184a.mjs as roda no Node.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const CRZ_SITUACOES = {
   normal:      { rotulo: "Histórico normal",     dica: "Várias execuções em dias ou ferramentas diferentes, com avanço coerente" },
@@ -33,8 +33,8 @@ function _crzNum(v){ if(v == null || v === "") return null; const n = Number(v);
 function _crzNorm(s){ return String(s || "").toUpperCase().trim().replace(/\s+/g, " "); }
 function _crzR2(v){ return Math.round(v * 100) / 100; }
 
-/* Uma linha por trecho de solo; execução sem trecho vira uma linha com o "de / até" da execução (ou só a metragem do
-   dia); execução sem metragem (injeção, armação) vira uma linha que não é de perfuração e não entra nas contas. */
+
+
 function confRaizLinhas(execs){
   const linhas = [];
   (execs || []).forEach(x => {
@@ -64,7 +64,7 @@ function confRaizLinhas(execs){
   return linhas.sort((a, b) => String(a.data).localeCompare(String(b.data)) || (a.inicio ?? 0) - (b.inicio ?? 0));
 }
 
-/* Situação de uma estaca raiz pelas linhas do histórico. ctx = { obraId, estaca }. Marca em cada linha o alerta dela. */
+
 function confRaizClassificar(linhas, ctx){
   const obraId = ctx && ctx.obraId, est = (ctx && ctx.estaca) || {};
   const motivos = { vinculo: [], duplicidade: [], etapa: [] };
@@ -73,21 +73,21 @@ function confRaizClassificar(linhas, ctx){
   perf.forEach(l => { l.alerta = null; });
   const marcar = (l, sit) => { if(!l.alerta || CRZ_ORDEM.indexOf(sit) < CRZ_ORDEM.indexOf(l.alerta)) l.alerta = sit; };
 
-  // vínculo: execução de outra obra
+
   (linhas || []).forEach(l => {
     if(obraId && l.obra_id && l.obra_id !== obraId){
       marcar(l, "vinculo");
       motivos.vinculo.push(`Execução de outra obra (${l.data ? l.data.split("-").reverse().join("/") : "sem data"}${l.rdo_num ? ", RDO " + l.rdo_num : ""})`);
     }
   });
-  // vínculo: dois nomes de campo na mesma estaca do projeto, algum sem vínculo confirmado
+
   const campos = [...new Set((linhas || []).map(l => _crzNorm(l.campo)).filter(Boolean))];
   const semVinculo = (linhas || []).filter(l => l.campo && !l.corrigido && _crzNorm(l.campo) !== _crzNorm(est.numero));
   if(campos.length > 1 && semVinculo.length){
     semVinculo.forEach(l => marcar(l, "vinculo"));
     motivos.vinculo.push(`${campos.length} nomes de campo (${campos.join(", ")}) na estaca ${est.numero || "do projeto"} sem vínculo confirmado`);
   }
-  // duplicidade: mesma data, RDO, máquina, ferramenta, início e fim
+
   const chaves = new Map();
   perf.filter(l => l.inicio != null || l.fim != null).forEach(l => {
     const k = [l.data, l.rdo_id, _crzNorm(l.maquina), l.ferramenta || "", l.inicio, l.fim, l.refuro].join("|");
@@ -100,12 +100,12 @@ function confRaizClassificar(linhas, ctx){
     const l = g[0];
     motivos.duplicidade.push(`${g.length} linhas iguais em ${l.data.split("-").reverse().join("/")}: ${l.inicio ?? "?"} a ${l.fim ?? "?"} m${l.ferramenta ? " (" + l.ferramenta + ")" : ""}`);
   });
-  // etapa: início maior que o fim; trecho sem início ou sem fim
+
   perf.forEach(l => {
     if(l.inicio != null && l.fim != null && l.inicio > l.fim){ marcar(l, "etapa"); motivos.etapa.push(`Início maior que o fim em ${l.data.split("-").reverse().join("/")} (${l.inicio} a ${l.fim} m)`); }
     else if(l.trecho && (l.inicio == null || l.fim == null)){ marcar(l, "etapa"); motivos.etapa.push(`Trecho sem ${l.inicio == null ? "início" : "fim"} em ${l.data.split("-").reverse().join("/")}`); }
   });
-  // etapa: trechos sobrepostos com a mesma ferramenta e sem etapa (repetido idêntico já é duplicidade)
+
   const validos = perf.filter(l => l.inicio != null && l.fim != null && l.inicio < l.fim);
   for(let i = 0; i < validos.length; i++){
     for(let j = i + 1; j < validos.length; j++){
@@ -139,7 +139,7 @@ function confRaizClassificar(linhas, ctx){
   };
 }
 
-/* Despachante: estaca raiz pelo histórico; as outras pela regra de sempre (2+ execuções sem refuro marcado = suspeita) */
+
 function confClassificarGrupo(g, obraId){
   if(g && g.estaca && g.estaca.tipo === "raiz"){
     const r = confRaizClassificar(confRaizLinhas(g.execs), { obraId, estaca: g.estaca });
@@ -148,7 +148,7 @@ function confClassificarGrupo(g, obraId){
   return { regra: "helice", suspeita: !((g && g.execs) || []).some(e => e.modalidade_execucao === "refuro") };
 }
 
-/* Vista Trechos: uma linha por trecho de solo. estacaDe(id) devolve a estaca do projeto; opts.tag/bm/periodo(execução). */
+
 function ertMontar(execs, estacaDe, opts){
   const o = opts || {};
   const linhas = [];
@@ -169,15 +169,15 @@ function ertMontar(execs, estacaDe, opts){
         inclinacao: x.inclinacao || "", classificacao: s.classificacao || "", ferramenta: s.ferramenta || "",
         rdo: String(x.rdo_num || x.numero_boletim_fisico || ""), bm, bloco: est ? est.bloco || "" : "", local: est ? est.local || "" : "",
         eqp, periodo, refuro: (x.modalidade_execucao || "furo_normal") === "refuro",
-        descartada: !!x.descartada_em, desc_motivo: x.descartada_motivo || ""   // fase 184b: só com "Mostrar descartadas"
+        descartada: !!x.descartada_em, desc_motivo: x.descartada_motivo || ""
       });
     });
   });
   linhas.sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.campo).localeCompare(String(b.campo), "pt-BR", { numeric: true }) || (a.inicial ?? 0) - (b.inicial ?? 0));
-  // resumo por estaca (colunas S a U da planilha): maior "final" entre os trechos de furo e o equipamento desse trecho
+
   const porEst = new Map();
   linhas.forEach(l => {
-    if(l.descartada) return;   // fase 184b: a descartada não conta na profundidade
+    if(l.descartada) return;
     const k = l.estaca_id || "n:" + _crzNorm(l.campo);
     if(!porEst.has(k)) porEst.set(k, { estaca_id: l.estaca_id, campo: l.campo, projeto: l.projeto, bloco: l.bloco, local: l.local, profMax: null, eqp: "", trechos: 0 });
     const r = porEst.get(k);
@@ -188,18 +188,18 @@ function ertMontar(execs, estacaDe, opts){
   return { linhas, resumo };
 }
 
-/* ====================================================================
-   VISTA TRECHOS (tela)
-   ==================================================================== */
-let _ertLinhas = [];   // linhas depois dos filtros (planilha)
+
+
+
+let _ertLinhas = [];
 let _ertResumo = [];
 
-/* Botão ao lado do "Acompanhamento raiz": só em obra com estaca raiz (atualizarBotaoRaiz chama) */
+
 function ertBotao(tem){
   const b = $("btn-est-view-trechos");
   if(b) b.style.display = tem ? "" : "none";
 }
-/* Chamado pelo renderEstacas: mostra a vista Trechos e esconde as outras (e os filtros das estacas, que não valem aqui) */
+
 function ertVisao(visao, outros){
   const wrap = $("est-trechos-wrap");
   const ativa = visao === "trechos";
@@ -234,7 +234,7 @@ async function ertRender(){
   }
   const execs = [];
   _raizDados.porEstaca.forEach(lst => lst.forEach(x => execs.push(x)));
-  // fase 184b: "Mostrar descartadas" traz as execuções descartadas (a view da obra não tem), em cinza e com Restaurar
+
   if($("ert-f-desc")?.checked){
     const obraAntes = obraEditId;
     const desc = await excDescartadas(obraAntes);
@@ -244,7 +244,7 @@ async function ertRender(){
   const estPorId = new Map((_estacas || []).map(e => [e.id, e]));
   const m = ertMontar(execs, (id) => estPorId.get(id), { tag: _raizTag, bm: _ertBm, periodo: (x) => x._periodo || "" });
 
-  // monta a barra de filtros uma vez por obra; os valores escolhidos ficam
+
   if(!$("ert-filtros") || cont.dataset.obra !== String(obraEditId)){
     const ops = (lst) => lst.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
     const ord = (a, b) => a.localeCompare(b, "pt-BR", { numeric: true });
@@ -255,8 +255,8 @@ async function ertRender(){
         <label class="ert-periodo" title="Período dos trechos, como as células F6:G6 da planilha">De <input type="date" id="ert-f-de"></label>
         <label class="ert-periodo">até <input type="date" id="ert-f-ate"></label>
         <input id="ert-f-estaca" placeholder="Estaca de campo ou do projeto..." title="Parte do nome da estaca de campo ou do projeto">
-        <select id="ert-f-bloco"><option value="">Todos os blocos</option>${/* html */ ops(blocos)}</select>
-        <select id="ert-f-maq"><option value="">Todos os equipamentos</option>${/* html */ ops(maqs)}</select>
+        <select id="ert-f-bloco"><option value="">Todos os blocos</option>${  ops(blocos)}</select>
+        <select id="ert-f-maq"><option value="">Todos os equipamentos</option>${  ops(maqs)}</select>
         <select id="ert-f-ferr"><option value="">Todas as ferramentas</option><option value="revestimento">Revestimento</option><option value="tricone">Tricone</option><option value="martelo">Martelo</option></select>
         <label class="ert-mostrar-desc" title="Inclui as execuções descartadas (em cinza), com a opção de restaurar"><input type="checkbox" id="ert-f-desc"> Mostrar descartadas</label>
         <button type="button" class="btn-sec btn-sm" id="btn-ert-csv" title="Planilha com as colunas desta tela">CSV</button>
@@ -273,9 +273,9 @@ async function ertRender(){
     && (!f.estaca || `${l.campo} ${l.projeto}`.toUpperCase().includes(f.estaca))
     && (!f.bloco || l.bloco === f.bloco) && (!f.maq || l.eqp === f.maq) && (!f.ferr || l.ferramenta === f.ferr));
   const visiveis = new Set(linhas.map(l => l.estaca_id || "n:" + _crzNorm(l.campo)));
-  // resumo pelo histórico inteiro da estaca (a profundidade máxima não depende do período escolhido)
+
   const resumo = m.resumo.filter(r => visiveis.has(r.estaca_id || "n:" + _crzNorm(r.campo)));
-  _ertLinhas = linhas.filter(l => !l.descartada); _ertResumo = resumo;   // a planilha nunca leva a descartada
+  _ertLinhas = linhas.filter(l => !l.descartada); _ertResumo = resumo;
   const corpo = $("ert-corpo");
   if(!corpo) return;
   if(!m.linhas.length){ corpo.innerHTML = `<p class="vazio">Nenhum trecho de solo lançado nos RDOs desta obra. Os trechos vêm da aba Dados Raiz do RDO.</p>`; return; }
@@ -287,7 +287,7 @@ async function ertRender(){
   const nDesc = linhas.length - validas.length;
   const somaProf = _crzR2(validas.reduce((s, l) => s + (l.prof || 0), 0));
   const pode = excPode();
-  // fase 184b: lápis (Corrigir) e × (Descartar) uma vez por execução; a descartada tem Restaurar
+
   const vistas = new Set();
   const acoesDe = (l) => {
     if(!pode || vistas.has(l.exec_id)) return "";
@@ -311,7 +311,7 @@ async function ertRender(){
       <td>${esc(l.bloco || "—")}</td>
       <td>${esc(l.eqp || "—")}</td>
       <td>${esc(l.periodo || "—")}</td>
-      ${pode ? `<td class="ert-acoes-td">${/* html */ acoesDe(l)}</td>` : ""}
+      ${pode ? `<td class="ert-acoes-td">${  acoesDe(l)}</td>` : ""}
     </tr>`).join("");
   const trsRes = resumo.map(r => `<tr>
       <td><strong>${esc(r.campo || "—")}</strong>${r.projeto && _crzNorm(r.projeto) !== _crzNorm(r.campo) ? ` <span class="meta">${esc(r.projeto)}</span>` : ""}</td>
@@ -327,11 +327,11 @@ async function ertRender(){
       <div class="tabela-rola"><table class="raiz-tabela ert-tabela">
         <thead><tr><th>Data</th><th>Estaca</th><th class="num">Diâmetro (mm)</th><th class="num">Inicial (m)</th><th class="num">Final (m)</th><th class="num">Prof. (m)</th>
           <th>Inclinação</th><th>Classificação</th><th>Ferramenta</th><th>RDO</th><th>BM</th><th>Bloco</th><th>Equipamento</th><th>Período</th>${pode ? "<th>Ações</th>" : ""}</tr></thead>
-        <tbody>${/* html */ trs}</tbody>
+        <tbody>${  trs}</tbody>
       </table></div>
       <div class="tabela-rola ert-resumo"><table class="raiz-tabela">
         <thead><tr><th>Estaca</th><th class="num" title="Maior final entre os trechos de furo da estaca (nunca a soma)">Prof. máx. (m)</th><th>Equipamento</th></tr></thead>
-        <tbody>${/* html */ trsRes}</tbody>
+        <tbody>${  trsRes}</tbody>
       </table></div>
     </div>`;
   excLigarBotoes(corpo);
@@ -364,27 +364,27 @@ function ertExportarExcel(){
   XLSX.writeFile(wb, _ertArquivo("xlsx"));
 }
 
-/* ====================================================================
-   CONFERÊNCIA DA RAIZ (aba Alteradas)
-   ==================================================================== */
+
+
+
 let _crzFiltro = "todas";
 let _crzBusca = "";
 
-/* Lê o que a conferência da raiz precisa além das execuções da obra: os trechos de solo e as execuções de outra obra
-   ligadas a estacas desta. Só roda em obra com estaca raiz. */
+
+
 async function crzCarregarExtras(obraId){
   const [sRes, oRes] = await Promise.all([
     lerTudo(() => sb.from("rdo_raiz_solo").select("id,execucao_id,ordem,inicio_ml,final_ml,ferramenta,classificacao,rdo:rdo_id!inner(obra_id)").eq("rdo.obra_id", obraId)),
     lerTudo(() => sb.from("rdo_execucao_estaca")
       .select("id,estaca_id,estaca_numero,estaca_numero_corrigido,perfuracao_inicio,perfuracao_de_m,perfuracao_ate_m,profundidade_executada,volume_concreto_m3,modalidade_execucao,etapa_final,ferramental,numero_boletim_fisico,equipamento_id,maquina_codigo,rdo:rdo_id!inner(id,obra_id,data,equipamento_id),estaca:estaca_id!inner(obra_id)")
-      .eq("estaca.obra_id", obraId).neq("rdo.obra_id", obraId).is("descartada_em", null))   // fase 184b: sem a descartada
+      .eq("estaca.obra_id", obraId).neq("rdo.obra_id", obraId).is("descartada_em", null))
   ]);
   const solo = new Map();
   (sRes.error ? [] : (sRes.data || [])).forEach(s => { if(!solo.has(s.execucao_id)) solo.set(s.execucao_id, []); solo.get(s.execucao_id).push(s); });
   const outras = (oRes.error ? [] : (oRes.data || [])).map(x => ({ ...x, rdo_id: x.rdo?.id, obra_id: x.rdo?.obra_id, data: x.rdo?.data, rdo_equipamento_id: x.rdo?.equipamento_id }));
   return { solo, outras, erro: sRes.error || oRes.error || null };
 }
-/* Prepara a execução para a classificação: máquina, RDO e trechos */
+
 function crzPrepararExec(x, solo){
   x.maquina = typeof estvMaquina === "function" ? estvMaquina(x) : (x.maquina_codigo || "");
   x.rdo_num = x.numero_boletim_fisico || "";
@@ -410,7 +410,7 @@ function crzRender(cont, grupos){
       <input id="crz-busca" placeholder="Buscar estaca..." value="${esc(_crzBusca)}" title="Parte do nome de campo ou do projeto">
     </div>`;
   cont.innerHTML = `<p class="nota crz-nota">Estaca raiz: várias execuções na mesma estaca são normais (dias, ferramentas e etapas diferentes). A profundidade é a <strong>máxima</strong> entre os trechos, nunca a soma; revestimento e rocha são somas.</p>
-    ${/* html */ kpis}${/* html */ barra}<div id="crz-cartoes"></div>`;
+    ${  kpis}${  barra}<div id="crz-cartoes"></div>`;
   cont.querySelectorAll("[data-crz-filtro]").forEach(b => b.addEventListener("click", () => { _crzFiltro = b.dataset.crzFiltro; crzRender(cont, grupos); }));
   const busca = $("crz-busca");
   if(busca) busca.addEventListener("input", (typeof debounce === "function" ? debounce : (fn) => fn)(() => { _crzBusca = busca.value; crzRenderCartoes(lista); }));
@@ -426,11 +426,11 @@ function crzRenderCartoes(lista){
   if(!vis.length){ box.innerHTML = `<p class="vazio">Nenhuma estaca raiz neste filtro.</p>`; return; }
   const f2 = (v) => (v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const prevs = (typeof _recPrevs !== "undefined" ? _recPrevs : []) || [];
-  const pode = excPode();   // fase 184b
+  const pode = excPode();
   box.innerHTML = vis.map(g => {
     const r = g.raiz, e = g.estaca, sit = CRZ_SITUACOES[r.situacao];
     const optsPrev = prevs.filter(p => p.id !== e.id && p.status === "prevista").map(p => `<option value="${esc(p.id)}">${esc(p.numero)}</option>`).join("");
-    // histórico por dia: data, RDO, máquina, etapa, ferramenta, início, fim, metragem; ações na primeira linha da execução
+
     const dias = new Map();
     r.linhas.forEach(l => { const d = l.data || ""; if(!dias.has(d)) dias.set(d, []); dias.get(d).push(l); });
     const vistas = new Set();
@@ -442,7 +442,7 @@ function crzRenderCartoes(lista){
           const acoes = prim ? `${l.rdo_id ? `<button type="button" class="btn-sec btn-sm crz-abrir-rdo" data-rdo="${esc(l.rdo_id)}">Abrir RDO</button>` : ""}
               ${pode && l.obra_id === obraEditId ? `<button type="button" class="btn-sec btn-sm exc-corrigir" data-exec="${esc(l.exec_id)}" title="Corrigir a execução e os trechos fora do RDO (com motivo)">✎ Corrigir</button>
                 <button type="button" class="btn-sec btn-sm exc-acao txt-perigo exc-descartar" data-exec="${esc(l.exec_id)}" title="Descartar a execução lançada errada (com motivo)">×</button>` : ""}
-              ${optsPrev ? `<select class="alt-realoc-sel" data-exec-id="${esc(l.exec_id)}" title="Estaca prevista para onde levar esta execução"><option value="">— manter aqui —</option>${/* html */ optsPrev}</select>
+              ${optsPrev ? `<select class="alt-realoc-sel" data-exec-id="${esc(l.exec_id)}" title="Estaca prevista para onde levar esta execução"><option value="">— manter aqui —</option>${  optsPrev}</select>
                 <button type="button" class="btn-sec btn-sm btn-alt-realocar" data-exec-id="${esc(l.exec_id)}" data-estaca-orig="${esc(e.id)}">Realocar</button>` : ""}
               <details class="crz-menu"><summary title="Mais ações">⋯</summary><button type="button" class="btn-sec btn-sm btn-alt-marcar-refuro" data-exec-id="${esc(l.exec_id)}" title="Só quando esta execução for um refuro de verdade">Marcar refuro</button></details>` : "";
           return `<tr class="${l.alerta ? "crz-alerta-" + esc(l.alerta) : ""}">
@@ -454,7 +454,7 @@ function crzRenderCartoes(lista){
             <td class="num">${esc(f2(l.inicio))}</td>
             <td class="num">${esc(f2(l.fim))}</td>
             <td class="num">${esc(f2(l.metragem))}</td>
-            <td>${acoes ? `<div class="crz-acoes">${/* html */ acoes}</div>` : ""}</td>
+            <td>${acoes ? `<div class="crz-acoes">${  acoes}</div>` : ""}</td>
           </tr>`;
         }).join("");
     }).join("");
@@ -478,7 +478,7 @@ function crzRenderCartoes(lista){
         <summary>Histórico por dia (${esc(r.linhas.length)} linha(s))</summary>
         <div class="tabela-rola"><table class="raiz-tabela crz-tabela">
           <thead><tr><th>Tipo</th><th>RDO</th><th>Máquina</th><th>Etapa</th><th>Ferramenta</th><th class="num">Início (m)</th><th class="num">Fim (m)</th><th class="num">Metragem (m)</th><th>Ações</th></tr></thead>
-          <tbody>${/* html */ linhasHist}</tbody>
+          <tbody>${  linhasHist}</tbody>
         </table></div>
       </details>
     </div>`;
@@ -486,7 +486,7 @@ function crzRenderCartoes(lista){
   ligarAcoesAlteradas(box);
 }
 
-/* Abrir RDO dos cartões da raiz (Realocar e Marcar refuro usam os mesmos botões da aba, ligados pelo renderizarAlteradas) */
+
 function ligarAcoesAlteradas(cont){
   if(!cont) return;
   cont.querySelectorAll(".crz-abrir-rdo").forEach(b => b.addEventListener("click", () => {
@@ -498,20 +498,20 @@ function ligarAcoesAlteradas(cont){
   excLigarBotoes(cont);
 }
 
-/* ====================================================================
-   FASE 184b: CORRIGIR, DESCARTAR E RESTAURAR EXECUÇÃO FORA DO RDO (prefixo exc-)
-   Quem: engenharia (engenheiro, assistente de engenharia) e diretor (D1); o banco confere de novo.
-   Medição fechada (enviada, aprovada, faturada, recebida) recusa no banco, com o número do BM (D2).
-   ==================================================================== */
-let _excDescCache = null;   // { obra, execs } das descartadas da obra (vista Trechos com "Mostrar descartadas")
-let _excAtual = null;       // execução aberta no modal: { id, orig, solo }
+
+
+
+
+
+let _excDescCache = null;
+let _excAtual = null;
 
 function excPode(){
   const u = typeof usuarioAtual !== "undefined" ? usuarioAtual : null;
   return !!u && ["diretor", "engenheiro", "assistente_engenharia"].includes(u.cargo);
 }
 
-/* Execuções descartadas da obra, no formato das linhas da view (vw_rdo_execucoes_obra não traz as descartadas) */
+
 async function excDescartadas(obraId){
   if(_excDescCache && _excDescCache.obra === obraId) return _excDescCache.execs;
   const eRes = await lerTudo(() => sb.from("rdo_execucao_estaca")
@@ -521,7 +521,7 @@ async function excDescartadas(obraId){
   const lst = eRes.data || [];
   const ids = lst.map(x => x.id);
   const solo = new Map();
-  for(let i = 0; i < ids.length; i += 150){   // .in() com centenas de ids é recusado pela API
+  for(let i = 0; i < ids.length; i += 150){
     const sRes = await sb.from("rdo_raiz_solo").select("id,execucao_id,ordem,inicio_ml,final_ml,ferramenta,classificacao").in("execucao_id", ids.slice(i, i + 150));
     (sRes.data || []).forEach(s => { if(!solo.has(s.execucao_id)) solo.set(s.execucao_id, []); solo.get(s.execucao_id).push(s); });
   }
@@ -543,7 +543,7 @@ function excLigarBotoes(cont){
   cont.querySelectorAll(".exc-restaurar").forEach(b => b.addEventListener("click", () => excRestaurar(b.dataset.exec)));
 }
 
-/* Liga os botões dos dois modais uma vez (o HTML está no index.html) */
+
 function excLigarModais(){
   const m = $("exc-cor-modal");
   if(!m || m.dataset.ligado) return;
@@ -599,7 +599,7 @@ async function excAbrirCorrigir(execId){
         <td>${esc(s.ordem ?? "—")}</td>
         <td><input type="number" step="0.01" min="0" data-campo="inicio_ml" value="${esc(s.inicio_ml ?? "")}"></td>
         <td><input type="number" step="0.01" min="0" data-campo="final_ml" value="${esc(s.final_ml ?? "")}"></td>
-        <td><select data-campo="ferramenta">${/* html */ ops(s.ferramenta)}</select></td>
+        <td><select data-campo="ferramenta">${  ops(s.ferramenta)}</select></td>
         <td><input data-campo="classificacao" value="${esc(s.classificacao || "")}"></td>
       </tr>`).join("")}</tbody>
     </table></div>` : `<p class="meta">Execução sem trechos de solo.</p>`;
@@ -674,7 +674,7 @@ async function excRestaurar(execId){
   await excAposGravar("Execução restaurada.");
 }
 
-/* Depois de gravar: refaz a conferência (se aberta) e as estacas da obra (que refazem a vista Trechos) */
+
 async function excAposGravar(msg){
   aviso("app-aviso", msg, "ok");
   _excDescCache = null;

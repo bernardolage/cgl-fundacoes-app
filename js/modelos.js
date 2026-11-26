@@ -1,31 +1,31 @@
-/* ====================================================================
-   Módulo: Contratos › Modelos (fase 180e). Prefixo de IDs: mdl-.
-   Modelos de contrato e de proposta com versão aprovada pelo diretor (spec docs/specs/fase-180-modulo-contratos.md,
-   D2, D4 e seção 180e). Montado só com os componentes do js/ui.js.
 
-   - O jurídico (e o diretor) escreve o rascunho e envia para aprovação; SÓ O DIRETOR APROVA ou devolve. Quem decide é o
-     banco (RPCs modelo_*, gatilho fn_modelos_versoes_guarda); aqui só se escondem os botões de quem não pode.
-   - Ao aprovar, a versão vira vigente e a anterior, substituída. Antes de aprovar, o diretor vê a comparação por linha
-     (uiDiffLinhas) entre a vigente e a enviada.
-   - A proposta (js/propostas.js) imprime a versão vigente do modelo do segmento; o comercial não edita texto.
-   - Pendência: "Aprovar modelo" na Minha fila do diretor e "Modelo devolvido" na do autor (vw_sc_minha_fila_modelos);
-     o clique abre a versão aqui (mdlAbrirVersao).
-   ==================================================================== */
 
-let _mdlModo = "contratos";     // contratos | modelos (abas no topo da seção Contratos)
-let _mdlRegistros = [];         // vw_modelos_documento
+
+
+
+
+
+
+
+
+
+
+
+
+let _mdlModo = "contratos";
+let _mdlRegistros = [];
 let _mdlErro = "";
 let _mdlCarregando = false;
 let _mdlBusca = "";
-let _mdlTipo = "";              // filtro: "" | proposta | contrato
-let mdlEditId = null;           // modelo aberto na ficha (null = lista)
-let _mdlVersoes = [];           // versões do modelo aberto (o que a RLS deixa ler)
+let _mdlTipo = "";
+let mdlEditId = null;
+let _mdlVersoes = [];
 let _mdlVersoesErro = "";
-let _mdlNomes = {};             // profiles.id -> nome
-let _mdlAba = "texto";          // texto | rascunho | comparar | versoes
-let _mdlBuffer = null;          // { versaoId, texto, resumo, sujo } do editor
+let _mdlNomes = {};
+let _mdlAba = "texto";
+let _mdlBuffer = null;
 let _mdlCmp = { de: "", para: "" };
-let _mdlCampos = {};            // valores dos campos dos diálogos (o <dialog> some ao fechar)
+let _mdlCampos = {};
 
 const MDL_TIPO = { proposta: "Proposta", contrato: "Contrato" };
 const MDL_SEGMENTO = { helice: "Hélice contínua", trado: "Trado mecanizado", raiz: "Estaca raiz", secante: "Hélice secante" };
@@ -38,10 +38,10 @@ if(typeof STATUS === "object" && STATUS && !STATUS.modelo_versao){
   };
 }
 
-/* ---------- permissões (espelho do banco; quem decide é a RPC) ---------- */
+
 function mdlPodeVer(){ return typeof podeVerContratos === "function" && podeVerContratos(); }
 function mdlPodeEditar(){ return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "juridico"].includes(usuarioAtual.cargo); }
-/* modelo_versao_aprovar: has_role('diretor'), que é TRUE só para o cargo diretor (o jurídico nunca aprova) */
+
 function mdlPodeAprovar(){ return !!usuarioAtual && usuarioAtual.cargo === "diretor"; }
 
 const mdlNome = (id) => (id && _mdlNomes[id]) || "—";
@@ -49,7 +49,7 @@ const mdlSegmento = (m) => m && m.tipo === "proposta" ? (MDL_SEGMENTO[m.segmento
 const mdlModeloAberto = () => _mdlRegistros.find(m => m.id === mdlEditId) || null;
 const mdlVigente = () => _mdlVersoes.find(v => v.situacao === "vigente") || null;
 const mdlAberta = () => _mdlVersoes.find(v => v.situacao === "rascunho" || v.situacao === "aguardando_aprovacao") || null;
-/* erros de formato do texto de proposta (o mesmo leitor que gera o PDF) */
+
 function mdlErrosTexto(m, texto){
   if(!m || m.tipo !== "proposta" || typeof propostaModeloLer !== "function") return [];
   return propostaModeloLer(texto).erros;
@@ -59,7 +59,7 @@ function mdlErroDoBanco(error){
   return semView ? "Modelos ainda não disponível: a migration da fase 180e não foi aplicada." : "Não foi possível carregar os modelos: " + ((error && error.message) || "erro desconhecido");
 }
 
-/* ---------- abas Contratos | Modelos ---------- */
+
 function mdlRenderModos(){
   const cx = $("con-modos");
   if(!cx) return;
@@ -82,7 +82,7 @@ async function mdlAtivarModo(modo){
   if(_mdlModo === "modelos"){ mdlEditId = null; await carregarModelos(); }
 }
 
-/* ---------- lista ---------- */
+
 async function carregarModelos(){
   if(!mdlPodeVer()) return;
   _mdlCarregando = true; _mdlErro = "";
@@ -130,7 +130,7 @@ function renderModelos(){
         vazio: _mdlRegistros.length ? "Nenhum modelo com este filtro." : "Nenhum modelo que o seu perfil leia." })}</div>`;
 }
 
-/* ---------- ficha ---------- */
+
 async function abrirModelo(id, aba){
   mdlEditId = id;
   if(_mdlModo !== "modelos"){ _mdlModo = "modelos"; mdlRenderModos(); }
@@ -195,7 +195,7 @@ function renderFichaModelo(){
         sub: `${MDL_TIPO[m.tipo] || m.tipo} · ${mdlSegmento(m)}${m.descricao ? " · " + m.descricao : ""}`, acoes, menuAcoes: menu, erro: _mdlVersoesErro || null })
     + mdlFaixa(m)
     + uiAbas(abas, { ativa: _mdlAba, rotulo: "Partes do modelo" })
-    + `<div id="mdl-aba-corpo">${/* html */ mdlCorpoAba(m)}</div></div>`;
+    + `<div id="mdl-aba-corpo">${  mdlCorpoAba(m)}</div></div>`;
   mdlAtualizarErros();
 }
 
@@ -255,7 +255,7 @@ function mdlAtualizarErros(){
     + (erros.length > 12 ? `<li>… e mais ${Number(erros.length - 12)}.</li>` : "");
 }
 
-/* ---------- ações ---------- */
+
 async function mdlRpc(nome, args, ok){
   const { data, error } = await sb.rpc(nome, args);
   if(error){ uiAvisar(error.message || "Não foi possível concluir.", "perigo"); return { erro: true }; }
@@ -367,7 +367,7 @@ function mdlNovoRascunho(){
   renderFichaModelo();
 }
 
-/* Minha fila: "Aprovar modelo" e "Modelo devolvido" trazem o id da versão */
+
 async function mdlAbrirVersao(versaoId){
   if(!versaoId) { await mdlAtivarModo("modelos"); return; }
   const { data, error } = await sb.from("modelos_documento_versoes").select("modelo_id,situacao").eq("id", versaoId).maybeSingle();
@@ -379,7 +379,7 @@ async function mdlAbrirVersao(versaoId){
   await carregarModelos();
 }
 
-/* ---------- eventos (um listener por contêiner) ---------- */
+
 function ligarModelos(){
   const modos = $("con-modos"), painel = $("mdl-painel");
   if(modos) modos.addEventListener("click", e => {
@@ -388,9 +388,9 @@ function ligarModelos(){
   });
   document.querySelector('.sidebar-nav button[data-secao="contratos"]')?.addEventListener("click", () => {
     mdlRenderModos();
-    if(mdlPodeVer() && !_mdlRegistros.length && !_mdlErro) carregarModelos();   // contador de "aguardando aprovação" nas abas
+    if(mdlPodeVer() && !_mdlRegistros.length && !_mdlErro) carregarModelos();
   });
-  // valores dos diálogos (o <dialog> é removido ao fechar)
+
   document.addEventListener("input", e => { const id = e.target && e.target.id; if(id && id.startsWith("mdl-m-")) _mdlCampos[id] = e.target.value; });
   document.addEventListener("change", e => { const id = e.target && e.target.id; if(id && id.startsWith("mdl-m-")) _mdlCampos[id] = e.target.value; });
   if(!painel) return;
@@ -436,12 +436,12 @@ function ligarModelos(){
     else if(id === "mdl-cmp-de" || id === "mdl-cmp-para"){ _mdlCmp[id === "mdl-cmp-de" ? "de" : "para"] = e.target.value; renderFichaModelo(); }
   });
 }
-/* a busca refaz a lista sem perder o foco do campo */
+
 const debounceRenderModelos = debounce(() => {
   const ativo = document.activeElement && document.activeElement.id === "mdl-busca";
   const pos = ativo ? document.activeElement.selectionStart : null;
   renderModelos();
-  if(ativo){ const el = $("mdl-busca"); if(el){ el.focus(); try { el.setSelectionRange(pos, pos); } catch(_e) { /* campo search sem seleção */ } } }
+  if(ativo){ const el = $("mdl-busca"); if(el){ el.focus(); try { el.setSelectionRange(pos, pos); } catch(_e) {   } } }
 }, 250);
 
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", ligarModelos);

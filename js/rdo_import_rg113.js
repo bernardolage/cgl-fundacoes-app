@@ -1,31 +1,31 @@
-/* ====================================================================
-   Import da planilha RG 11.3 (diário de estaca raiz, .xlsx) — lote S57 (#220)
-   A planilha da obra tem uma aba "SEPARADOS" (cabeçalho na linha 9, colunas B:AA) com uma linha por
-   atividade do dia:
-     DATA | INÍCIO | FIM | DESCRIÇÃO | D P M O | INJEÇÃO | SACO | VOLUME | PRESSÃO (kg/cm²) | LOCAL | BLOCO |
-     NOME ESTACA | DIÂMETRO | INICIAL | FINAL | PROF. (M) | INCLINAÇÃO | CLASSIFICAÇÃO DO SOLO | MATERIAL | RDO |
-     MEDIÇÃO | HORA INICIAL/FINAL | EQUIPE | EQUIPAMENTO | PERÍODO | ABASTECIMENTO
-   Vira o MESMO contrato v3 (dias[]) do import por IA e da planilha do Maya, consumido por montarPreviewDias
-   (rdo.js): prévia e conferência antes de gravar. A IA não entra.
-     • linha com INÍCIO/FIM            → atividade hora a hora (justificativa) "[D P M O] DESCRIÇÃO"
-     • HORA INICIAL/FINAL Inicio/Fim   → entrada e saída da equipe; almoço → intervalo
-     • EQUIPE (nomes distintos do dia) → equipe (casada com o cadastro em montarPreviewDias)
-     • INJEÇÃO = PROF                  → trecho de perfuração da estaca (de, até, solo, ferramenta)
-     • INJEÇÃO = sim                   → injeção da estaca (saco, volume e pressão em 0 = sem consumo)
-     • outro texto em INJEÇÃO          → observação da estaca
-     • ABASTECIMENTO > 0               → abastecimento do dia (litros)
-   Fica fora: MEDIÇÃO (é da medição), as abas Planilha1 e DADOS.
-   Fase 134b: a coluna PERÍODO define turno_campo (diurno/noturno) de cada linha; coluna vazia usa o nome do arquivo
-   ("noturno"/"noite" no nome = noturno). Planilha com os dois períodos no mesmo dia separa as linhas e abre um diário para
-   cada um (chave "AAAA-MM-DD@noturno" do pipeline, rdoDiaChave em rdo.js), com aviso na prévia.
-   Depende de SheetJS (XLSX) e dos utilitários de rdo_import_maya.js (mayaNorm, mayaDataISO, mayaIntervaloAlmoco),
-   usados só em tempo de execução.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const RG113_ABA = "separados";
 const RG113_FERRAMENTAS = ["revestimento", "martelo", "tricone", "trado"];
-const RG113_REFURO = ["ref", "refuro"];   // fase 173b: valores da coluna INJEÇÃO lidos como refuro (com profundidade final)
+const RG113_REFURO = ["ref", "refuro"];
 
-/* Procura o cabeçalho (linha com "NOME ESTACA" e "D P M O") nas primeiras linhas de uma aba */
+
 function rg113AcharCabecalho(linhas){
   for(let i = 0; i < Math.min(40, linhas.length); i++){
     const cab = (linhas[i] || []).map(c => mayaNorm(c));
@@ -36,7 +36,7 @@ function rg113AcharCabecalho(linhas){
 function rg113Linhas(ws){
   return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
 }
-/* wb (SheetJS) → { aba, linhas, cab, linhaCab } quando é um RG 11.3; senão null */
+
 function rg113Detectar(wb){
   if(!wb || !Array.isArray(wb.SheetNames)) return null;
   const nomes = [...wb.SheetNames].sort((a, b) => (mayaNorm(b) === RG113_ABA ? 1 : 0) - (mayaNorm(a) === RG113_ABA ? 1 : 0));
@@ -50,7 +50,7 @@ function rg113Detectar(wb){
 }
 
 const rg113EhData = (v) => Object.prototype.toString.call(v) === "[object Date]";
-/* Texto da célula: 0, "-" e vazio contam como vazio */
+
 function rg113Txt(v){
   if(v == null) return "";
   if(typeof v === "number") return v === 0 ? "" : String(v);
@@ -66,7 +66,7 @@ function rg113Num(v){
 const rg113Pos = (v) => { const n = rg113Num(v); return n != null && n > 0 ? n : null; };
 const rg113R2 = (n) => n == null ? null : Math.round(n * 100) / 100;
 const rg113HHMM = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-/* Hora: Date (cellDates), fração do dia (número) ou texto "07:30"; "-" e 0:00 contam como vazio */
+
 function rg113Hora(v){
   let min = null;
   if(rg113EhData(v)){
@@ -83,7 +83,7 @@ function rg113Hora(v){
   if(min == null || min <= 0 || min >= 1440) return null;
   return rg113HHMM(min);
 }
-/* Data local (Date do cellDates, número de série ou texto dd/mm/aaaa); 00/01/1900 e vazio → null */
+
 function rg113Data(v){
   if(rg113EhData(v)){
     if(isNaN(v.getTime()) || v.getFullYear() < 1901) return null;
@@ -100,7 +100,7 @@ function rg113Data(v){
 }
 const rg113DataBR = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const rg113M = (n) => String(rg113R2(n)).replace(".", ",");
-/* Metragem coberta pelos trechos (união dos intervalos): reperfuração no mesmo trecho não soma duas vezes */
+
 function rg113Uniao(trechos){
   const iv = trechos.filter(t => t.de != null && t.ate != null && t.ate > t.de).map(t => [t.de, t.ate]).sort((a, b) => a[0] - b[0]);
   let total = 0, ini = null, fim = null, sobrepoe = false;
@@ -112,11 +112,11 @@ function rg113Uniao(trechos){
   return { metros: iv.length ? rg113R2(total) : null, sobrepoe };
 }
 
-/* fase 134b: período da linha (coluna PERÍODO) ou do nome do arquivo; texto fora de diurno/noturno fica como diurno e avisa */
+
 const rg113TurnoDe = (txt) => /noturn|noite/i.test(String(txt || "")) ? "noturno" : "diurno";
 const rg113TurnoReconhecido = (txt) => /^\s*(diurno|dia|noturno|noite)\s*$/i.test(String(txt || ""));
 
-/* wb (SheetJS lido com cellDates: true) → { dias[], ... } no contrato v3. nomeArquivo decide o período das linhas sem PERÍODO. */
+
 function rg113ParaDias(wb, nomeArquivo){
   const det = rg113Detectar(wb);
   if(!det) throw new Error("Não encontrei a aba SEPARADOS (cabeçalho com \"NOME ESTACA\" e \"D P M O\") na planilha RG 11.3.");
@@ -136,7 +136,7 @@ function rg113ParaDias(wb, nomeArquivo){
 
   const dias = {};
   const turnoArquivo = rg113TurnoDe(nomeArquivo);
-  // fase 134b: um "dia" por data E período; a chave do pipeline (rdoDiaChave) separa os dois diários do mesmo dia
+
   const dia = (iso, turno) => (dias[iso + "|" + turno] = dias[iso + "|" + turno] || { data: iso, turno_campo: turno, obra: "", tipo_servico: "estaca_raiz", maquina: null, tempo_manha: null, tempo_tarde: null,
     responsavel: null, atividades: null, observacoes: null, almoco_inicio: null, almoco_fim: null, intervalo_minutos: null,
     equipe: [], injecao: [], estacas: [], abastecimentos: [], justificativa: [], raiz_dados: null,
@@ -147,7 +147,7 @@ function rg113ParaDias(wb, nomeArquivo){
   for(let i = linhaCab + 1; i < linhas.length; i++){
     const r = linhas[i] || [];
     const iso = rg113Data(cel(r, "data"));
-    // linha-modelo da planilha (data 00/01/1900, fórmula sem lançamento) sai calada; sem data e com conteúdo, avisa
+
     if(!iso){ if(!rg113Txt(cel(r, "data")) && !rg113EhData(cel(r, "data")) && r.some(c => rg113Txt(c))) nFora++; continue; }
     nLinhas++;
     const per = rg113Txt(cel(r, "periodo"));
@@ -161,7 +161,7 @@ function rg113ParaDias(wb, nomeArquivo){
       d.justificativa.push({ h_inicial: hi, h_final: hf, motivo: (dpmo ? `[${dpmo}] ` : "") + desc || null });
       if(/almo[çc]o/i.test(desc) && hi && hf && !d.almoco_inicio){
         d.almoco_inicio = hi; d.almoco_fim = hf;
-        // mesma regra do Maya: tempo real do almoço (o piso de 30 min fica para o cálculo das horas)
+
         d.intervalo_minutos = mayaIntervaloAlmoco(`Das ${hi.replace(":", "h")} às ${hf.replace(":", "h")}: almoço`);
       }
     } else if(desc){
@@ -181,8 +181,8 @@ function rg113ParaDias(wb, nomeArquivo){
     addU(d._locais, local); addU(d._blocos, bloco);
     const injTxt = rg113Txt(cel(r, "inj")), injN = mayaNorm(injTxt);
     const de = rg113Num(cel(r, "de")), ate = rg113Num(cel(r, "ate"));
-    // fase 173b: INJEÇÃO = "REF"/"REFURO" com profundidade final é trecho perfurado de refuro (linha própria, modalidade refuro,
-    // que não mexe no status da estaca); sem profundidade final continua observação
+
+
     const ehRef = RG113_REFURO.includes(injN.replace(/[^a-z]/g, "")) && ate != null && ate > 0;
     const k = ehRef ? numero + "|refuro" : numero;
     const e = d._ests[k] || (d._ests[k] = { numero, agrupamento: bloco, trechos: [], hIni: [], hFim: [], diams: [], inclinacao: null,
@@ -208,13 +208,13 @@ function rg113ParaDias(wb, nomeArquivo){
     }
   }
 
-  // diurno antes do noturno no mesmo dia
+
   const lista = Object.values(dias).sort((a, b) => a.data.localeCompare(b.data) || (a.turno_campo === "noturno" ? 1 : 0) - (b.turno_campo === "noturno" ? 1 : 0));
   if(!lista.length) throw new Error("A aba SEPARADOS não tem linhas com data.");
   const duvidas = [];
   const injSemConsumo = [];
-  const maxAnterior = {};   // estaca → { ate, dia }: maior profundidade já perfurada em dia anterior (reperfuração)
-  // fase 134b: dia com os dois períodos vira dois diários; o noturno ainda não foi conferido com planilha real
+  const maxAnterior = {};
+
   const diasDuplos = lista.filter(d => d.turno_campo === "noturno" && lista.some(o => o.data === d.data && o.turno_campo === "diurno")).map(d => rg113DataBR(d.data));
   if(diasDuplos.length) duvidas.push(`${diasDuplos.join(", ")}: diurno e noturno na mesma planilha; abre um diário para cada período, com a equipe de cada um`);
   const nNoturno = lista.filter(d => d.turno_campo === "noturno").length;
@@ -225,7 +225,7 @@ function rg113ParaDias(wb, nomeArquivo){
     Object.values(d._ests).forEach(e => {
       const u = rg113Uniao(e.trechos);
       if(u.sobrepoe) duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: trechos sobrepostos (reperfuração); metragem do dia pela união (${rg113M(u.metros)} m)`);
-      // fase 173b: o refuro repassa trecho já perfurado por definição; fica fora da conta de reperfuração
+
       if(e.refuro) duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: linha REF lida como refuro`);
       const ant = e.refuro ? null : maxAnterior[e.numero];
       const minDe = e.trechos.reduce((m, t) => t.de != null && (m == null || t.de < m) ? t.de : m, null);
@@ -246,7 +246,7 @@ function rg113ParaDias(wb, nomeArquivo){
       e.obs.forEach(t => { obs.push(t); duvidas.push(`${e.numero} em ${rg113DataBR(d.data)}: coluna INJEÇÃO com texto "${t.slice(0, 60)}" (foi para a observação da estaca)`); });
       const hIni = [...e.hIni].sort(), hFim = [...e.hFim].sort();
       d.estacas.push({
-        numero: e.numero, agrupamento: e.agrupamento, refuro: !!e.refuro,   // fase 173b: linha REF com trecho = refuro
+        numero: e.numero, agrupamento: e.agrupamento, refuro: !!e.refuro,
         diametro_mm: e.diams[0] ?? null, profundidade_projeto: null,
         profundidade_executada: e.perf ? u.metros : null,
         trechos: e.trechos, perfuracao_de_m: null, perfuracao_ate_m: null,
@@ -256,7 +256,7 @@ function rg113ParaDias(wb, nomeArquivo){
         numero_boletim_fisico: e.boletim
       });
     });
-    // fase 173b: o hora a hora cita perfuração de uma estaca e o diário não tem metragem dela (só avisa)
+
     rg113DuvidasFurando(d).forEach(t => duvidas.push(t));
     const perfs = d.estacas.filter(e => e.profundidade_executada), injs = d.estacas.filter(e => /^Injeção/.test(e.observacoes || ""));
     d.observacoes = [d._bol.length ? `Boletim físico (RDO) nº ${d._bol.join(", ")}` : null, ...d._obs].filter(Boolean).join("\n") || null;
@@ -288,19 +288,19 @@ function rg113ParaDias(wb, nomeArquivo){
 }
 const dataBRrg = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
-/* ====================================================================
-   Fase 173b: a importação para de esconder a estaca raiz só com injeção.
-   Funções puras (testadas em Node por scripts/testar-fase173b.mjs) e a leitura das linhas com metragem da obra.
-   ==================================================================== */
+
+
+
+
 const rg113NumEst = (s) => String(s == null ? "" : s).toUpperCase().trim().replace(/\s+/g, " ");
 const rg113Positivo = (v) => { const n = typeof v === "number" ? v : Number(String(v == null ? "" : v).replace(",", ".")); return isFinite(n) && n > 0; };
-/* Linha do contrato v3 com metragem: metros no dia, acumulado ou trecho com profundidade final */
+
 function rg113TemMetragem(e){
   return !!e && (rg113Positivo(e.profundidade_executada) || rg113Positivo(e.perfuracao_ate_m) || rg113Positivo(e.profundidade_acumulada_m) ||
     (Array.isArray(e.trechos) && e.trechos.some(t => t && rg113Positivo(t.ate))));
 }
-/* Números das estacas que, no arquivo inteiro (todos os dias e períodos), têm injeção e nenhuma metragem, e que não estão em
-   metragemObra (números das linhas com metragem que a obra já tem em diário). Refuro não conta como perfuração nem como injeção. */
+
+
 function rg113EstacasSoInjecao(dias, metragemObra){
   const perf = new Set(), inj = [];
   const add = (n) => { if(n && !inj.includes(n)) inj.push(n); };
@@ -317,7 +317,7 @@ function rg113EstacasSoInjecao(dias, metragemObra){
   const naObra = new Set([...(metragemObra || [])].map(rg113NumEst));
   return inj.filter(n => !perf.has(n) && !naObra.has(n));
 }
-/* Texto do aviso da prévia. conferiuObra = false quando a obra não foi escolhida ou a leitura dos diários falhou. */
+
 function rg113TextoSoInjecao(lista, conferiuObra = true){
   if(!lista || !lista.length) return null;
   const n = lista.length, um = n === 1;
@@ -327,8 +327,8 @@ function rg113TextoSoInjecao(lista, conferiuObra = true){
   return `${n} estaca${um ? "" : "s"} deste arquivo ${um ? "tem" : "têm"} só injeção, e a obra não tem a perfuração ${um ? "dela" : "delas"} em nenhum diário: ${nomes}. ` +
     "A perfuração pode estar no diário do outro turno ou de outra máquina.";
 }
-/* Aviso da prévia (RG 11.3 e leitura por IA): lê as linhas com metragem que a obra já tem. Não bloqueia; erro de leitura só
-   tira a conferência com a obra. Devolve o texto ou null. */
+
+
 async function rg113AvisoSoInjecao(dias, obraId){
   const cand = rg113EstacasSoInjecao(dias, []);
   if(!cand.length) return null;
@@ -341,7 +341,7 @@ async function rg113AvisoSoInjecao(dias, obraId){
   return rg113TextoSoInjecao(rg113EstacasSoInjecao(dias, naObra), true);
 }
 
-/* "Furando"/"perfurando" no hora a hora: números de estaca citados depois do verbo (EE44, B1.2, "estaca 12") */
+
 const RG113_FURANDO = /\b(?:per)?furando\b/i;
 function rg113EstacasCitadas(txt){
   const m = String(txt || "").match(RG113_FURANDO);
@@ -353,8 +353,8 @@ function rg113EstacasCitadas(txt){
   for(const x of resto.matchAll(/\bestacas?\s+(?:n[º°o]?\.?\s*)?(\d+(?:[.,]\d+)*)\b/gi)) add(x[1]);
   return out;
 }
-/* Dúvidas de um dia do contrato v3: o hora a hora cita perfuração e o diário não tem linha com metragem para a estaca
-   (refuro com trecho conta como metragem: a linha REF já tem dúvida própria). Só avisa. */
+
+
 function rg113DuvidasFurando(d){
   const out = [];
   if(!d) return out;
@@ -376,9 +376,9 @@ function rg113DuvidasFurando(d){
   return out;
 }
 
-/* Conciliação por diário (pergunta 3 da spec, decisão de "Se não responder"): a linha já gravada só é completada quando é do
-   MESMO diário (mesma máquina e mesmo período) ou de diário sem máquina do mesmo período (o dia lido antes por PDF, lote S57).
-   diario = { rdoId, eqId, turno }; j = linha já gravada com rdo { equipamento_id, turno_campo }. */
+
+
+
 function rg113MesmoDiario(j, diario){
   const r = (j && j.rdo) || {};
   const turnoJ = r.turno_campo === "noturno" ? "noturno" : "diurno";
@@ -387,11 +387,11 @@ function rg113MesmoDiario(j, diario){
   if(diario && diario.rdoId && j.rdo_id === diario.rdoId) return true;
   const eqDiario = (diario && diario.eqId) || null;
   if(r.equipamento_id) return !!eqDiario && r.equipamento_id === eqDiario;
-  // diário sem máquina: a linha não pode ser de outra máquina
+
   return !j.equipamento_id || !eqDiario || j.equipamento_id === eqDiario;
 }
-/* Linha já gravada que a linha x do arquivo completa (ou null): mesmo número e modalidade, no mesmo diário; a do próprio
-   diário primeiro. usadas: ids já completados nesta importação (uma linha gravada casa uma vez só). */
+
+
 function rg113AlvoConciliacao(ja, x, diario, usadas){
   const chave = (n, m) => rg113NumEst(n) + "|" + (m || "furo_normal");
   const k = chave(x.estaca_numero, x.modalidade_execucao);
@@ -399,11 +399,11 @@ function rg113AlvoConciliacao(ja, x, diario, usadas){
   return cands.find(j => diario && j.rdo_id === diario.rdoId) || cands[0] || null;
 }
 
-/* lote S57 (#220): no RG 11.3, a estaca que já tem execução no mesmo dia (lida antes por PDF ou lançada à mão) não ganha uma
-   segunda. A RPC rdo_import_execucao_conciliar só concilia com a do Geodigitus e inseriria outra linha; aqui a execução
-   existente só recebe o que está vazio nela (campos, observação nova e, se ela não tiver nenhum, os trechos de solo). A do
-   Geodigitus segue para a RPC (pulada lá). Fase 173b: só a linha do mesmo diário (rg113MesmoDiario); a de outra máquina ou de
-   outro período não é tocada, e a do arquivo entra como linha nova no diário dela. Devolve { indices, conciliadas, trechos }. */
+
+
+
+
+
 async function rdoRg113ConciliarExistentes(obraId, dia, exs, ests, diario){
   const out = { indices: new Set(), conciliadas: 0, trechos: 0 };
   const { data: ja, error } = await sb.from("rdo_execucao_estaca")
@@ -441,7 +441,7 @@ async function rdoRg113ConciliarExistentes(obraId, dia, exs, ests, diario){
   return out;
 }
 
-/* Lê o .xlsx; se for um RG 11.3 monta a prévia e devolve true; senão devolve false (segue para o leitor do Maya) */
+
 async function processarArquivoXlsxRG113(file){
   if(typeof XLSX === "undefined") return false;
   let wb;
@@ -452,7 +452,7 @@ async function processarArquivoXlsxRG113(file){
   const txtBtn = btn ? btn.textContent : "";
   if(btn){ btn.disabled = true; btn.textContent = "Lendo o RG 11.3…"; }
   try {
-    const data = rg113ParaDias(wb, file && file.name);   // fase 134b: o nome do arquivo decide o período das linhas sem PERÍODO
+    const data = rg113ParaDias(wb, file && file.name);
     _iaOrigem = "xlsx_rg113";
     const obraSel = $("rdo-obra")?.value || null;
     await montarPreviewDias(data, "xlsx_rg113", obraSel);
@@ -466,7 +466,7 @@ async function processarArquivoXlsxRG113(file){
   return true;
 }
 
-// teste em Node (scripts/testar-fase173b.mjs): as funções puras e a conciliação também saem por module.exports
+
 if(typeof module === "object" && module && module.exports){
   module.exports = { rg113ParaDias, rg113TemMetragem, rg113EstacasSoInjecao, rg113TextoSoInjecao, rg113AvisoSoInjecao, rg113EstacasCitadas,
     rg113DuvidasFurando, rg113MesmoDiario, rg113AlvoConciliacao, rdoRg113ConciliarExistentes };

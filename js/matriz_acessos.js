@@ -1,19 +1,19 @@
-/* ====================================================================
-   Matriz de acessos de consulta (fase 165) — terceira visão do painel de Usuários.
-   Só mostra: não lê o banco, não grava nada e não muda permissão. O dado vem de js/matriz_acessos_dados.js, que é um
-   retrato gerado a partir do banco. A permissão que vale é sempre a do banco.
-   Prefixo mtz-. Carregado antes do usuarios.js, que chama renderMatrizAcessos() quando a visão é "matriz".
 
-   MTZ_TELA_LIBERADA: chave da visão, ligada em 11/11/2026. Com false, o botão "Matriz de acessos" não aparece e o
-   atalho da ficha do usuário também não; a descrição do cargo na ficha funciona igual. Muda junto com a constante de
-   mesmo papel no teste da fase (o teste segura as duas juntas), e mais nada.
-   "Vê" quer dizer abrir o módulo. O que chega por outro caminho (liberação por pessoa, função do banco) não entra na
-   matriz, e o rodapé da tela avisa.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
 const MTZ_TELA_LIBERADA = true;
 
 const MTZ_ACOES = { ver: "Vê", incluir: "Inclui", alterar: "Altera", apagar: "Apaga" };
-/* cada resposta tem símbolo e texto, nunca só cor */
+
 const MTZ_RESPOSTA = {
   s: { texto: "sim", simbolo: "✓" },
   n: { texto: "não", simbolo: "✕" },
@@ -21,16 +21,16 @@ const MTZ_RESPOSTA = {
   x: { texto: "não conferido", simbolo: "?" },
   z: { texto: "não se aplica", simbolo: "–" }
 };
-let _mtzModo = "cargo";      // "cargo" (um cargo, todos os módulos) ou "modulo" (um módulo, todos os cargos)
+let _mtzModo = "cargo";
 let _mtzCargo = null;
 let _mtzModulo = null;
-let _mtzDetalhes = [];       // textos das células da tabela desenhada, para o toque
+let _mtzDetalhes = [];
 
 function mtzDados(){ return typeof MATRIZ_ACESSOS !== "undefined" && MATRIZ_ACESSOS && MATRIZ_ACESSOS.celulas ? MATRIZ_ACESSOS : null; }
 function mtzTelaLiberada(){ return MTZ_TELA_LIBERADA && !!mtzDados(); }
 function mtzRotuloCargo(cargo){ return (typeof CARGOS !== "undefined" && CARGOS[cargo]) || cargo; }
 
-/* "p:1,3" ou "x=s:2" -> { v, est, frases[] }. Código que não der para ler vira "não conferido", nunca "sim". */
+
 function mtzCelula(cod){
   const d = mtzDados();
   const m = /^([snpxz])(?:=([snp]))?(?::([\d,]+))?$/.exec(cod || "");
@@ -42,7 +42,7 @@ function mtzCelulas(modulo, cargo){
   const txt = d && d.celulas[modulo] ? d.celulas[modulo][cargo] : null;
   return txt ? txt.split(" ").map(mtzCelula) : null;
 }
-/* Quantos módulos o cargo vê. "Vê" conta sim e em parte; o que não foi conferido conta à parte. */
+
 function mtzResumoCargo(cargo){
   const d = mtzDados();
   if(!d || !d.cargos.includes(cargo)) return null;
@@ -63,7 +63,7 @@ function mtzFraseResumo(cargo){
   return `Vê ${r.ve} dos ${r.total} módulos` + (r.emParte ? ` (${r.emParte} em parte).` : ".");
 }
 
-/* texto completo de uma célula, para o title e para o toque */
+
 function mtzTextoCelula(c){
   const base = MTZ_RESPOSTA[c.v].texto;
   const partes = [];
@@ -74,16 +74,16 @@ function mtzTextoCelula(c){
 function mtzCelulaHTML(c, onde){
   const r = MTZ_RESPOSTA[c.v];
   const leitura = c.v === "x" && c.est ? `<small>leitura: ${esc(MTZ_RESPOSTA[c.est].texto)}</small>` : "";
-  const dentro = `<span class="mtz-simb" aria-hidden="true">${esc(r.simbolo)}</span> ${esc(r.texto)}${/* html */ leitura}`;
-  if(c.v !== "x" && !c.frases.length) return `<span class="mtz-cel mtz-${esc(c.v)}">${/* html */ dentro}</span>`;
+  const dentro = `<span class="mtz-simb" aria-hidden="true">${esc(r.simbolo)}</span> ${esc(r.texto)}${  leitura}`;
+  if(c.v !== "x" && !c.frases.length) return `<span class="mtz-cel mtz-${esc(c.v)}">${  dentro}</span>`;
   const texto = mtzTextoCelula(c);
   _mtzDetalhes.push(onde + " · " + texto);
-  return `<button type="button" class="mtz-cel mtz-${esc(c.v)} mtz-tem-detalhe" data-mtz-det="${_mtzDetalhes.length - 1}" title="${esc(texto)}">${/* html */ dentro}</button>`;
+  return `<button type="button" class="mtz-cel mtz-${esc(c.v)} mtz-tem-detalhe" data-mtz-det="${_mtzDetalhes.length - 1}" title="${esc(texto)}">${  dentro}</button>`;
 }
 function mtzLinhaHTML(rotulo, celulas, onde){
   const acoes = Object.values(MTZ_ACOES);
-  const tds = (celulas || []).map((c, i) => `<td>${/* html */ mtzCelulaHTML(c, onde + " · " + acoes[i])}</td>`).join("");
-  return `<tr><th scope="row">${esc(rotulo)}</th>${/* html */ tds}</tr>`;
+  const tds = (celulas || []).map((c, i) => `<td>${  mtzCelulaHTML(c, onde + " · " + acoes[i])}</td>`).join("");
+  return `<tr><th scope="row">${esc(rotulo)}</th>${  tds}</tr>`;
 }
 
 function mtzTabelaPorCargo(d, cargo){
@@ -100,8 +100,8 @@ function mtzTabelaPorModulo(d, modulo){
   return d.cargos.map(c => mtzLinhaHTML(mtzRotuloCargo(c), mtzCelulas(m.id, c), mtzRotuloCargo(c))).join("");
 }
 
-/* Desenha a matriz em `alvo` (padrão: o conteúdo do painel de Usuários). Pode ser chamada pelo console em qualquer
-   elemento: o dado é estático, então o desenho é o mesmo para quem não abre Usuários. */
+
+
 function renderMatrizAcessos(alvo){
   const cont = alvo || $("usr-conteudo");
   if(!cont) return;
@@ -130,16 +130,16 @@ function renderMatrizAcessos(alvo){
         <button type="button" class="serv-view-btn${porCargo ? " ativo" : ""}" data-mtz-modo="cargo" aria-pressed="${porCargo ? "true" : "false"}" title="Um cargo, todos os módulos">Por cargo</button>
         <button type="button" class="serv-view-btn${porCargo ? "" : " ativo"}" data-mtz-modo="modulo" aria-pressed="${porCargo ? "false" : "true"}" title="Um módulo, todos os cargos">Por módulo</button>
       </div>
-      <select id="mtz-cargo" aria-label="Cargo" title="Cargo mostrado na matriz"${porCargo ? "" : " hidden"}>${/* html */ optCargos}</select>
-      <select id="mtz-modulo" aria-label="Módulo" title="Módulo mostrado na matriz"${porCargo ? " hidden" : ""}>${/* html */ optModulos}</select>
+      <select id="mtz-cargo" aria-label="Cargo" title="Cargo mostrado na matriz"${porCargo ? "" : " hidden"}>${  optCargos}</select>
+      <select id="mtz-modulo" aria-label="Módulo" title="Módulo mostrado na matriz"${porCargo ? " hidden" : ""}>${  optModulos}</select>
     </div>
-    ${/* html */ topo}
+    ${  topo}
     <div class="tabela-rola"><table class="mtz-tabela">
-      <thead><tr><th scope="col">${porCargo ? "Módulo" : "Cargo"}</th>${/* html */ cabecalho}</tr></thead>
-      <tbody>${/* html */ corpo}</tbody>
+      <thead><tr><th scope="col">${porCargo ? "Módulo" : "Cargo"}</th>${  cabecalho}</tr></thead>
+      <tbody>${  corpo}</tbody>
     </table></div>
     <p class="mtz-detalhe" id="mtz-detalhe" aria-live="polite">Passe o mouse ou toque em uma resposta sublinhada para ver a condição.</p>
-    <div class="mtz-legenda" aria-label="Legenda">${/* html */ legenda}</div>
+    <div class="mtz-legenda" aria-label="Legenda">${  legenda}</div>
     <p class="mtz-rodape">Retrato do banco em ${esc(dataBR(d.retrato))}. A permissão que vale é a do banco. Liberações por pessoa (módulo extra, responsável da obra, dono do custo), dados que exigem MFA e leituras ou gravações que passam por função do banco (por exemplo, os preços sugeridos ao montar a medição) não aparecem aqui.</p>
   </div>`;
   mtzLigar(cont);
@@ -165,7 +165,7 @@ function mtzLigar(cont){
   });
 }
 
-/* Abre a visão da matriz já no cargo pedido (atalho da ficha do usuário). Só faz algo com a tela liberada. */
+
 function mtzAbrirNoCargo(cargo){
   if(!mtzTelaLiberada()) return false;
   const d = mtzDados();

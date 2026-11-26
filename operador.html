@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<!-- Fase 129b: app do operador (diário de campo). Mesma CSP do index.html (fase 99a): nada inline, nada de CDN. -->
+
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://xiirduialyewpqkwsfxx.supabase.co; connect-src 'self' https://xiirduialyewpqkwsfxx.supabase.co wss://xiirduialyewpqkwsfxx.supabase.co; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
-<meta name="app-versao" content="c3d172a" />
+<meta name="app-versao" content="5c59038" />
 <title>CGL Campo</title>
 <link rel="icon" type="image/png" href="img/icone-cgl.png" />
 <link rel="apple-touch-icon" href="img/icone-cgl.png" />
@@ -13,13 +13,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/estilo.css?v=c3d172a" />
-<script src="js/tema.js?v=c3d172a"></script>
-<script src="vendor/supabase-js-2.118.0.min.js?v=c3d172a"></script>
+<link rel="stylesheet" href="css/estilo.css?v=5c59038" />
+<script src="js/tema.js?v=5c59038"></script>
+<script src="vendor/supabase-js-2.118.0.min.js?v=5c59038"></script>
 </head>
 <body class="op-corpo">
 
-<!-- ===== Entrar ===== -->
+
 <main id="op-login" class="op-login" hidden>
   <img src="img/logo-cgl.png" alt="CGL Fundações" class="op-login-logo" />
   <h1>Diário de campo</h1>
@@ -36,7 +36,7 @@
   </form>
 </main>
 
-<!-- ===== Troca da senha ===== -->
+
 <main id="op-troca-senha" class="op-login" hidden>
   <h1 id="op-troca-titulo">Troque sua senha</h1>
   <p id="op-troca-texto" class="op-meta"></p>
@@ -49,7 +49,7 @@
   </form>
 </main>
 
-<!-- ===== App ===== -->
+
 <div id="op-app" class="op-app" hidden>
   <header class="op-topo">
     <h1 id="op-titulo">Diário de campo</h1>
@@ -78,7 +78,7 @@
 
 <p id="op-toast" class="op-toast" role="status" aria-live="polite" hidden></p>
 
-<!-- ===== Sessão vencida: só a senha, a fila fica ===== -->
+
 <div id="op-sessao-vencida" class="op-modal" role="dialog" aria-modal="true" aria-labelledby="op-sv-titulo" hidden>
   <form id="op-form-sessao" class="op-bloco">
     <h2 id="op-sv-titulo">Digite a senha de novo</h2>
@@ -89,12 +89,12 @@
   </form>
 </div>
 
-<script src="js/op_core.js?v=c3d172a"></script>
-<script src="js/op_dia.js?v=c3d172a"></script>
-<script src="js/op_equipe.js?v=c3d172a"></script>
-<script src="js/op_estacas.js?v=c3d172a"></script>
-<script src="js/op_parada.js?v=c3d172a"></script>
-<script src="js/op_foto.js?v=c3d172a"></script>
-<script src="js/op_init.js?v=c3d172a"></script>
+<script src="js/op_core.js?v=5c59038"></script>
+<script src="js/op_dia.js?v=5c59038"></script>
+<script src="js/op_equipe.js?v=5c59038"></script>
+<script src="js/op_estacas.js?v=5c59038"></script>
+<script src="js/op_parada.js?v=5c59038"></script>
+<script src="js/op_foto.js?v=5c59038"></script>
+<script src="js/op_init.js?v=5c59038"></script>
 </body>
 </html>

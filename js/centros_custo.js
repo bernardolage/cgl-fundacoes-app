@@ -1,16 +1,16 @@
-/* ====================================================================
-   Módulo: Centros de custo internos (fase 76, 06/10/2026)
-   Terceiro dono de custo, além de obra e TAG: setores da empresa (ligados a um departamento, para ver
-   custo e equipe juntos) e obras internas (construção civil bancada pela CGL, só para controle de custo).
-   O custo vem de vw_custos (compra com NF, saída de estoque, custo avulso, pedido importado do Odoo).
-   Compra para o almoxarifado leva o centro só como identificação: o custo nasce na saída.
-   Prefixo: ccu-. Escrita do cadastro: admin/diretor (RLS).
-   ==================================================================== */
 
-let _ccuLista = [];          // centros_custo
-let _ccuCustos = [];         // linhas de vw_custos com centro (período atual + anterior)
-let _ccuDeps = [];           // departamentos (árvore)
-let _ccuFuncs = [];          // funcionários ativos (só id, nome, função, matrícula, departamento)
+
+
+
+
+
+
+
+
+let _ccuLista = [];
+let _ccuCustos = [];
+let _ccuDeps = [];
+let _ccuFuncs = [];
 let _ccuView = "setor";
 let _ccuAtual = null;
 let _ccuCarregado = false;
@@ -20,7 +20,7 @@ const CCU_TIPO_LBL = { setor: "Setor", obra_interna: "Obra interna" };
 function ccuPodeEditar(){ return !!usuarioAtual && ["diretor","admin"].includes(usuarioAtual.cargo); }
 function ccuRotulo(c){ return c ? `${CCU_TIPO_LBL[c.tipo] || c.tipo}: ${c.nome}` : ""; }
 
-/* período escolhido → [início, fim] e o período anterior de mesmo tamanho */
+
 function ccuPeriodo(){
   const v = $("ccu-periodo")?.value || "mes";
   const hoje = new Date(); const y = hoje.getFullYear(), m = hoje.getMonth();
@@ -33,7 +33,7 @@ function ccuPeriodo(){
   const antFim = new Date(ini.getTime() - 864e5), antIni = new Date(antFim.getTime() - (dias - 1) * 864e5);
   return { ini: dataLocalISO(ini), fim: dataLocalISO(fim), antIni: dataLocalISO(antIni), antFim: dataLocalISO(antFim) };
 }
-/* departamento e todos os filhos */
+
 function ccuDepsDe(depId){
   if(!depId) return [];
   const out = [depId];
@@ -47,7 +47,7 @@ function ccuDepNome(depId){
 }
 function ccuEquipe(c){ const deps = ccuDepsDe(c.departamento_id); return _ccuFuncs.filter(f => deps.includes(f.departamento_id)); }
 
-/* ---------- carga ---------- */
+
 async function carregarCentrosCusto(force){
   const cont = $("ccu-conteudo"); if(!cont) return;
   if(force || !_ccuCarregado){
@@ -86,7 +86,7 @@ function ccuSomas(){
   return s;
 }
 
-/* ---------- painel ---------- */
+
 function renderCentrosCusto(){
   const cont = $("ccu-conteudo"); if(!cont) return;
   document.querySelectorAll("#ccu-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _ccuView));
@@ -122,7 +122,7 @@ function renderCentrosCusto(){
   </table></div>`;
 }
 
-/* ---------- ficha ---------- */
+
 function mostrarPainelCentros(){
   $("ccu-ficha").style.display = "none"; $("ccu-painel").style.display = "";
   _ccuAtual = null;
@@ -210,7 +210,7 @@ async function salvarCentroCusto(){
   if(res.error){ aviso("app-aviso", "Erro ao salvar: " + res.error.message, "erro"); return; }
   aviso("app-aviso", "Centro de custo salvo.", "ok");
   const i = _ccuLista.findIndex(x => x.id === res.data.id); if(i >= 0) _ccuLista[i] = res.data; else _ccuLista.push(res.data);
-  if(typeof cmpCarregarBase === "function") cmpCarregarBase(true);   // selects de destino em Compras
+  if(typeof cmpCarregarBase === "function") cmpCarregarBase(true);
   abrirFichaCentro(res.data);
 }
 async function ccuMudarAtivo(ativo){
@@ -228,7 +228,7 @@ async function ccuPreencherResponsaveis(){
   sel.innerHTML = `<option value="">— ninguém —</option>` + (data || []).map(p => `<option value="${esc(p.id)}">${esc(p.nome)}</option>`).join("");
 }
 
-/* ---------- ligação ---------- */
+
 function ligarCentrosCusto(){
   if(!$("sec-centros")) return;
   document.querySelector('nav button[data-secao="centros"]')?.addEventListener("click", async () => { await ccuPreencherResponsaveis(); carregarCentrosCusto(false); });

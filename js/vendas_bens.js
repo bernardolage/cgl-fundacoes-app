@@ -1,26 +1,26 @@
-/* ====================================================================
-   VENDA DE BENS (fase 96, 20/10/2026) — prefixo vb-
-   Equipamento ou veículo vendido: comprador (livre ou cliente da casa), valor, entrada, plano de parcelas,
-   contrato em PDF (bucket privado vendas-bens), NF, checklist de transferência do veículo e o saldo a receber.
-   Tabelas vendas_bens / vendas_bens_parcelas; views vw_vendas_bens e vw_vendas_parcelas (status do dia, saldo,
-   próxima parcela, dias de atraso, encargo sugerido, resultado contra o valor de aquisição, pendências).
-   Tudo que é regra nasce no banco (migration 20261020_fase96b): numeração VB-AAAA-NNNNN, parcelas do plano, status
-   da venda, baixa do bem (status vendido, ativo = false, localização "vendido", plano preventivo desligado), volta do
-   bem no cancelamento. O front só desenha e grava o que a pessoa digitou.
-   Onde aparece:
-     - ficha do equipamento (js/equipamentos.js): botão "Registrar venda", etapa "Vendido" da statusbar, aba Venda;
-     - Logística › veículo (js/frota.js): botão "Registrar venda" no modal do veículo; a venda abre no modal vb-ficha;
-     - painel de Equipamentos, visão Vendas (filtros, indicadores, exportação .xlsx);
-     - Sala de Comando (js/dashboard.js): KPI "A receber" = medições + vendas; alertas de parcela pelo vw_sc_*_fin;
-     - Carteira (js/carteira.js): bloco "Bens vendidos no ano".
-   Permissões (espelho das policies): registrar e editar = diretor, admin e financeiro; gestor de frota nos veículos e
-   caminhões. Confirmar e estornar recebimento = diretor, admin e financeiro. Valores: quem lê financeiro
-   (podeVerValorObra = pode_ler_financeiro no banco) e o gestor de frota nos veículos; os demais veem só "vendido".
-   Fase 180c (venda dentro de Contratos): o registro da venda cria o contrato venda_bem (no banco); cronograma colado
-   (venda_cronograma_previa/gravar); correção pela Selic com spread e piso (venda_parcela_valor_boleto grava a memória em
-   vendas_bens_boletos; o ajuste da parcela anterior entra na seguinte); boleto anexado à parcela; reserva de domínio
-   (bem vendido_reserva → liberado_retirada → vendido); acessórios que vão com o bem (venda_acessorios_*).
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const VB_STATUS = {
   em_andamento: { label: "Em andamento", cor: "azul" },
   atrasada:     { label: "Atrasada",     cor: "vermelho" },
@@ -47,19 +47,19 @@ const VB_VEICULO = ["veiculo", "caminhao"];
 const VB_MIME = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" };
 const VB_CAMPOS_PLANO = ["valor_venda", "valor_entrada", "forma", "n_parcelas", "primeiro_vencimento", "periodicidade", "intervalo_dias"];
 
-let _vbVendas = null;        // { soStatus, lista, erro } do painel (null = recarregar)
-let _vbPreset = null;        // filtro pedido pela Sala de Comando antes do painel desenhar
-let _vbAlvo = null;          // { equipId, contId } onde a aba Venda está desenhada
-let _vbVendaAtual = null;    // venda aberta (vw_vendas_bens)
-let _vbParcelas = [];        // parcelas da venda aberta (vw_vendas_parcelas)
-let _vbEquipModal = null;    // bem do modal "Registrar venda"
-let _vbEditVenda = null;     // venda em edição no modal (null = nova)
-let _vbParcAtual = null;     // parcela do modal { modo: receber | editar | nova, p }
-let _vbClientes = null;      // clientes para o comprador da casa
-let _vbExtras = null;        // fase 180c: { venda (colunas novas + contrato), parcelas (vw_vendas_parcelas_correcao), acessorios }
-let _vbBoletoParc = null;    // fase 180c: parcela que recebe o boleto anexado
+let _vbVendas = null;
+let _vbPreset = null;
+let _vbAlvo = null;
+let _vbVendaAtual = null;
+let _vbParcelas = [];
+let _vbEquipModal = null;
+let _vbEditVenda = null;
+let _vbParcAtual = null;
+let _vbClientes = null;
+let _vbExtras = null;
+let _vbBoletoParc = null;
 
-/* ---------- permissões (espelho das policies da 96b) ---------- */
+
 function vbEhVeiculo(e){ return !!e && VB_VEICULO.includes(e.tipo); }
 function vbCargo(){ return (typeof usuarioAtual !== "undefined" && usuarioAtual && usuarioAtual.cargo) || ""; }
 function vbSoLeitura(){ return typeof ehSomenteLeitura === "function" && ehSomenteLeitura(); }
@@ -68,26 +68,26 @@ function vbPodeRegistrar(e){
   return ["diretor", "admin", "financeiro"].includes(vbCargo()) || (vbCargo() === "gestor_frota" && vbEhVeiculo(e));
 }
 function vbPodeReceber(){ return !!vbCargo() && !vbSoLeitura() && ["diretor", "admin", "financeiro"].includes(vbCargo()); }
-/* valores da venda: pode_ler_financeiro() no banco (podeVerValorObra no front) e o gestor de frota nos veículos.
-   e = null: "lê alguma venda?" (gestor de frota lê as dos veículos) */
+
+
 function vbPodeLer(e){
   if(!vbCargo()) return false;
   if(typeof podeVerValorObra === "function" && podeVerValorObra()) return true;
   return vbCargo() === "gestor_frota" && (e == null || vbEhVeiculo(e));
 }
 
-/* Resultado da venda (venda menos aquisição), valor e data de aquisição: só quem lê o valor do bem (diretoria, financeiro e
-   auditor; pode_ler_valor_bem() no banco). O valor da venda continua com quem já lia a venda. */
+
+
 function vbPodeVerResultado(){ return typeof podeVerValorBem === "function" && podeVerValorBem(); }
-/* tira das linhas de vw_vendas_bens o que quem não lê o valor do bem não pode receber na tela nem na planilha
-   (com o banco atualizado esses três campos já vêm vazios; a pendência "sem valor de aquisição" continua para todos) */
+
+
 function vbSemValorBem(registros){
   if(vbPodeVerResultado() || !registros) return registros;
   [].concat(registros).forEach(v => { if(v && typeof v === "object"){ delete v.valor_aquisicao; delete v.data_aquisicao; delete v.resultado; } });
   return registros;
 }
 
-/* ---------- utilidades ---------- */
+
 const vbR2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 function vbTag(st){ const o = VB_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`; }
 function vbTagParc(st){ const o = VB_PARC_STATUS[st] || { label: st || "—", cor: "cinza" }; return `<span class="tag ${esc(o.cor)}">${esc(o.label)}</span>`; }
@@ -113,13 +113,13 @@ function vbMsgErro(error){
   return m;
 }
 
-/* ====================================================================
-   Painel de Equipamentos › visão Vendas
-   ==================================================================== */
+
+
+
 async function vbCarregarVendas(forcar){
   if(_vbVendas && !forcar) return _vbVendas;
   if(!vbPodeLer(null)){
-    // quem não lê financeiro vê só que o bem foi vendido (equipamentos é legível por todos)
+
     const { data, error } = await sb.from("equipamentos").select("id,codigo,nome,tipo,placa,baixa_em,status").in("status", EQP_STATUS_VENDIDO).order("codigo");
     _vbVendas = { soStatus: true, lista: data || [], erro: error };
     return _vbVendas;
@@ -152,7 +152,7 @@ function vbFiltradas(lista){
     else if(ano && String(v.ano || "") !== ano) return false;
     if(st === "abertas"){ if(["quitada", "cancelada"].includes(v.status)) return false; }
     else if(st){ if(v.status !== st) return false; }
-    else if(v.status === "cancelada") return false;   // canceladas só pelo filtro de status
+    else if(v.status === "cancelada") return false;
     if(comp && (v.comprador || "") !== comp) return false;
     if(pend && !(v.pendencias || []).includes(pend)) return false;
     if(q){
@@ -164,8 +164,8 @@ function vbFiltradas(lista){
 }
 function vbRenderIndicadores(lista){
   const el = $("vb-indicadores"); if(!el) return;
-  // fase 99b (decisão 4): Vendido / A receber / Vencido são somatórios financeiros: só quem vê KPI (diretor, admin,
-  // financeiro, auditor); quem lê o valor de cada venda (engenharia, comercial, gestor de frota) segue vendo na lista
+
+
   if(typeof podeVerKpiFinanceiro === "function" && !podeVerKpiFinanceiro(() => true)){ el.innerHTML = ""; el.style.display = "none"; return; }
   const anoSel = $("vb-f-ano")?.value;
   const ano = /^\d{4}$/.test(anoSel || "") ? Number(anoSel) : new Date().getFullYear();
@@ -186,7 +186,7 @@ async function vbRenderPainel(){
   const cont = $("eqp-conteudo"); if(!cont) return;
   if(!_vbVendas) cont.innerHTML = `<p class="vazio">Carregando vendas…</p>`;
   const r = await vbCarregarVendas(false);
-  if(typeof _eqpView !== "undefined" && _eqpView !== "vendas") return;   // trocou de visão enquanto carregava
+  if(typeof _eqpView !== "undefined" && _eqpView !== "vendas") return;
   if(r.erro){ cont.innerHTML = `<p class="vazio">Erro ao carregar as vendas: ${esc(r.erro.message)}</p>`; return; }
   const ehStatus = r.soStatus;
   ["vb-f-status", "vb-f-comprador", "vb-f-pend", "btn-vb-exportar"].forEach(id => { const el = $(id); if(el) el.style.display = ehStatus ? "none" : ""; });
@@ -208,7 +208,7 @@ async function vbRenderPainel(){
   vbRenderIndicadores(r.lista);
   if($("eqp-contador")) $("eqp-contador").textContent = `${lista.length} de ${r.lista.filter(v => v.status !== "cancelada").length}`;
   if(!lista.length){ cont.innerHTML = `<p class="vazio">${r.lista.length ? "Nenhuma venda com esses filtros." : "Nenhuma venda registrada. Na ficha do bem, use \"Registrar venda\"."}</p>`; return; }
-  const verRes = vbPodeVerResultado();   // coluna Resultado só para quem lê o valor de aquisição
+  const verRes = vbPodeVerResultado();
   const tot = { valor: 0, rec: 0, saldo: 0, venc: 0 };
   lista.forEach(v => { tot.valor += Number(v.valor_venda) || 0; tot.rec += Number(v.recebido) || 0; tot.saldo += Number(v.saldo) || 0; tot.venc += Number(v.valor_vencido) || 0; });
   cont.innerHTML = `<div class="tabela-rola"><table>
@@ -230,7 +230,7 @@ async function vbRenderPainel(){
     <tfoot><tr><th colspan="4">Total (${lista.length})</th><th class="num">${brl(tot.valor)}</th><th class="num">${brl(tot.rec)}</th><th class="num">${brl(tot.saldo)}</th><th></th><th class="num">${brl(tot.venc)}</th><th colspan="${verRes ? "3" : "2"}"></th></tr></tfoot>
   </table></div>`;
 }
-/* Exportação .xlsx da visão (vendas filtradas + parcelas delas) */
+
 async function vbExportar(){
   const r = await vbCarregarVendas(false);
   if(r.soStatus || typeof XLSX === "undefined"){ aviso("app-aviso", "Exportação indisponível.", "erro"); return; }
@@ -243,7 +243,7 @@ async function vbExportar(){
     if(error){ aviso("app-aviso", "Não foi possível ler as parcelas: " + error.message, "erro"); return; }
     parcelas.push(...(data || []));
   }
-  const verRes = vbPodeVerResultado();   // Valor de aquisição e Resultado só para quem lê o valor do bem
+  const verRes = vbPodeVerResultado();
   const vendas = lista.map(v => ({
     "Venda": v.numero, "Data da venda": v.data_venda || "", "TAG": v.codigo, "Bem": v.equipamento_nome || "", "Tipo": VB_TIPO_LBL[v.tipo] || v.tipo, "Placa": v.placa || "",
     "Comprador": v.comprador || "", "CPF/CNPJ": v.comprador_cpf_cnpj || "", "Contato": v.comprador_contato || "",
@@ -265,7 +265,7 @@ async function vbExportar(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(parc.length ? parc : [{ "Venda": "sem parcelas" }]), "Parcelas");
   XLSX.writeFile(wb, `vendas-de-bens-${hojeISO()}.xlsx`);
 }
-/* Sala de Comando / Para regularizar → painel de Equipamentos na visão Vendas, já filtrado */
+
 function vbAbrirPainel(preset){
   _vbPreset = preset || {};
   _vbVendas = null;
@@ -279,7 +279,7 @@ async function vbAbrirVendaPorId(id){
   if(error || !data){ vbAbrirPainel({}); return; }
   vbAbrirVenda(data);
 }
-/* uma venda: máquina abre a ficha na aba Venda; veículo (sem ficha própria) abre o modal da venda */
+
 async function vbAbrirVenda(v){
   if(v.eh_veiculo || VB_VEICULO.includes(v.tipo)){ await vbAbrirVendaDoBem(v.equipamento_id); return; }
   if(!irParaSecao("equipamentos") || typeof abrirEquipamento !== "function") return;
@@ -287,9 +287,9 @@ async function vbAbrirVenda(v){
   if(typeof ativarTabEquipamento === "function") ativarTabEquipamento("venda");
 }
 
-/* ====================================================================
-   Aba Venda (ficha do equipamento) e modal da venda (veículo)
-   ==================================================================== */
+
+
+
 async function vbAbrirVendaDoBem(equipId){
   const { data: e, error } = await sb.from("equipamentos").select("id,codigo,nome,tipo,placa,status,ativo,venda_id,baixa_em").eq("id", equipId).maybeSingle();
   if(error || !e){ aviso("app-aviso", "Bem não encontrado.", "erro"); return; }
@@ -348,9 +348,9 @@ async function vbRenderAba(e, contId){
 function vbHTMLVenda(v, parcelas, e){
   const podeReg = vbPodeRegistrar(e) && v.status !== "cancelada";
   const podeRec = vbPodeReceber() && v.status !== "cancelada";
-  const chip = (lbl, val, title, cls) => `<div class="chip${cls ? " " + esc(cls) : ""}"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${/* html */ val}</strong></div>`;
+  const chip = (lbl, val, title, cls) => `<div class="chip${cls ? " " + esc(cls) : ""}"${title ? ` title="${esc(title)}"` : ""}><span>${esc(lbl)}</span><strong>${  val}</strong></div>`;
   const temRecebido = parcelas.some(p => Number(p.valor_recebido) > 0 || Number(p.encargos) > 0);
-  const verRes = vbPodeVerResultado();   // chip e nota do resultado só para quem lê o valor de aquisição
+  const verRes = vbPodeVerResultado();
   const resultado = v.resultado != null
     ? `<span class="${v.resultado < 0 ? "txt-perigo" : ""}">${brl(v.resultado)}</span>`
     : `<span class="meta">sem valor de aquisição</span>`;
@@ -372,7 +372,7 @@ function vbHTMLVenda(v, parcelas, e){
       <td class="num">${Number(p.encargos) > 0 ? brl(p.encargos) : (p.encargo_sugerido ? `<span class="meta" title="encargo sugerido pelo contrato (multa + juros pro rata dia)">sug. ${brl(p.encargo_sugerido)}</span>` : "—")}</td>
       <td>${dataBR(p.recebido_em)}</td><td>${esc(VB_FORMAS_REC[p.forma_recebimento] || p.forma_recebimento || "—")}${p.banco ? ` · ${esc(p.banco)}` : ""}</td>
       <td>${vbTagParc(p.status)}</td><td class="meta">${esc(p.observacao || "")}${p.confirmado_por_nome ? `<div>${esc(p.confirmado_por_nome)}</div>` : ""}</td>
-      <td class="col-acao" style="white-space:nowrap;">${/* html */ acoes}</td></tr>`;
+      <td class="col-acao" style="white-space:nowrap;">${  acoes}</td></tr>`;
   }).join("");
   const somaP = parcelas.reduce((s, p) => s + (Number(p.valor) || 0), 0);
   const difPlano = v.valor_venda != null && parcelas.length && Math.abs(vbR2(somaP) - vbR2(v.valor_venda)) > 0.01;
@@ -454,7 +454,7 @@ async function vbAbrirContrato(path){
   if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o contrato: " + (error?.message || "sem link"), "erro"); return; }
   window.open(data.signedUrl, "_blank", "noopener");
 }
-/* supabase-js ignora contentType quando o corpo é File: o MIME vem da extensão e o arquivo é reembalado em Blob */
+
 async function vbEnviarContrato(venda, file){
   const ext = String(file.name || "").split(".").pop().toLowerCase();
   const mime = VB_MIME[ext];
@@ -465,7 +465,7 @@ async function vbEnviarContrato(venda, file){
   const corpo = new Blob([file], { type: mime });
   const up = await sb.storage.from(VB_BUCKET).upload(caminho, corpo, { cacheControl: "3600", contentType: mime, upsert: false });
   if(up.error) throw up.error;
-  // o arquivo anterior fica no bucket (histórico); a venda passa a apontar para o novo
+
   const { error } = await sb.from("vendas_bens").update({ contrato_path: caminho, contrato_nome: file.name }).eq("id", venda.id);
   if(error){ await sb.storage.from(VB_BUCKET).remove([caminho]); throw error; }
 }
@@ -486,7 +486,7 @@ async function vbApagarVenda(v, e){
   await vbAposGravar(e.id);
 }
 
-/* ---------- parcela: receber, editar, nova, estornar, apagar ---------- */
+
 function vbAbrirParcela(modo, p){
   const v = _vbVendaAtual; if(!v) return;
   if(modo !== "nova" && !p) return;
@@ -504,7 +504,7 @@ function vbAbrirParcela(modo, p){
     $("vb-pr-data").value = hojeISO();
     $("vb-pr-valor").value = saldo > 0 ? saldo.toFixed(2) : "";
     $("vb-pr-encargos").value = p.encargo_sugerido ? Number(p.encargo_sugerido).toFixed(2) : "";
-    // fase 180c: parcela corrigida sugere o valor do último boleto calculado (correção + ajuste no campo juros/multa)
+
     const pc = (_vbExtras?.parcelas || []).find(x => x.id === p.id);
     if(pc && pc.corrigida && pc.valor_boleto != null && saldo > 0 && !(Number(p.valor_recebido) > 0)){
       $("vb-pr-encargos").value = Math.max(0, vbR2(Number(pc.valor_boleto) - saldo)).toFixed(2);
@@ -575,9 +575,9 @@ async function vbApagarParcela(p){
   await vbAposGravar(_vbAlvo?.equipId || _vbVendaAtual?.equipamento_id);
 }
 
-/* ====================================================================
-   Modal "Registrar venda" (nova ou edição)
-   ==================================================================== */
+
+
+
 async function vbCarregarClientes(){
   if(_vbClientes) return _vbClientes;
   const { data } = await sb.from("clientes").select("id,nome,cpf_cnpj").order("nome");
@@ -591,7 +591,7 @@ async function vbAbrirRegistro(e, venda){
   _vbEquipModal = e; _vbEditVenda = venda || null;
   vbLimparAviso("vb-aviso");
   await vbCarregarClientes();
-  // fase 180c: correção e reserva não estão na vw_vendas_bens; vêm da tabela
+
   const novas = venda ? (await sb.from("vendas_bens").select("indice,spread_aa,piso_aa,reserva_dominio").eq("id", venda.id).maybeSingle()).data : null;
   const v = venda ? { ...venda, ...(novas || {}) } : {};
   $("vb-cliente-busca").value = "";
@@ -621,7 +621,7 @@ async function vbAbrirRegistro(e, venda){
   $("vb-bloco-veic").style.display = vbEhVeiculo(e) ? "" : "none";
   $("vb-contrato").value = "";
   $("vb-contrato-campo").style.display = venda ? "none" : "";
-  $("vb-ja-recebidas").checked = false;   // fase 180c: sempre desmarcado; só aparece com data da venda no passado
+  $("vb-ja-recebidas").checked = false;
   $("vb-indice").value = v.indice || "nenhum";
   $("vb-spread").value = v.spread_aa ?? "";
   $("vb-piso").value = v.piso_aa ?? "";
@@ -633,7 +633,7 @@ async function vbAbrirRegistro(e, venda){
   $("vb-modal").style.display = "flex";
 }
 function vbFecharRegistro(){ $("vb-modal").style.display = "none"; _vbEquipModal = null; _vbEditVenda = null; }
-/* fase 180c: busca no cliente da casa (a lista tem centenas de nomes); mantém o escolhido mesmo fora do filtro */
+
 function vbFiltrarClientes(selecionado){
   const sel = $("vb-cliente"); if(!sel) return;
   const atual = selecionado != null ? selecionado : sel.value;
@@ -646,7 +646,7 @@ function vbFiltrarClientes(selecionado){
     + lista.slice(0, 300).map(c => `<option value="${esc(c.id)}">${esc(c.nome)}${c.cpf_cnpj ? " · " + esc(c.cpf_cnpj) : " · sem CNPJ"}</option>`).join("");
   sel.value = atual || "";
 }
-/* fase 180c: "já recebidas" só para venda antiga (data no passado), nunca marcado de saída */
+
 function vbToggleJaRecebidas(){
   const campo = $("vb-ja-recebidas-campo"); if(!campo) return;
   const d = $("vb-data").value;
@@ -665,7 +665,7 @@ function vbToggleForma(){
   $("vb-venc-lbl").textContent = parc ? "1º vencimento *" : "Vencimento do saldo *";
   vbPrevia();
 }
-/* prévia do plano, com a mesma regra do gatilho fn_vendas_bens_gerar_parcelas */
+
 function vbPrevia(){
   const el = $("vb-previa"); if(!el) return;
   const valor = Number($("vb-valor").value || 0), ent = Number($("vb-entrada").value || 0), venc = $("vb-venc").value;
@@ -715,7 +715,7 @@ async function vbSalvarRegistro(){
     juros_mora_pct: n("vb-juros"), multa_atraso_pct: n("vb-multa"),
     nf_numero: $("vb-nf").value.trim() || null, nf_data: $("vb-nf-data").value || null,
     observacoes: $("vb-obs").value.trim() || null,
-    // fase 180c: correção e reserva de domínio (o banco zera spread e piso sem índice e põe a data-base na data da venda)
+
     indice: $("vb-indice").value || "nenhum",
     spread_aa: $("vb-indice").value !== "nenhum" ? n("vb-spread") : null,
     piso_aa: $("vb-indice").value !== "nenhum" ? n("vb-piso") : null,
@@ -729,7 +729,7 @@ async function vbSalvarRegistro(){
   if(reg.valor_venda != null && reg.valor_entrada > reg.valor_venda){ vbAvisoModal("vb-aviso", "A entrada é maior que o valor da venda.", "erro"); return; }
   if(forma === "parcelado" && !(reg.n_parcelas >= 1)){ vbAvisoModal("vb-aviso", "Informe o número de parcelas.", "erro"); return; }
   if(reg.intervalo_dias == null && reg.periodicidade === "personalizada"){ vbAvisoModal("vb-aviso", "Informe o intervalo em dias.", "erro"); return; }
-  // fase 180c: parcelado sem 1º vencimento é a venda com cronograma do contrato (colado depois, na aba Venda)
+
   if(reg.valor_venda > 0 && !reg.primeiro_vencimento && !ehCarga && forma !== "parcelado"){ vbAvisoModal("vb-aviso", "Informe o vencimento do saldo (a data da venda, se foi pago no ato).", "erro"); return; }
   if(!(await vbConferirCnpjCliente(reg))) return;
   if(ed){
@@ -753,38 +753,38 @@ async function vbSalvarRegistro(){
     try { await vbEnviarContrato(nova, arquivo); } catch(err){ avisos.push("o contrato não subiu (" + vbMsgErro(err) + "): anexe na aba Venda"); }
   }
   if(jaRecebidas && reg.data_venda && reg.data_venda < hojeISO()){
-    // fase 180c: o banco marca entrada e parcelas vencidas antes de hoje (recusa venda com data de hoje ou futura)
+
     const { error: ep } = await sb.rpc("venda_marcar_ja_recebidas", { p_venda: nova.id });
     if(ep) avisos.push("as parcelas antigas não foram marcadas como recebidas (" + vbMsgErro(ep) + ")");
   }
   vbFecharRegistro();
   aviso("app-aviso", `Venda ${nova.numero} registrada${nova.contrato_id ? " com o contrato de venda em Contratos" : ""}: ${e.codigo} saiu do cadastro operacional${reg.reserva_dominio ? " (reserva de domínio até o crédito da 1ª parcela)" : ""}.${avisos.length ? " Atenção: " + avisos.join("; ") + "." : ""}`, avisos.length ? "aviso" : "ok");
   await vbAposGravar(e.id);
-  // veículo não tem ficha própria: mostra a venda recém-criada (parcelas geradas, checklist de transferência)
+
   if(vbEhVeiculo(e) && $("vb-ficha-modal")?.style.display !== "flex") await vbAbrirVendaDoBem(e.id);
 }
 
-/* ====================================================================
-   Fase 180c: contrato, cronograma colado, correção, boleto, reserva de domínio e acessórios
-   ==================================================================== */
+
+
+
 function vbPodeAcessorios(){ return !!vbCargo() && !vbSoLeitura() && ["diretor", "admin", "financeiro", "gestor_acessorios", "gestor_manutencao"].includes(vbCargo()); }
 const vbPct = v => v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 4 }) + "%";
 const vbFator = v => v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 8, maximumFractionDigits: 8 });
 
-/* uiModal com campos: devolve { acao, valores } lendo os campos pelo id enquanto o diálogo está aberto */
+
 async function vbModalForm(cfg, ids){
   const valores = {};
   const ler = el => el.type === "checkbox" ? el.checked : el.value;
   const ouvir = ev => { const el = ev.target; if(el && ids.includes(el.id)) valores[el.id] = ler(el); };
   document.addEventListener("input", ouvir, true);
   document.addEventListener("change", ouvir, true);
-  const p = uiModal(cfg);   // o <dialog> entra no DOM na hora: lê os valores iniciais
+  const p = uiModal(cfg);
   ids.forEach(id => { const el = document.getElementById(id); if(el) valores[id] = ler(el); });
   try { return { acao: await p, valores }; }
   finally { document.removeEventListener("input", ouvir, true); document.removeEventListener("change", ouvir, true); }
 }
 
-/* cliente da casa sem CNPJ: pede o documento e grava no cliente (só quando o cadastro está vazio) */
+
 async function vbConferirCnpjCliente(reg){
   if(!reg.cliente_id) return true;
   const c = (_vbClientes || []).find(x => x.id === reg.cliente_id);
@@ -880,7 +880,7 @@ function vbHTMLExtras(x, e){
     + (podeAce ? `<div class="vb-acoes">${btn("ace-carregar", "Trazer acessórios do bem", "Lista os acessórios ativos cujo equipamento padrão é este bem")}${pendBaixa ? " " + btn("ace-baixar", "Baixar acessórios vendidos", "Só com o bem liberado para retirada (ou sem reserva de domínio)") : ""}</div>` : "")
     + uiTabela({ colunas: colA, linhas: aces, chaveLinha: "id", erro: x.erroAce ? vbMsgErro(x.erroAce) : null, vazio: "Nenhum acessório listado nesta venda." }),
     aces.length ? `${aces.length} listado(s)` : "");
-  return uiSecao("documento", "Contrato, correção e reserva", `<div class="vb-rv-grade">${/* html */ resumo}</div>${acoes ? `<div class="vb-acoes">${/* html */ acoes}</div>` : ""}`) + boletos + acessorios;
+  return uiSecao("documento", "Contrato, correção e reserva", `<div class="vb-rv-grade">${  resumo}</div>${acoes ? `<div class="vb-acoes">${  acoes}</div>` : ""}`) + boletos + acessorios;
 }
 
 function vbLigarExtras(alvo, e){
@@ -920,7 +920,7 @@ async function vbAbrirContratoVenda(){
   if(typeof irParaSecao === "function" && irParaSecao("contratos") && typeof abrirContrato === "function") abrirContrato(id);
 }
 
-/* ---------- cronograma colado ---------- */
+
 function vbPreviaCronHTML(p){
   const dif = Number(p.diferenca || 0), erros = p.erros || [];
   const ok = !erros.length && dif === 0;
@@ -965,7 +965,7 @@ async function vbColarCronograma(e){
   }
 }
 
-/* ---------- correção e reserva ---------- */
+
 async function vbEditarCorrecao(e){
   const x = _vbExtras; if(!x) return;
   const v = x.venda;
@@ -994,7 +994,7 @@ async function vbEditarCorrecao(e){
   await vbAposGravar(_vbAlvo?.equipId || e.id);
 }
 
-/* ---------- boleto: cálculo, memória em PDF e anexo ---------- */
+
 function vbMemoriaLinhas(b, p){
   const aj = b.ajuste_memoria || {};
   return [
@@ -1030,14 +1030,14 @@ async function vbPDFBoletoPorParcela(parcId){
   if(error || !b){ uiAvisar("Sem memória de cálculo desta parcela: calcule o boleto primeiro.", "aviso"); return; }
   await vbPDFBoleto(b, p);
 }
-/* PDF de uma página com a memória (texto nativo do jsPDF, mesmo rodapé e selo dos outros PDFs) */
+
 async function vbPDFBoleto(b, p){
   try {
     const v = _vbVendaAtual || {};
     const pdf = await pdfNovoDocumento();
     const T = s => pdfTextoWinAnsi(s);
     const esq = 15, larg = 180;
-    try { const logo = await pdfCarregarImagem(PDF_LOGO_SRC, 300); pdf.addImage(logo, "PNG", esq, 10, 16, 16, "logo-cgl", "FAST"); } catch(_){ /* sem logo segue */ }
+    try { const logo = await pdfCarregarImagem(PDF_LOGO_SRC, 300); pdf.addImage(logo, "PNG", esq, 10, 16, 16, "logo-cgl", "FAST"); } catch(_){   }
     pdf.setFont("helvetica", "bold"); pdf.setFontSize(13); pdf.setTextColor(17);
     pdf.text(T("Memória de cálculo do boleto"), esq + 20, 16);
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(9); pdf.setTextColor(68);
@@ -1058,7 +1058,7 @@ async function vbPDFBoleto(b, p){
     const nota = pdf.splitTextToSize(T("Fator = maior entre (Selic diária acumulada × spread) e o piso, compostos pelos dias úteis entre a data-base (inclusive) e o vencimento útil (exclusive), base 252. A Selic publicada pelo Banco Central (série 11) vale até a véspera do cálculo; os dias úteis que faltam usam a Selic meta (série 432). A diferença entre o projetado e a Selic real, ou o pagamento em outra data, entra como ajuste na parcela seguinte."), larg);
     pdf.text(nota, esq, y);
     let selo = null;
-    try { selo = await pdfCarregarImagem(PDF_SELO_SRC, 300); } catch(_){ /* sem selo segue */ }
+    try { selo = await pdfCarregarImagem(PDF_SELO_SRC, 300); } catch(_){   }
     pdfCarimbarRodape(pdf, selo, [10, esq, PDF_BASE_MIN_MM, esq]);
     pdf.save(`boleto-${String(v.numero || "venda").replace(/[^\w-]+/g, "_")}-parcela-${String(p.rotulo || "").replace(/\//g, "-")}.pdf`);
   } catch(err){ uiAvisar("Não foi possível gerar o PDF: " + (err?.message || err), "perigo"); }
@@ -1079,7 +1079,7 @@ async function vbAnexarBoleto(parcId, file, e){
   await vbRenderExtras(e);
 }
 
-/* ---------- acessórios ---------- */
+
 async function vbAcessoriosCarregar(e){
   const { data: n, error } = await sb.rpc("venda_acessorios_carregar", { p_venda: _vbVendaAtual.id });
   if(error){ uiAvisar("Não foi possível listar os acessórios: " + vbMsgErro(error), "perigo"); return; }
@@ -1098,7 +1098,7 @@ async function vbAcessoriosBaixar(e){
   await vbRenderExtras(e);
 }
 
-/* Depois de gravar: redesenha onde a venda estiver na tela (ficha do equipamento, modal do veículo, painel, Logística) */
+
 async function vbAposGravar(equipId){
   _vbVendas = null;
   const fichaEqp = $("eqp-ficha");
@@ -1112,9 +1112,9 @@ async function vbAposGravar(equipId){
   if($("sec-frota")?.classList.contains("ativa") && typeof carregarFrota === "function") carregarFrota(true);
 }
 
-/* ====================================================================
-   Sala de Comando (KPI "A receber") e Carteira ("Bens vendidos no ano")
-   ==================================================================== */
+
+
+
 async function vbResumoAReceber(){
   if(!vbPodeLer(null)) return null;
   const { data, error } = await sb.from("vw_vendas_bens").select("saldo,valor_vencido,status").not("status", "in", "(quitada,cancelada)");
@@ -1132,7 +1132,7 @@ async function vbRenderCarteira(contId){
   const { data, error } = await sb.from("vw_vendas_bens").select("*").neq("status", "cancelada").order("data_venda", { ascending: false, nullsFirst: false });
   if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler as vendas: ${esc(error.message)}</p>`; return; }
   const todas = vbSemValorBem(data || []);
-  const verRes = vbPodeVerResultado();   // Aquisição e Resultado só para quem lê o valor do bem (o admin abre a Carteira e não lê)
+  const verRes = vbPodeVerResultado();
   const doAno = todas.filter(v => Number(v.ano) === ano);
   const semData = todas.filter(v => !v.data_venda);
   const soma = (l, k) => l.reduce((s, v) => s + (Number(v[k]) || 0), 0);
@@ -1157,19 +1157,19 @@ async function vbRenderCarteira(contId){
   $("cart-vb-sem-data")?.addEventListener("click", (ev) => { ev.preventDefault(); vbAbrirPainel({ ano: "sem_data" }); });
 }
 
-/* ---------- ligação ---------- */
+
 function ligarVendasBens(){
   ["vb-f-ano", "vb-f-status", "vb-f-comprador", "vb-f-pend"].forEach(id => $(id)?.addEventListener("change", () => vbRenderPainel()));
   $("vb-busca")?.addEventListener("input", debounce(() => vbRenderPainel()));
   $("btn-vb-exportar")?.addEventListener("click", () => comBotaoTravado("btn-vb-exportar", vbExportar));
-  $("btn-eqp-atualizar")?.addEventListener("click", () => { _vbVendas = null; });   // "Atualizar" do painel também relê as vendas
+  $("btn-eqp-atualizar")?.addEventListener("click", () => { _vbVendas = null; });
   $("vb-indicadores")?.addEventListener("click", (ev) => {
     const k = ev.target.closest("[data-vb-kpi]"); if(!k) return;
     if(k.dataset.vbKpi === "ano"){ const s = $("vb-f-ano"); if(s){ s.value = s.value === k.dataset.ano ? "" : k.dataset.ano; } }
     else { const s = $("vb-f-status"); if(s) s.value = s.value === k.dataset.vbKpi ? "" : k.dataset.vbKpi; }
     vbRenderPainel();
   });
-  // linhas do painel (o clique delegado de #eqp-conteudo em equipamentos.js só reage a data-id)
+
   $("eqp-conteudo")?.addEventListener("click", (ev) => {
     const tr = ev.target.closest("tr[data-vb-venda]");
     if(tr){ const v = (_vbVendas?.lista || []).find(x => x.id === tr.dataset.vbVenda); if(v) vbAbrirVenda(v); return; }
@@ -1184,7 +1184,7 @@ function ligarVendasBens(){
   $("vb-forma")?.addEventListener("change", vbToggleForma);
   $("vb-period")?.addEventListener("change", vbToggleForma);
   ["vb-valor", "vb-entrada", "vb-n", "vb-venc", "vb-intervalo", "vb-data"].forEach(id => $(id)?.addEventListener("input", vbPrevia));
-  $("vb-data")?.addEventListener("input", vbToggleJaRecebidas);   // fase 180c
+  $("vb-data")?.addEventListener("input", vbToggleJaRecebidas);
   $("vb-indice")?.addEventListener("change", vbToggleIndice);
   $("vb-cliente-busca")?.addEventListener("input", debounce(() => vbFiltrarClientes(null)));
   $("vb-cliente")?.addEventListener("change", () => {

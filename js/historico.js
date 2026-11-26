@@ -1,28 +1,28 @@
-/* ====================================================================
-   Módulo: Histórico de registros ("chatter", estilo Odoo)
-   Mostra, na ficha de um cadastro, a linha do tempo de alterações
-   automáticas + notas internas + comunicação, e permite publicar
-   mensagens. Genérico: serve a qualquer entidade (clientes, etc.).
 
-   Lote S55 (#176, 27/10/2026): menção "@usuário". Digitar "@" no compositor
-   abre a lista de usuários ativos ("Nome · cargo"); a escolha entra no texto
-   como "@Nome Sobrenome" e vai como p_mencionados para a RPC chatter_publicar
-   (mensagem + chatter_mencoes numa transação). O mencionado recebe o card
-   "Você foi mencionado por…" na Minha fila (vw_sc_minha_fila_mencoes) e, ao
-   abrir a ficha, chatter_mencoes_marcar_lidas tira o card. Antes da migration
-   a RPC não existe: cai no insert direto de hoje, sem menção.
-   Obra (obras_comentarios) e Chamados têm o próprio "marcar" e ficam fora.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 let _histCtx  = { entidade:null, registroId:null, containerId:null };
-let _histUser = null;   /* { id, nome } do usuário logado (cache) */
-let _histUsuarios = null;          /* lote S55: profiles ativos { id, nome, cargo }, carregados no primeiro "@" */
-let _histMencoes = new Map();      /* lote S55: nome escolhido no picker → id (do compositor aberto) */
-let _histMencoesPendentes = null;  /* lote S55: Set de registro_id com menção não lida (preenchido por dashCarregarFila); null = não carregado */
-let _histPickIdx = -1;             /* lote S55: item realçado no picker */
+let _histUser = null;
+let _histUsuarios = null;
+let _histMencoes = new Map();
+let _histMencoesPendentes = null;
+let _histPickIdx = -1;
 const HIST_MENCAO_MAX = 8;
 
-/* rótulos amigáveis dos campos do banco */
+
 const HIST_CAMPOS = {
   tipo_pessoa:"Tipo de pessoa", nome:"Nome / Razão social", razao_social:"Razão social",
   nome_fantasia:"Nome fantasia", cpf_cnpj:"CPF / CNPJ", inscricao_estadual:"Inscrição estadual",
@@ -32,7 +32,7 @@ const HIST_CAMPOS = {
 };
 const histCampoLabel = (c) => HIST_CAMPOS[c] || c || "campo";
 
-/* usuário logado (id + nome), com cache */
+
 async function histUsuario(){
   if(_histUser) return _histUser;
   const { data:{ user } } = await sb.auth.getUser();
@@ -42,7 +42,7 @@ async function histUsuario(){
   return _histUser;
 }
 
-/* data/hora curta dd/mm/aaaa hh:mm */
+
 function histQuando(iso){
   const d = new Date(iso);
   if(isNaN(d)) return "";
@@ -50,23 +50,23 @@ function histQuando(iso){
   return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/* ---------- lote S55: menções ---------- */
-/* sem acento e minúsculo, para casar "fab" com "Fabrício" */
+
+
 const histNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-/* rótulo do cargo: CARGOS de usuarios.js quando carregado, senão o valor bruto */
+
 const histCargoLabel = (cargo) => (typeof CARGOS !== "undefined" && CARGOS && CARGOS[cargo]) || cargo || "";
-/* usuários ativos (id, nome, cargo), legíveis por todo autenticado (profiles_select_all) */
+
 async function histUsuariosAtivos(){
   if(_histUsuarios) return _histUsuarios;
   const { data, error } = await sb.from("profiles").select("id,nome,cargo").eq("ativo", true).order("nome");
   _histUsuarios = error ? [] : (data || []).filter(p => p.nome);
   return _histUsuarios;
 }
-/* dashCarregarFila (dashboard.js) avisa quais registros têm menção não lida para mim */
+
 function histMencoesPendentesDefinir(ids){
   _histMencoesPendentes = new Set((ids || []).filter(Boolean));
 }
-/* trecho "@xxx" imediatamente antes do cursor (sem quebra de linha nem outro "@"), ou null */
+
 function histTrechoMencao(ta){
   const antes = ta.value.slice(0, ta.selectionStart || 0);
   const m = antes.match(/(^|[\s(])@([^\n@]{0,30})$/);
@@ -80,7 +80,7 @@ async function histAtualizarPicker(){
   const usuarios = await histUsuariosAtivos();
   const u = await histUsuario();
   const pref = histNorm(trecho.prefixo);
-  // casa pelo começo do nome ou de qualquer palavra dele ("fab" → Fabrício; "lima" → Fabrício Lima); nunca o próprio usuário
+
   const achados = usuarios.filter(p => p.id !== u.id && (histNorm(p.nome).startsWith(pref) || histNorm(p.nome).split(/\s+/).some(w => w.startsWith(pref))))
     .slice(0, HIST_MENCAO_MAX);
   if(!achados.length){
@@ -104,7 +104,7 @@ function histPickerMover(delta){
   itens[_histPickIdx].scrollIntoView({ block: "nearest" });
   return true;
 }
-/* troca o "@pref" pelo "@Nome Sobrenome " e guarda a escolha */
+
 function histEscolherMencao(id, nome){
   const ta = $("hist-texto");
   if(!ta || !id || !nome) return;
@@ -126,21 +126,21 @@ function histPickerEscolherAtivo(){
   histEscolherMencao(el.dataset.id, el.dataset.nome);
   return true;
 }
-/* ids dos mencionados cujo "@Nome" ainda está no texto (apagou o nome = não menciona) */
+
 function histMencionadosNoTexto(txt){
   return [..._histMencoes].filter(([nome]) => txt.includes("@" + nome)).map(([, id]) => id);
 }
-/* ao abrir a ficha de um registro com menção não lida para mim, marca como lida e refaz a Minha fila */
+
 async function histMarcarMencoesLidas(entidade, registroId){
   if(!registroId) return;
   if(_histMencoesPendentes && !_histMencoesPendentes.has(registroId)) return;
   const { data, error } = await sb.rpc("chatter_mencoes_marcar_lidas", { p_entidade: entidade, p_registro_id: registroId });
-  if(error || !(Number(data) > 0)) return;   // RPC ausente (antes da migration) ou nada a marcar
+  if(error || !(Number(data) > 0)) return;
   if(_histMencoesPendentes) _histMencoesPendentes.delete(registroId);
   if(typeof dashCarregarFila === "function") dashCarregarFila();
 }
 
-/* monta o painel de histórico dentro de um container */
+
 async function montarHistorico(entidade, registroId, containerId){
   _histCtx = { entidade, registroId, containerId };
   _histMencoes = new Map();
@@ -175,7 +175,7 @@ async function montarHistorico(entidade, registroId, containerId){
     });
   });
   $("hist-publicar").addEventListener("click", histPublicar);
-  // lote S55: picker de menção
+
   const ta = $("hist-texto"), lista = $("hist-mencoes");
   ta.addEventListener("input", histAtualizarPicker);
   ta.addEventListener("click", histAtualizarPicker);
@@ -187,7 +187,7 @@ async function montarHistorico(entidade, registroId, containerId){
     else if(e.key === "Enter" || e.key === "Tab"){ if(histPickerEscolherAtivo()) e.preventDefault(); }
     else if(e.key === "Escape"){ histFecharPicker(); e.preventDefault(); }
   });
-  lista.addEventListener("mousedown", (e) => e.preventDefault());   // não tira o foco do textarea
+  lista.addEventListener("mousedown", (e) => e.preventDefault());
   lista.addEventListener("click", (e) => {
     const el = e.target.closest(".resultado-item[data-id]");
     if(el) histEscolherMencao(el.dataset.id, el.dataset.nome);
@@ -196,13 +196,13 @@ async function montarHistorico(entidade, registroId, containerId){
   histMarcarMencoesLidas(entidade, registroId);
 }
 
-/* esconde o painel (registros novos ainda não têm id) */
+
 function ocultarHistorico(containerId){
   const c = $(containerId);
   if(c){ c.style.display = "none"; c.innerHTML = ""; }
 }
 
-/* lote S55: menções do registro agrupadas por mensagem → [nomes]; vazio antes da migration */
+
 async function histMencoesDoRegistro(entidade, registroId){
   const { data, error } = await sb.from("chatter_mencoes").select("mensagem_id,mencionado_id").eq("entidade", entidade).eq("registro_id", registroId);
   if(error || !data || !data.length) return {};
@@ -219,7 +219,7 @@ async function histMencoesDoRegistro(entidade, registroId){
   return porMsg;
 }
 
-/* carrega e renderiza a linha do tempo */
+
 async function histCarregarTimeline(){
   const { entidade, registroId } = _histCtx;
   const tl = $("hist-timeline");
@@ -247,15 +247,15 @@ async function histCarregarTimeline(){
       const tag = ev.tipo === "comunicacao"
         ? '<span class="tag azul">Comunicação</span>'
         : '<span class="tag ambar">Nota interna</span>';
-      // lote S55: o "@Nome" dos mencionados conhecidos vira tag; o texto já está escapado e a troca é por texto
-      // literal (o nome escapado do mesmo jeito), nunca por regex solta no HTML
-      let texto = linkificarCodigos(esc(ev.texto)).replace(/\n/g,"<br>");   // lote S64-a (#288): "Duplicado de PC-..." vira link
+
+
+      let texto = linkificarCodigos(esc(ev.texto)).replace(/\n/g,"<br>");
       (mencoes[ev.id] || []).forEach(nome => {
         texto = texto.split(esc("@" + nome)).join(`<span class="tag azul">@${esc(nome)}</span>`);
       });
       return `<div class="hist-item hist-msg">
         <div class="hist-item-topo"><strong>${autor}</strong> ${tag}<span class="hist-quando">${esc(quando)}</span></div>
-        <div class="hist-item-corpo">${/* html */ texto}</div>
+        <div class="hist-item-corpo">${  texto}</div>
       </div>`;
     }
     let corpo;
@@ -268,16 +268,16 @@ async function histCarregarTimeline(){
     }
     return `<div class="hist-item hist-log">
       <div class="hist-item-topo"><strong>${autor}</strong><span class="hist-quando">${esc(quando)}</span></div>
-      <div class="hist-item-corpo">${/* html */ corpo}</div>
+      <div class="hist-item-corpo">${  corpo}</div>
     </div>`;
   }).join("");
-  if(typeof resolverCodigosDoc === "function") resolverCodigosDoc(tl);   // lote S64-a: código sem documento volta a texto
+  if(typeof resolverCodigosDoc === "function") resolverCodigosDoc(tl);
 }
 
-/* RPC ainda não existe no banco (migration do lote S55 não aplicada) */
+
 const histRpcAusente = (err) => /PGRST202|42883|Could not find the function|schema cache/i.test(String(err?.message || "") + " " + String(err?.code || ""));
 
-/* publica uma nota interna ou comunicação (lote S55: pela RPC chatter_publicar, com menções) */
+
 async function histPublicar(){
   const campo = $("hist-texto");
   const txt = (campo.value||"").trim();
@@ -289,7 +289,7 @@ async function histPublicar(){
     p_entidade: _histCtx.entidade, p_registro_id: _histCtx.registroId, p_tipo: tipo, p_texto: txt, p_mencionados: mencionados
   });
   if(error && histRpcAusente(error)){
-    // app no ar antes da migration: insert direto de sempre, sem menção
+
     const u = await histUsuario();
     ({ error } = await sb.from("registros_mensagens").insert({
       entidade:    _histCtx.entidade,

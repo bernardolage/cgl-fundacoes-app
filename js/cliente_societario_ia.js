@@ -1,11 +1,11 @@
-/* ====================================================================
-   Fase 183c: leitura por IA do contrato social, da alteração e da procuração (edge function extrair-societario).
-   Na aba "Documentos e assinaturas" (fase 183b), cada documento desses tipos ganha "Ler com IA"; a prévia mostra os
-   signatários sugeridos linha a linha e "Criar selecionados" grava em cliente_signatarios com origem "ia". O banco
-   força "aguardando conferência": a conferência do jurídico, do financeiro ou da diretoria continua obrigatória.
-   CPF e RG nunca vêm da IA: quando o documento traz, a prévia lembra quem confere de digitar na ficha do signatário.
-   Prefixo cli-doc-ia- no DOM e csi nas funções.
-   ==================================================================== */
+
+
+
+
+
+
+
+
 
 const CSI_TIPOS = ["contrato_social", "alteracao_contratual", "procuracao"];
 const CSI_EXT = ["pdf", "jpg", "jpeg", "png"];
@@ -16,7 +16,7 @@ function csiPodeLer(doc){
   const ext = String(doc.storage_path || "").split(".").pop().toLowerCase();
   return CSI_EXT.includes(ext);
 }
-/* procuração sem validade não vira signatário (a 183b exige a validade do procurador) */
+
 function csiPodeAceitar(s){ return !!s && !(s.tipo === "procurador" && !s.valido_ate); }
 function csiParaRegistro(s, clienteId, documentoId){
   return { cliente_id: clienteId, documento_id: documentoId || null, nome: s.nome, cargo: s.cargo || null, tipo: s.tipo,
@@ -24,7 +24,7 @@ function csiParaRegistro(s, clienteId, documentoId){
            minimo_assinaturas: s.forma === "conjunta" ? (s.minimo_assinaturas || 2) : null, valido_ate: s.valido_ate || null, origem: "ia" };
 }
 
-/* botão na linha do documento (chamado pela tabela da 183b) */
+
 function cdoIaBotao(doc){
   if(typeof cdoPodeAnexar === "function" && !cdoPodeAnexar()) return "";
   return csiPodeLer(doc) ? `<button type="button" class="ui-btn" data-cli-doc-ia-ler="${esc(doc.id)}" title="A IA sugere quem assina; nada é gravado sem você aceitar">Ler com IA</button>` : "";
@@ -43,7 +43,7 @@ async function csiLer(docId){
   } catch(e){ box.innerHTML = uiErro(e.message || String(e)); return; }
   if(r.error){
     let msg = r.error.message || "Falha na leitura.";
-    try { const ctx = await r.error.context?.json?.(); if(ctx && ctx.error) msg = ctx.error; } catch(_){ /* fica a mensagem genérica */ }
+    try { const ctx = await r.error.context?.json?.(); if(ctx && ctx.error) msg = ctx.error; } catch(_){   }
     box.innerHTML = uiErro(msg);
     return;
   }
@@ -76,9 +76,9 @@ function renderCsiPrevia(){
   }).join("");
   box.innerHTML = `<div class="cli-doc-form">
     <h3 class="cli-doc-form-tit">${esc(cab.filter(Boolean).join(" · "))}</h3>
-    ${/* html */ avisos.join("")}
+    ${  avisos.join("")}
     ${lista || uiVazio("A IA não encontrou quem assina neste documento.")}
-    ${/* html */ duvidas}
+    ${  duvidas}
     <p class="meta">Os aceitos entram como "Aguardando conferência"; o jurídico, o financeiro ou a diretoria conferem antes de valer para contrato.</p>
     <div class="cli-doc-form-acoes"><button type="button" class="ui-btn" data-cli-doc-ia-fechar="1">Descartar leitura</button>${lista ? '<button type="button" class="ui-btn ui-btn-prim" id="btn-cli-doc-ia-aceitar">Criar selecionados</button>' : ""}</div>
   </div>`;

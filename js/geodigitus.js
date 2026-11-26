@@ -1,35 +1,35 @@
-/* ====================================================================
-   Módulo: Geodigitus pelo S3 — fase 107a
-   - Visão "Chegadas do Geodigitus" no painel do RDO (#sec-rdo, toggle data-view="geo", prefixo geo-): desde a fase 134a,
-     uma linha por grupo (dia + máquina + obra), com Ver estacas, Definir ou Trocar obra, Vincular estacas, Abrir RDO,
-     Resolver de novo e Ignorar; Ver estacas abre as linhas com as ações de cada estaca. Fase 134b: Mudar período do grupo
-     (diurno/noturno, com prévia e motivo, RPCs geodigitus_periodo_previa e geodigitus_definir_periodo_grupo), situação
-     "Aguardando o turno" (pendente_turno: a noite ainda não se decidiu; Resolver de novo chama geodigitus_turnos_reavaliar)
-     e a etiqueta do período no grupo e na estaca. Fase 141: chegada "a confirmar" (vw_geodigitus_estacas), com o bloco
-     "O que foi?" e chips (geodigitus_confirmar, prévia em geodigitus_confirmar_previa).
-     Tudo grava pelas RPCs geodigitus_* (rdo_pode_operar() no banco: admin, engenheiro, assistente de engenharia,
-     encarregado; diretor). As tabelas geodigitus_* só a service role grava.
-   - Fase 184d (#240): indicadores do topo (grupos separados de execuções, metragem, concreto, grupos a conferir),
-     troca "Agrupado / Lista" (guardada no navegador), vínculos e "Obra/contrato a conferir" no grupo (obra que não veio
-     por regra firme: manual, de-para ou contrato exato) e a busca por estaca abre o grupo dela. Só tela: nada muda na
-     resolução da obra nem no vínculo CPU × máquina. Teste: scripts/testar-fase184d.mjs.
-   - Badge "Geodigitus" e sobreconsumo na execução do RDO (geoBadgeExec, chamado por renderExecucoes em rdo.js).
-   - Fase 162: a ação "Perfil" de cada estaca das Chegadas e o selo do RDO, agora clicável, abrem o perfil e o replay da
-     estaca (abrirPerfilEstaca, em js/estaca_perfil.js). É leitura: aparece para todo usuário que vê a tela.
-   - Card "Geodigitus" na Sala de Comando (geoCarregarCardSala, chamado por dashboard.js).
-   - Bloco Geodigitus em Configurações › Integrações (empresa_config.geodigitus_*, só diretor e admin).
-   Regra 1 da fase: o Geodigitus é a fonte primária das estacas de hélice e secante; o Maya complementa.
-   Sem a migration da 107a aplicada, cada parte some ou avisa, sem erro na tela.
-   ==================================================================== */
 
-let _geoDados = null;          // geodigitus_estacas com arquivo, máquina, obra e estaca
-let _geoExecs = {};            // rdo_execucao_id → { sobreconsumo_pct, situacao }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _geoDados = null;
+let _geoExecs = {};
 let _geoIndisponivel = false;
-let _geoModal = null;          // { tipo: "obra" | "estaca", geo } ou { tipo: "grupo_obra" | "grupo_estaca" | "grupo_ignorar" | "grupo_periodo", grupo, geos }
-let _geoGrupos = [];           // grupos da última tela
-const _geoAbertos = new Set(); // chaves dos grupos com as estacas abertas
-let _geoUltimaBusca = "";      // fase 184d: a busca que já abriu os grupos dela
-let _geoModo = (() => { try { return localStorage.getItem("geo-modo") === "lista" ? "lista" : "agrupado"; } catch(e){ return "agrupado"; } })();   // fase 184d
+let _geoModal = null;
+let _geoGrupos = [];
+const _geoAbertos = new Set();
+let _geoUltimaBusca = "";
+let _geoModo = (() => { try { return localStorage.getItem("geo-modo") === "lista" ? "lista" : "agrupado"; } catch(e){ return "agrupado"; } })();
 
 const GEO_SITUACAO_LBL = {
   pendente_maquina: "Sem máquina", pendente_obra: "Sem obra", pendente_estaca: "Estaca a vincular",
@@ -39,12 +39,12 @@ const GEO_SITUACAO_COR = {
   pendente_maquina: "vermelho", pendente_obra: "vermelho", pendente_estaca: "ambar", pendente_rdo_finalizado: "ambar", pendente_turno: "cinza",
   vinculada: "verde", conciliada: "verde", ignorada: "cinza"
 };
-// fase 134b: pendente_turno fica fora de GEO_PENDENTES de propósito: aguardar a noite não é pendência (nem em Para regularizar)
+
 const GEO_TURNO_LBL = { diurno: "Diurno", noturno: "Noturno" };
 const GEO_PENDENTES = ["pendente_maquina", "pendente_obra", "pendente_estaca", "pendente_rdo_finalizado"];
 const GEO_FILTRO_SIT = { geodigitus_estaca_sem_maquina: "pendente_maquina", geodigitus_estaca_sem_obra: "pendente_obra",
   geodigitus_estaca_sem_cadastro: "pendente_estaca", geodigitus_rdo_finalizado: "pendente_rdo_finalizado", geodigitus_estaca_a_confirmar: "a_confirmar" };
-// fase 141: o que a chegada pode ter sido e por que ela pede confirmação
+
 const GEO_CONFIRMACOES = [
   { valor: "refuro", rotulo: "Refuro" }, { valor: "teste", rotulo: "Teste de máquina" }, { valor: "ok_arquivo", rotulo: "Está certa" },
   { valor: "duplicada", rotulo: "Duplicada" }, { valor: "outro", rotulo: "Outro" }
@@ -53,7 +53,7 @@ const GEO_RAZAO_LBL = { arquivo_incompleto: "arquivo sem o fim da perfuração",
 const geoRazoesTxt = (g) => (g.razoes || []).map(r => GEO_RAZAO_LBL[r] || r).join(", ");
 const geoConfirmacaoLbl = (g) => (GEO_CONFIRMACOES.find(c => c.valor === g.confirmacao)?.rotulo || g.confirmacao) + (g.confirmacao_motivo ? " · " + motivoRefuradaLbl(g.confirmacao_motivo) : "");
 
-/* espelha rdo_pode_operar() do banco */
+
 function geoPodeOperar(){
   return !!usuarioAtual && !ehSomenteLeitura() && ["diretor", "admin", "engenheiro", "assistente_engenharia", "encarregado"].includes(usuarioAtual.cargo);
 }
@@ -61,7 +61,7 @@ const geoIndisp = (err) => !!err && ["42P01", "PGRST205", "PGRST200", "42703", "
 const geoNum = (v, casas = 2) => v == null ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 const geoHora = (ts) => ts ? new Date(ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "—";
 function geoTagSobre(pct, volumeM3){
-  // fase 171a: volume zero e sobreconsumo fora de −5% a +60% são medição ruim, não sobreconsumo (js/estaca_parecer.js)
+
   const faixa = typeof eppFaixaSobre === "function" ? eppFaixaSobre(pct, volumeM3) : null;
   if(faixa === "nao_medido") return `<span class="tag cinza" title="Nenhum litro de concreto foi medido: confira o sensor de pulsos da bomba">não medido</span>`;
   if(faixa === "implausivel") return `<span class="tag azul" title="Sobreconsumo de ${esc(geoNum(pct, 1))}%, fora da faixa plausível: confira os litros por pulso da bomba e o Ø digitado">fora do plausível</span>`;
@@ -70,7 +70,7 @@ function geoTagSobre(pct, volumeM3){
   return `<span class="tag ${alerta ? "ambar" : "cinza"}" title="Sobreconsumo de concreto sobre o volume teórico (Ø × profundidade)">${Number(pct) > 0 ? "+" : ""}${esc(geoNum(pct, 1))}%</span>`;
 }
 
-/* ---------- Chegadas do Geodigitus ---------- */
+
 async function geoCarregar(force){
   if(_geoDados && !force) return _geoDados;
   const { data, error } = await sb.from("geodigitus_estacas")
@@ -80,14 +80,14 @@ async function geoCarregar(force){
   if(error){ _geoIndisponivel = geoIndisp(error); _geoDados = []; if(!_geoIndisponivel) aviso("app-aviso", "Não foi possível carregar as chegadas do Geodigitus: " + error.message, "erro"); return _geoDados; }
   _geoIndisponivel = false;
   _geoDados = data || [];
-  // fase 141: a leitura é à parte; sem a migration, a tela segue sem a confirmação
+
   const conf = await lerTudo(() => sb.from("vw_geodigitus_estacas").select("id,a_confirmar,razoes,confirmacao,confirmacao_motivo,confirmacao_obs").or("a_confirmar.eq.true,confirmacao.not.is.null"));
   if(!conf.error){
     const porId = new Map(conf.data.map(c => [c.id, c]));
     _geoDados.forEach(g => { const c = porId.get(g.id); if(c) Object.assign(g, c); });
   }
-  // hotfix 320: tipo do diário escolhido e de onde veio, só das máquinas de mais de um serviço ("maquina" = um serviço só,
-  // sem motivo a mostrar); leitura à parte: sem a migration, a tela segue sem o motivo
+
+
   if(_geoDados.length){
     const tip = await lerTudo(() => sb.from("geodigitus_estacas").select("id,tipo_servico,tipo_servico_origem").neq("tipo_servico_origem", "maquina"));
     if(!tip.error){
@@ -119,7 +119,7 @@ function geoFiltradas(){
 }
 function geoAcoesHTML(g){
   const pode = geoPodeOperar(), b = [];
-  // fase 162: leitura, vale para todo usuário que vê a tela (inclusive o só leitura)
+
   b.push(`<button type="button" class="btn-sec btn-sm" data-geo-acao="perfil" data-geo="${esc(g.id)}" title="Gráfico por profundidade e replay da execução, com o que o computador de bordo gravou">Perfil</button>`);
   if(pode && g.situacao === "pendente_obra") b.push(`<button type="button" class="btn-sec btn-sm" data-geo-acao="obra" data-geo="${esc(g.id)}">Definir obra</button>`);
   if(pode && (g.situacao === "pendente_estaca" || (["vinculada", "conciliada"].includes(g.situacao) && !g.estaca_id))) b.push(`<button type="button" class="btn-sec btn-sm" data-geo-acao="estaca" data-geo="${esc(g.id)}">Vincular estaca</button>`);
@@ -130,12 +130,12 @@ function geoAcoesHTML(g){
   if(pode && g.situacao !== "ignorada" && !g.rdo_execucao_id) b.push(`<button type="button" class="btn-sec btn-sm acao-perigo" data-geo-acao="ignorar" data-geo="${esc(g.id)}">Ignorar</button>`);
   return b.join(" ");
 }
-/* ---------- Chegadas por grupo (fase 134a): dia + máquina (sem máquina, a CPU) + obra; agrupa no navegador, sem view ---------- */
+
 const GEO_SIT_GRUPO = { vinculada: "no diário", conciliada: "no diário", pendente_estaca: "a vincular", pendente_obra: "sem obra",
   pendente_maquina: "sem máquina", pendente_rdo_finalizado: "com diário finalizado", pendente_turno: "aguardando o turno", ignorada: "ignorada(s)" };
 const geoParaVincular = (g) => !!g.obra_id && !g.estaca_id && ["pendente_estaca", "vinculada", "conciliada"].includes(g.situacao);
 const geoParaResolver = (g) => ["pendente_maquina", "pendente_obra", "pendente_rdo_finalizado", "pendente_turno"].includes(g.situacao);
-// fase 134b: período da estaca = o do diário em que está (nulo = diurno); sem diário, o decidido à mão, se houver
+
 const geoTurno = (g) => g.rdo ? (g.rdo.turno_campo === "noturno" ? "noturno" : "diurno") : (g.turno_manual || null);
 const geoParaPeriodo = (g) => g.situacao !== "ignorada" && (!!g.rdo_execucao_id || g.situacao === "pendente_turno");
 function geoTagTurno(turno, extra){
@@ -143,7 +143,7 @@ function geoTagTurno(turno, extra){
   return `<span class="tag ${turno === "noturno" ? "azul" : "cinza"}" title="Período do diário (fase 134b)">${esc(GEO_TURNO_LBL[turno] || turno)}${extra ? " " + esc(extra) : ""}</span>`;
 }
 const geoDistintos = (lista) => [...new Set(lista.filter(Boolean))];
-/* o mesmo dia do resolver: início da perfuração em Brasília; senão a pasta do arquivo */
+
 function geoDia(g){
   return g.perfuracao_inicio ? new Date(g.perfuracao_inicio).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }) : (g.arquivo?.data_arquivo || "");
 }
@@ -159,9 +159,9 @@ function geoGrupos(dados){
   grupos.forEach(gr => gr.estacas.sort((a, b) => String(a.perfuracao_inicio || "").localeCompare(String(b.perfuracao_inicio || "")) || String(a.numero_txt || "").localeCompare(String(b.numero_txt || ""), "pt-BR", { numeric: true })));
   return grupos;
 }
-/* ---------- fase 184d (#240): resumo do grupo, indicadores do topo e busca por estaca (funções puras) ---------- */
-// regra firme de geodigitus_obra_avaliar: manual, de-para e contrato com o código exato. O resto (contrato de outro ano,
-// texto da CPU compatível, conferência) é sugestão: o grupo mostra "Obra/contrato a conferir". Nada muda na resolução.
+
+
+
 const GEO_REGRAS_FIRMES = ["manual", "de_para", "contrato"];
 const GEO_REGRA_LBL = { manual: "definida à mão", de_para: "de-para", contrato: "contrato exato", contrato_ano: "contrato de outro ano",
   maquina_compativel: "máquina com texto da CPU compatível", conferencia: "em conferência" };
@@ -187,13 +187,13 @@ function geoIndicadores(grupos){
   });
   return k;
 }
-// grupos que têm a estaca procurada (número da CPU ou da estaca vinculada)
+
 function geoChavesBusca(grupos, q){
   q = String(q || "").trim().toLowerCase();
   if(!q) return [];
   return grupos.filter(gr => gr.estacas.some(g => `${g.numero_txt || ""} ${g.estaca?.numero || ""}`.toLowerCase().includes(q))).map(gr => gr.chave);
 }
-/* a obra que a CPU aponta, quando não é a gravada; com mais de uma, a de mais estacas */
+
 function geoSugestaoGrupo(lista){
   const n = new Map();
   lista.forEach(g => {
@@ -213,7 +213,7 @@ function geoSituacaoGrupo(lista){
 }
 function geoObraGrupoHTML(gr){
   const sug = geoSugestaoGrupo(gr.estacas);
-  const res = geoResumoGrupo(gr), conferir = res.aConferir;   // fase 184d: regra que não é firme também pede conferência
+  const res = geoResumoGrupo(gr), conferir = res.aConferir;
   const regrasTxt = res.regras.map(r => GEO_REGRA_LBL[r] || r).join(", ") || "sem regra";
   const txts = geoDistintos(gr.estacas.map(g => g.obra_txt));
   return `${gr.obra_id ? linkObra(gr.obra_id, gr.obra?.codigo || "obra") : `<span class="tag vermelho">Sem obra</span>`}${gr.estacas.some(g => g.obra_inferida) ? ` <span class="tag cinza" title="Obra vinda da mobilização ou do vínculo da máquina, com o que o operador digitou na CPU compatível">pela máquina</span>` : ""}${conferir ? ` <span class="tag ambar" title="A obra veio por sugestão (${esc(regrasTxt)}${sug ? ", e a CPU aponta outra" : ""}), não por regra firme (definida à mão, de-para ou contrato exato). Confira obra e contrato.">Obra/contrato a conferir</span>` : ""}
@@ -229,33 +229,33 @@ function geoAcoesGrupoHTML(gr){
   const vincular = gr.estacas.filter(geoParaVincular).length;
   if(pode && vincular) b.push(botao("g-estaca", "Vincular estacas (" + vincular + ")"));
   const aConfirmar = gr.estacas.filter(g => g.a_confirmar).length;
-  if(pode && aConfirmar) b.push(botao("g-confirmar", "O que foi? (" + aConfirmar + ")"));   // fase 141
+  if(pode && aConfirmar) b.push(botao("g-confirmar", "O que foi? (" + aConfirmar + ")"));
   if(gr.estacas.some(g => g.rdo_id)) b.push(botao("g-rdo", "Abrir RDO"));
-  if(pode && vivas.some(geoParaPeriodo)) b.push(botao("g-periodo", "Mudar período"));   // fase 134b
+  if(pode && vivas.some(geoParaPeriodo)) b.push(botao("g-periodo", "Mudar período"));
   if(pode && gr.estacas.some(geoParaResolver)) b.push(botao("g-resolver", "Resolver de novo"));
   if(pode && vivas.some(g => !g.rdo_execucao_id)) b.push(botao("g-ignorar", "Ignorar", true));
   return b.join(" ");
 }
-// fase 184d: comContexto = vista "Lista" (uma linha por execução, com data, obra e máquina na frente)
+
 function geoLinhasEstacasHTML(gr, comContexto){
   const ctxTh = comContexto ? `<th>Data</th><th>Obra</th><th>Máquina</th>` : "";
   const ctxTd = (g) => comContexto ? `<td>${esc(dataBR(geoDia(g)))}</td>
-      <td>${g.obra_id ? /* html */ linkObra(g.obra_id, g.obra?.codigo || "obra") : `<span class="tag vermelho">Sem obra</span>`}${g.obra_id && !geoRegraFirme(g.obra_regra) ? ` <span class="tag ambar" title="A obra veio por sugestão (${esc(GEO_REGRA_LBL[g.obra_regra] || g.obra_regra || "sem regra")}), não por regra firme">a conferir</span>` : ""}${g.contrato_txt ? `<div class="meta">Contrato ${esc(g.contrato_txt)}</div>` : ""}</td>
+      <td>${g.obra_id ?   linkObra(g.obra_id, g.obra?.codigo || "obra") : `<span class="tag vermelho">Sem obra</span>`}${g.obra_id && !geoRegraFirme(g.obra_regra) ? ` <span class="tag ambar" title="A obra veio por sugestão (${esc(GEO_REGRA_LBL[g.obra_regra] || g.obra_regra || "sem regra")}), não por regra firme">a conferir</span>` : ""}${g.contrato_txt ? `<div class="meta">Contrato ${esc(g.contrato_txt)}</div>` : ""}</td>
       <td>${g.equipamento?.codigo ? `<strong>${esc(g.equipamento.codigo)}</strong>` : `<span class="meta">CPU ${esc(g.arquivo?.imei || "?")}</span>`}</td>` : "";
   return `<div class="tabela-rola"><table>
-    <thead><tr>${/* html */ ctxTh}<th>Estaca</th><th class="num">Ø (mm)</th><th class="num">Prof. (m)</th><th class="num">Volume (m³)</th><th>Sobreconsumo</th><th>Perfuração</th><th>Concretagem</th><th>Situação</th><th></th></tr></thead>
-    <tbody>${gr.estacas.map(g => `<tr data-geo-linha="${esc(g.id)}">${/* html */ ctxTd(g)}
+    <thead><tr>${  ctxTh}<th>Estaca</th><th class="num">Ø (mm)</th><th class="num">Prof. (m)</th><th class="num">Volume (m³)</th><th>Sobreconsumo</th><th>Perfuração</th><th>Concretagem</th><th>Situação</th><th></th></tr></thead>
+    <tbody>${gr.estacas.map(g => `<tr data-geo-linha="${esc(g.id)}">${  ctxTd(g)}
       <td><strong>${esc(g.numero_txt || "—")}</strong>${g.refuro ? ` <span class="tag ambar">Refurada</span>` : ""}${g.profundidade_m != null && Number(g.profundidade_m) < 1 ? ` <span class="tag ambar" title="Profundidade abaixo de 1 m. Nada é ignorado sozinho.">conferir: parece teste</span>` : ""}${g.a_confirmar ? ` <span class="tag ambar" title="${esc(geoRazoesTxt(g))}">a confirmar</span>` : ""}${g.confirmacao ? `<div class="meta" title="${esc(g.confirmacao_obs || "")}">Confirmada: ${esc(geoConfirmacaoLbl(g))}</div>` : ""}${g.estaca?.numero ? `<div class="meta">${esc(g.estaca.numero)}${g.estaca.local ? " · " + esc(g.estaca.local) : ""}</div>` : (g.candidatos?.length > 1 ? `<div class="meta">${esc(g.candidatos.length)} candidatas</div>` : "")}</td>
       <td class="num">${esc(geoNum(g.diametro_mm, 0))}</td>
       <td class="num">${esc(geoNum(g.profundidade_m))}</td>
       <td class="num">${esc(geoNum(g.volume_concreto_m3, 3))}</td>
-      <td>${/* html */ geoTagSobre(g.sobreconsumo_pct, g.volume_concreto_m3)}</td>
+      <td>${  geoTagSobre(g.sobreconsumo_pct, g.volume_concreto_m3)}</td>
       <td>${esc(geoHora(g.perfuracao_inicio))}–${esc(geoHora(g.perfuracao_fim))}</td>
       <td>${esc(geoHora(g.concretagem_inicio))}–${esc(geoHora(g.concretagem_fim))}</td>
-      <td><span class="tag ${esc(GEO_SITUACAO_COR[g.situacao] || "cinza")}">${esc(GEO_SITUACAO_LBL[g.situacao] || g.situacao)}</span>${g.rdo && g.rdo.turno_campo === "noturno" ? " " + /* html */ geoTagTurno("noturno", g.rdo.data && g.rdo.data !== geoDia(g) ? "de " + dataBR(g.rdo.data) : "") : ""}${g.turno_manual ? ` <span class="meta" title="Período decidido por uma pessoa (Mudar período do grupo)">período manual</span>` : ""}
+      <td><span class="tag ${esc(GEO_SITUACAO_COR[g.situacao] || "cinza")}">${esc(GEO_SITUACAO_LBL[g.situacao] || g.situacao)}</span>${g.rdo && g.rdo.turno_campo === "noturno" ? " " +   geoTagTurno("noturno", g.rdo.data && g.rdo.data !== geoDia(g) ? "de " + dataBR(g.rdo.data) : "") : ""}${g.turno_manual ? ` <span class="meta" title="Período decidido por uma pessoa (Mudar período do grupo)">período manual</span>` : ""}
         ${geoDiarioTxt(g) ? `<div class="meta" title="Máquina de mais de um serviço: o diário sai da estaca casada, do tipo de estaca da obra ou da proposta">${esc(geoDiarioTxt(g))}</div>` : ""}
         ${(g.avisos || []).length ? `<div class="meta" title="${esc((g.avisos || []).join("\n"))}">⚠️ ${esc(g.avisos.length)} aviso(s)</div>` : ""}${g.ignorado_motivo ? `<div class="meta">${esc(g.ignorado_motivo)}</div>` : ""}</td>
-      <td class="col-acao">${/* html */ geoAcoesHTML(g)}</td>
+      <td class="col-acao">${  geoAcoesHTML(g)}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
 async function geoRenderPainel(){
@@ -266,7 +266,7 @@ async function geoRenderPainel(){
   if(_geoIndisponivel){ cont.innerHTML = `<p class="vazio">Chegadas do Geodigitus ainda não disponíveis (a migration da fase 134a não foi aplicada).</p>`; return; }
   const dados = geoFiltradas();
   _geoGrupos = geoGrupos(dados);
-  // fase 184d: a busca por estaca abre o grupo dela (só quando a busca muda; depois dá para fechar)
+
   const q = ($("geo-busca")?.value || "").trim();
   if(q !== _geoUltimaBusca){ _geoUltimaBusca = q; geoChavesBusca(_geoGrupos, q).forEach(ch => _geoAbertos.add(ch)); }
   const k = geoIndicadores(_geoGrupos);
@@ -274,10 +274,10 @@ async function geoRenderPainel(){
   const modoBtn = (m, rot, tit) => `<button type="button" class="geo-modo-btn${_geoModo === m ? " ativo" : ""}" data-geo-modo="${esc(m)}" title="${esc(tit)}">${esc(rot)}</button>`;
   const topo = `<div class="lista-topo">
       <div class="ui-kpis">${uiKpi(String(k.grupos), "Grupos", "dia + máquina + obra")}${uiKpi(String(k.execucoes), "Execuções", "estacas que chegaram da CPU")}${uiKpi(geoNum(k.metragem), "Metragem (m)")}${uiKpi(geoNum(k.concreto, 3), "Concreto (m³)")}${uiKpi(String(k.gruposConferir), "Grupos a conferir", "obra ou contrato por sugestão")}${uiKpi(String(k.pendentes), "Execuções pendentes")}</div>
-      <div class="serv-views">${/* html */ modoBtn("agrupado", "Agrupado", "Um grupo por dia, máquina e obra, com os totais")}${/* html */ modoBtn("lista", "Lista", "Uma linha por execução")}</div>
+      <div class="serv-views">${  modoBtn("agrupado", "Agrupado", "Um grupo por dia, máquina e obra, com os totais")}${  modoBtn("lista", "Lista", "Uma linha por execução")}</div>
     </div>`;
   if(!dados.length){ cont.innerHTML = topo + `<p class="vazio">Nenhuma estaca do Geodigitus com esses filtros.</p>`; return; }
-  const maquinas = typeof eppMaquinasHTML === "function" ? eppMaquinasHTML(dados) : "";   // fase 171a
+  const maquinas = typeof eppMaquinasHTML === "function" ? eppMaquinasHTML(dados) : "";
   if(_geoModo === "lista"){
     const lista = [...dados].sort((a, b) => geoDia(b).localeCompare(geoDia(a)) || String(a.perfuracao_inicio || "").localeCompare(String(b.perfuracao_inicio || "")));
     cont.innerHTML = topo + maquinas + geoLinhasEstacasHTML({ estacas: lista }, true);
@@ -288,17 +288,17 @@ async function geoRenderPainel(){
     <tbody>${_geoGrupos.map(gr => {
       const contratos = geoDistintos(gr.estacas.map(g => g.contrato_txt));
       const avisos = geoDistintos(gr.estacas.flatMap(g => g.avisos || []));
-      const diarios = geoDistintos(gr.estacas.map(g => geoDiarioTxt(g, gr.estacas.length === 1)));   // hotfix 320
+      const diarios = geoDistintos(gr.estacas.map(g => geoDiarioTxt(g, gr.estacas.length === 1)));
       const teste = gr.estacas.filter(g => g.profundidade_m != null && Number(g.profundidade_m) < 1).length;
       const aConfirmar = gr.estacas.filter(g => g.a_confirmar).length;
       const sit = geoSituacaoGrupo(gr.estacas);
-      const res = geoResumoGrupo(gr);   // fase 184d: totais e vínculos do grupo
-      // fase 134b: período dos diários do grupo (o mesmo dia pode ter diurno e noturno)
+      const res = geoResumoGrupo(gr);
+
       const nNot = gr.estacas.filter(g => geoTurno(g) === "noturno").length, nDiu = gr.estacas.filter(g => geoTurno(g) === "diurno").length;
       const periodo = nNot && nDiu ? geoTagTurno("diurno", nDiu) + " " + geoTagTurno("noturno", nNot) : nNot ? geoTagTurno("noturno") : "";
       return `<tr data-geo-grupo-linha="${esc(gr.chave)}">
-        <td>${dataBR(gr.dia)}${periodo ? `<div>${/* html */ periodo}</div>` : ""}</td>
-        <td>${/* html */ geoObraGrupoHTML(gr)}</td>
+        <td>${dataBR(gr.dia)}${periodo ? `<div>${  periodo}</div>` : ""}</td>
+        <td>${  geoObraGrupoHTML(gr)}</td>
         <td>${esc(contratos.length > 1 ? contratos.length + " contratos" : (contratos[0] || "—"))}</td>
         <td>${gr.maquina ? `<strong>${esc(gr.maquina)}</strong>` : `<span class="meta">CPU ${esc(gr.imei)}</span>`}</td>
         <td class="num">${esc(gr.estacas.length)}</td>
@@ -309,12 +309,12 @@ async function geoRenderPainel(){
           ${aConfirmar ? `<div><span class="tag ambar" title="Arquivo sem o fim da perfuração, número de refuro, menos de 1 m ou o mesmo número no dia">a confirmar (${esc(aConfirmar)})</span></div>` : ""}
           <div class="meta" title="Com estaca = vinculada a uma estaca cadastrada; no diário = virou execução do RDO">Vínculos: ${esc(res.comEstaca)} de ${esc(res.estacas)} com estaca · ${esc(res.noDiario)} no diário</div>
           ${diarios.length ? `<div class="meta" title="Máquina de mais de um serviço: o diário sai da estaca casada, do tipo de estaca da obra ou da proposta">${esc(diarios.join(" · "))}</div>` : ""}
-          ${avisos.length ? `<div class="meta">⚠️ ${esc(avisos.join(" · "))}${/* html */ geoLinkTipoServico(gr, avisos)}</div>` : ""}</td>
-        <td class="col-acao">${/* html */ geoAcoesGrupoHTML(gr)}</td>
-      </tr>${_geoAbertos.has(gr.chave) ? `<tr data-geo-grupo-aberto="${esc(gr.chave)}"><td colspan="9">${/* html */ geoLinhasEstacasHTML(gr)}</td></tr>` : ""}`;
+          ${avisos.length ? `<div class="meta">⚠️ ${esc(avisos.join(" · "))}${  geoLinkTipoServico(gr, avisos)}</div>` : ""}</td>
+        <td class="col-acao">${  geoAcoesGrupoHTML(gr)}</td>
+      </tr>${_geoAbertos.has(gr.chave) ? `<tr data-geo-grupo-aberto="${esc(gr.chave)}"><td colspan="9">${  geoLinhasEstacasHTML(gr)}</td></tr>` : ""}`;
     }).join("")}</tbody></table></div>`;
 }
-/* Para regularizar (dashboard.js): Chegadas filtrada pela situação; uma estaca só, com diário, abre o RDO */
+
 async function geoAbrirPreset(filtro, geoId){
   if(typeof _rdoView !== "undefined") _rdoView = "geo";
   document.querySelectorAll("#rdo-painel .serv-view-btn").forEach(x => x.classList.toggle("ativo", x.dataset.view === "geo"));
@@ -328,7 +328,7 @@ async function geoAbrirPreset(filtro, geoId){
   if(geoId){
     await geoCarregar(false);
     const g = (_geoDados || []).find(x => x.id === geoId);
-    if(filtro === "geodigitus_estaca_a_confirmar"){   // fase 141: uma só abre direto o "O que foi?"
+    if(filtro === "geodigitus_estaca_a_confirmar"){
       await geoRenderPainel();
       const gr = (_geoGrupos || []).find(x => x.estacas.some(e => e.id === geoId));
       if(gr && geoPodeOperar()) geoAbrirModalGrupo("g-confirmar", gr);
@@ -336,7 +336,7 @@ async function geoAbrirPreset(filtro, geoId){
   }
 }
 
-/* hotfix 320: tipo do diário da chegada de máquina de mais de um serviço e de onde veio ("" para máquina de um serviço só) */
+
 const GEO_TIPO_ORIGEM_LBL = { obra: "pelo tipo de estaca da obra", proposta: "pela proposta", padrao: "pelo padrão da máquina", manual: "definido na chegada" };
 function geoDiarioTxt(g, comEstaca = true){
   const o = g && g.tipo_servico_origem;
@@ -346,7 +346,7 @@ function geoDiarioTxt(g, comEstaca = true){
   const por = o === "estaca" ? (comEstaca && (g.estaca?.numero || g.numero_txt) ? `pela estaca ${g.estaca?.numero || g.numero_txt}` : "pela estaca") : (GEO_TIPO_ORIGEM_LBL[o] || o);
   return `Diário: ${rot} (${por})`;
 }
-/* hotfix 320: "Definir agora" do caso 4: escolhe entre os serviços da máquina e grava nas chegadas do grupo (RPC definer) */
+
 async function geoDefinirTipoGrupo(gr){
   const eq = String(gr.chave || "").split("|")[1] || "";
   const ids = gr.estacas.filter(g => g.tipo_servico_origem === "definir" && !g.rdo_execucao_id).map(g => g.id);
@@ -364,12 +364,12 @@ async function geoDefinirTipoGrupo(gr){
   aviso("app-aviso", `${Number(data?.definidas || 0)} chegada(s) com diário de ${rot(tipo)}.`, "ok");
   _geoDados = null; return geoRenderPainel();
 }
-/* ---------- ações do grupo (fase 134a) ---------- */
-/* lote S66-f (#320): "Definir agora" no aviso de máquina sem tipo de serviço padrão, para quem pode (RPC em equipamentos.js) */
+
+
 function geoLinkTipoServico(gr, avisos){
   const eq = String(gr.chave || "").split("|")[1] || "";
   if(!eq || eq.startsWith("cpu:")) return "";
-  // hotfix 320: obra com dois serviços da máquina (caso 4): o tipo vai na chegada, não na ficha da máquina
+
   if(gr.estacas.some(g => g.tipo_servico_origem === "definir" && !g.rdo_execucao_id)){
     if(!geoPodeOperar()) return "";
     return ` <button type="button" class="btn-sec btn-sm" data-geo-acao="g-tipo" data-geo-grupo="${esc(gr.chave)}" title="A obra tem dois serviços desta máquina e a chegada não casou com estaca: escolha o diário destas chegadas (fica no histórico)">Definir agora</button>`;
@@ -383,7 +383,7 @@ async function geoAcaoGrupo(acao, chave){
     if(_geoAbertos.has(chave)) _geoAbertos.delete(chave); else _geoAbertos.add(chave);
     return geoRenderPainel();
   }
-  if(acao === "g-tipo") return geoDefinirTipoGrupo(gr);   // hotfix 320
+  if(acao === "g-tipo") return geoDefinirTipoGrupo(gr);
   if(acao === "g-rdo"){
     const rdo = gr.estacas.find(g => g.rdo_id)?.rdo_id;
     if(rdo && typeof abrirRDO === "function") abrirRDO(rdo);
@@ -396,7 +396,7 @@ async function geoAcaoGrupo(acao, chave){
       if(error){ erros++; ultimoErro = error.message; }
       else if(data?.situacao !== g.situacao) n++;
     }
-    // fase 134b: quem aguarda a noite passa pela reavaliação (noite encerrada e curta vai para o diurno; aberta continua)
+
     const turnos = gr.estacas.filter(g => g.situacao === "pendente_turno").map(g => g.id);
     let aguardando = 0;
     if(turnos.length){
@@ -448,7 +448,7 @@ async function geoAbrirModalGrupo(acao, gr){
     return;
   }
   if(acao === "g-confirmar"){
-    // fase 141: "O que foi?". Tudo ou nada; teste e duplicada desfazem a execução da chegada, com prévia antes
+
     const lista = gr.estacas.filter(g => g.a_confirmar);
     _geoModal = { tipo: "grupo_confirmar", grupo: gr, geos: lista.map(g => g.id), impedido: false };
     $("geo-modal-titulo").textContent = "O que foi? · " + lista.length + " estaca(s)";
@@ -470,8 +470,8 @@ async function geoAbrirModalGrupo(acao, gr){
     return;
   }
   if(acao === "g-periodo"){
-    // fase 134b: Mudar período do grupo. Mesmas travas da troca de obra; a data de cada estaca segue a regra do período
-    // (noturno: início antes do fim da noite pertence ao dia anterior; diurno: a data do próprio início).
+
+
     const lista = vivas.filter(geoParaPeriodo);
     const nNot = lista.filter(g => geoTurno(g) === "noturno").length, nDiu = lista.filter(g => geoTurno(g) === "diurno").length, nAg = lista.filter(g => g.situacao === "pendente_turno").length;
     const sugerido = nNot > nDiu ? "diurno" : "noturno";
@@ -498,7 +498,7 @@ async function geoAbrirModalGrupo(acao, gr){
       <div class="grade"><div class="campo largo"><label>Motivo</label><input id="geo-modal-motivo" placeholder="Ex.: marcador de início e fim, estaca de teste" /></div></div>`;
   }
 }
-/* prévia da troca: não grava; refeita a cada obra escolhida */
+
 async function geoPreviaTroca(){
   const m = _geoModal, alvo = $("geo-modal-previa"), obra = $("geo-modal-obra")?.value;
   if(!m || !alvo) return;
@@ -516,7 +516,7 @@ async function geoPreviaTroca(){
       ${vazios.length ? `Ficam vazios e saem: ${esc(vazios.map(d => dataBR(d.data) + " (" + d.obra + ")").join(", "))}.` : "Nenhum diário sai."}</p>
     ${imp.length ? `<p class="meta"><span class="tag vermelho">Nada será gravado</span> enquanto houver impedimento:</p><ul class="meta">${imp.map(i => `<li><strong>${esc(i.numero || "?")}</strong>: ${esc(i.motivo)}</li>`).join("")}</ul>` : ""}`;
 }
-/* fase 134b: prévia de Mudar período: não grava; refeita a cada período escolhido */
+
 const geoTurnoEscolhido = () => document.querySelector('#geo-modal-corpo input[name="geo-modal-turno"]:checked')?.value || "";
 async function geoPreviaPeriodo(){
   const m = _geoModal, alvo = $("geo-modal-previa"), turno = geoTurnoEscolhido();
@@ -535,7 +535,7 @@ async function geoPreviaPeriodo(){
       ${vazios.length ? `Ficam vazios e saem: ${esc(vazios.map(d => dataBR(d.data) + " " + (GEO_TURNO_LBL[d.turno] || d.turno).toLowerCase() + " (" + d.obra + ")").join(", "))}.` : "Nenhum diário sai."}</p>
     ${imp.length ? `<p class="meta"><span class="tag vermelho">Nada será gravado</span> enquanto houver impedimento:</p><ul class="meta">${imp.map(i => `<li><strong>${esc(i.numero || "?")}</strong>: ${esc(i.motivo)}</li>`).join("")}</ul>` : ""}`;
 }
-/* fase 141: prévia do "O que foi?": não grava; refeita a cada escolha */
+
 const geoConfMarcadas = () => [...document.querySelectorAll("#geo-modal-corpo [data-geo-conf]:checked")].map(c => c.dataset.geoConf);
 async function geoPreviaConfirmar(){
   const m = _geoModal, alvo = $("geo-modal-previa");
@@ -553,7 +553,7 @@ async function geoPreviaConfirmar(){
   if(["teste", "duplicada"].includes(conf)) partes.push(`saem da conta: <strong>${esc(data.execucoes_apagar)}</strong> execução(ões) apagada(s)`, vazios.length ? `ficam vazios e saem: ${esc(vazios.map(d => dataBR(d.data) + " (" + d.obra + ")").join(", "))}` : "nenhum diário sai");
   if(conf === "refuro") partes.push(`motivo gravado em <strong>${esc(data.execucoes_motivo)}</strong> execução(ões)`);
   if(conf === "ok_arquivo" || conf === "outro") partes.push("só fica registrado; o diário não muda");
-  alvo.innerHTML = `<p class="meta">${/* html */ partes.join(" · ")}.</p>
+  alvo.innerHTML = `<p class="meta">${  partes.join(" · ")}.</p>
     ${Number(data.refuro_sem_modalidade) ? `<p class="meta">⚠️ ${esc(data.refuro_sem_modalidade)} execução(ões) seguem como furo normal no diário; a modalidade não muda por aqui.</p>` : ""}
     ${imp.length ? `<p class="meta"><span class="tag vermelho">Nada será gravado</span> enquanto houver impedimento:</p><ul class="meta">${imp.map(i => `<li><strong>${esc(i.numero || "?")}</strong>: ${esc(i.motivo)}</li>`).join("")}</ul>` : ""}`;
 }
@@ -604,16 +604,16 @@ async function geoConfirmarGrupo(){
   _geoDados = null; geoRenderPainel();
 }
 
-/* ---------- ações ---------- */
+
 async function geoAcao(acao, id){
   const g = (_geoDados || []).find(x => x.id === id); if(!g) return;
-  if(acao === "perfil"){ if(typeof abrirPerfilEstaca === "function") await abrirPerfilEstaca(id); return; }   // fase 162: só lê, não recarrega as chegadas
+  if(acao === "perfil"){ if(typeof abrirPerfilEstaca === "function") await abrirPerfilEstaca(id); return; }
   if(acao === "rdo"){ if(g.rdo_id && typeof abrirRDO === "function") abrirRDO(g.rdo_id); return; }
   if(acao === "cpu"){ if(typeof cpbAbrir === "function") cpbAbrir(g.computador_id); return; }
   if(acao === "obra") return geoAbrirModal("obra", g);
   if(acao === "estaca") return geoAbrirModal("estaca", g);
   if(acao === "resolver" && g.situacao === "pendente_turno"){
-    // fase 134b: a estaca que aguarda a noite passa pela reavaliação (decide se a noite fechou)
+
     const { data, error } = await sb.rpc("geodigitus_turnos_reavaliar", { p_origem: "geodigitus_manual", p_geos: [id] });
     if(error){ aviso("app-aviso", "Não foi possível reavaliar: " + error.message, "erro"); return; }
     aviso("app-aviso", data?.decididas ? "Período decidido: a estaca entrou no diário." : "A noite ainda não fechou: a estaca continua aguardando. Use Mudar período no grupo para decidir já.", data?.decididas ? "ok" : "aviso");
@@ -678,14 +678,14 @@ async function geoSincronizarTudo(){
   const { data, error } = await sb.functions.invoke("geodigitus-sync", { body: { acao: "sincronizar" } });
   if(error){
     let msg = error.message;
-    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){ /* corpo não é JSON */ }
+    try { const j = await error.context?.json?.(); if(j?.error) msg = j.error; } catch(_){   }
     aviso("app-aviso", "Sincronização: " + msg, "erro"); return;
   }
   aviso("app-aviso", `Sincronização: ${data?.cpus || 0} CPU(s), ${data?.arquivos_novos || 0} arquivo(s) novo(s), ${data?.estacas_novas || 0} estaca(s), ${data?.erros || 0} erro(s)${data?.teto_atingido ? " — teto da rodada atingido" : ""}.`, data?.erros ? "aviso" : "ok");
   _geoDados = null; geoRenderPainel();
 }
 
-/* ---------- na execução do RDO: badge Geodigitus e sobreconsumo ---------- */
+
 async function geoCarregarExecs(execs){
   _geoExecs = {};
   const ids = (execs || []).map(e => e.id).filter(Boolean);
@@ -699,13 +699,13 @@ function geoBadgeExec(e){
   const g = e && e.id ? _geoExecs[e.id] : null;
   if(!g && e?.origem_dados !== "geodigitus_s3") return "";
   const titulo = g ? `Do computador de bordo (CPU ${g.arquivo?.imei || "?"})${g.situacao === "conciliada" ? ": conciliada com o que já estava digitado" : ""}` : "Do computador de bordo (Geodigitus)";
-  // fase 162: com a chegada lida (geoCarregarExecs), o selo abre o perfil da estaca (clique ligado em js/estaca_perfil.js)
+
   const selo = g?.id
     ? `<button type="button" class="tag azul epf-selo" data-epf-perfil="${esc(g.id)}" title="${esc(titulo)}. Clique para ver o perfil e o replay da estaca.">Geodigitus</button>`
     : `<span class="tag azul" title="${esc(titulo)}">Geodigitus</span>`;
-  return `<span data-geo-badge="1"> ${/* html */ selo}${g ? geoTagSobre(g.sobreconsumo_pct) : ""}</span>`;
+  return `<span data-geo-badge="1"> ${  selo}${g ? geoTagSobre(g.sobreconsumo_pct) : ""}</span>`;
 }
-/* depois da consulta, só acrescenta os badges na grade já desenhada (não redesenha: não perde o que o usuário digitou) */
+
 function geoAplicarBadgesExec(execs){
   (execs || []).forEach((e, idx) => {
     const td = document.querySelector(`#rdo-execs tr[data-idx="${idx}"] td`);
@@ -715,7 +715,7 @@ function geoAplicarBadgesExec(execs){
   });
 }
 
-/* ---------- Sala de Comando: card Geodigitus ---------- */
+
 function geoPodeVerCard(){
   return !!usuarioAtual && ["diretor", "admin", "auditor", "engenheiro", "assistente_engenharia", "encarregado", "gestor_frota", "gestor_manutencao"].includes(usuarioAtual.cargo);
 }
@@ -737,7 +737,7 @@ async function geoCarregarCardSala(){
   card.style.display = "";
   const c = cfg.data || {};
   window._geoAlertaPct = Number(c.geodigitus_sobreconsumo_alerta_pct ?? 15);
-  window._geoNoturnoIni = String(c.campo_inicio_turno_noturno || "18:00").slice(0, 5);   // fase 134b: texto do modal Mudar período
+  window._geoNoturnoIni = String(c.campo_inicio_turno_noturno || "18:00").slice(0, 5);
   window._geoNoturnoMinH = Number(c.campo_turno_noturno_min_h ?? 2);
   const rodadas = rod.data || [];
   const mb = rodadas.reduce((s, r) => s + Number(r.bytes || 0), 0) / 1048576;
@@ -759,13 +759,13 @@ async function geoCarregarCardSala(){
 }
 function geoCliqueCard(alvo){
   if(alvo === "cpb"){ if(irParaSecao("equipamentos") && typeof cpbAbrirPainel === "function") cpbAbrirPainel(""); return; }
-  if(alvo === "maquinas"){ if(typeof dmhAbrirAba === "function") dmhAbrirAba(); return; }   // fase 139: link para a aba Máquinas hoje
+  if(alvo === "maquinas"){ if(typeof dmhAbrirAba === "function") dmhAbrirAba(); return; }
   if(irParaSecao("rdo")) geoAbrirPreset(alvo === "pendentes" ? "" : "todas", null).then(() => {
     if(alvo === "chegadas"){ if($("geo-f-sit")) $("geo-f-sit").value = ""; if($("geo-f-dia")) $("geo-f-dia").value = hojeISO(); geoRenderPainel(); }
   });
 }
 
-/* ---------- Configurações › Integrações: bloco Geodigitus (empresa_config_admin_write = diretor e admin) ---------- */
+
 async function geoEmpresaCarregarCard(){
   const card = $("usr-geo-card"); if(!card) return;
   const pode = !!usuarioAtual && ["diretor", "admin"].includes(usuarioAtual.cargo);
@@ -773,9 +773,9 @@ async function geoEmpresaCarregarCard(){
   const { data, error } = await sb.from("empresa_config")
     .select("geodigitus_sync_ativo,geodigitus_usuario,geodigitus_regiao,geodigitus_dias_retro,geodigitus_max_req_rodada,geodigitus_cota_mb_mes,geodigitus_sobreconsumo_alerta_pct,campo_fim_turno_noturno,campo_inicio_turno_noturno,campo_turno_noturno_min_h")
     .eq("id", 1).maybeSingle();
-  if(error){ card.style.display = "none"; return; }   // sem a migration da 107a (ou da 134b)
+  if(error){ card.style.display = "none"; return; }
   card.style.display = "";
-  // fase 134b: parâmetros da regra do noturno
+
   if($("usr-geo-noturno-ini")) $("usr-geo-noturno-ini").value = String(data?.campo_inicio_turno_noturno || "18:00").slice(0, 5);
   if($("usr-geo-noturno-minh")) $("usr-geo-noturno-minh").value = data?.campo_turno_noturno_min_h ?? 2;
   $("usr-geo-ativo").checked = !!data?.geodigitus_sync_ativo;
@@ -798,7 +798,7 @@ async function geoEmpresaSalvar(){
     geodigitus_cota_mb_mes: $("usr-geo-cota").value === "" ? null : n("usr-geo-cota", 0, 1000000),
     geodigitus_sobreconsumo_alerta_pct: n("usr-geo-alerta", 0, 500),
     campo_fim_turno_noturno: $("usr-geo-noturno").value || "07:00",
-    campo_inicio_turno_noturno: $("usr-geo-noturno-ini")?.value || "18:00",   // fase 134b
+    campo_inicio_turno_noturno: $("usr-geo-noturno-ini")?.value || "18:00",
     campo_turno_noturno_min_h: $("usr-geo-noturno-minh") ? n("usr-geo-noturno-minh", 0, 12) : 2,
     updated_at: new Date().toISOString()
   };
@@ -811,7 +811,7 @@ async function geoEmpresaSalvar(){
   aviso("app-aviso", "Parâmetros do Geodigitus salvos.", "ok");
 }
 
-/* ---------- eventos ---------- */
+
 function ligarGeodigitus(){
   ["geo-f-dia", "geo-f-maq", "geo-f-sit"].forEach(id => $(id)?.addEventListener("change", () => { if(_rdoView === "geo") geoRenderPainel(); }));
   $("geo-busca")?.addEventListener("input", debounce(() => { if(_rdoView === "geo") geoRenderPainel(); }));
@@ -819,7 +819,7 @@ function ligarGeodigitus(){
   $("btn-geo-sincronizar")?.addEventListener("click", () => comBotaoTravado("btn-geo-sincronizar", geoSincronizarTudo));
   const bs = $("btn-geo-sincronizar"); if(bs) bs.style.display = "none";
   $("rdo-conteudo")?.addEventListener("click", (ev) => {
-    const m = ev.target.closest("[data-geo-modo]");   // fase 184d: Agrupado / Lista
+    const m = ev.target.closest("[data-geo-modo]");
     if(m){ ev.stopPropagation(); ev.preventDefault(); _geoModo = m.dataset.geoModo === "lista" ? "lista" : "agrupado"; try { localStorage.setItem("geo-modo", _geoModo); } catch(e){} geoRenderPainel(); return; }
     const b = ev.target.closest("[data-geo-acao]");
     if(!b) return;
@@ -831,7 +831,7 @@ function ligarGeodigitus(){
   $("dash-geo")?.addEventListener("click", (ev) => { const el = ev.target.closest("[data-geo-card]"); if(el) geoCliqueCard(el.dataset.geoCard); });
   $("btn-dash-geo-abrir")?.addEventListener("click", () => geoCliqueCard("pendentes"));
   $("btn-usr-geo-salvar")?.addEventListener("click", () => comBotaoTravado("btn-usr-geo-salvar", geoEmpresaSalvar));
-  // o botão "Sincronizar agora" da visão só aparece para quem opera o RDO (o usuário chega depois do login)
+
   document.querySelectorAll('#rdo-painel .serv-view-btn[data-view="geo"]').forEach(b => b.addEventListener("click", () => {
     const s = $("btn-geo-sincronizar"); if(s) s.style.display = geoPodeOperar() ? "" : "none";
   }));

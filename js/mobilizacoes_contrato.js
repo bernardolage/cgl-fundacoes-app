@@ -1,22 +1,22 @@
-/* ====================================================================
-   Módulo: Mobilizações — quadro por contrato, ficha com abas e equipe (fase 157d)
-   Carregado depois de js/mobilizacoes.js (usa o estado e as funções de lá).
 
-   - O cartão é o contrato (obra): vw_mobilizacoes_contrato, uma linha por obra com mobilização viva, na coluna onde
-     precisa de ação (D5). O registro continua por máquina (mobilizacoes); o cartão lista as máquinas.
-   - Visões: Quadro (contratos) | Por máquina (onde está cada TAG e para onde vai) | Lista (uma linha por máquina).
-   - Ficha do contrato: máquinas do contrato numa faixa; a escolhida é a "_mobAberta" e as abas Kit, Escopo, Viagens e
-     Conversa mostram a dela. Contato e condições gravam em todas as máquinas em andamento do contrato.
-   - Equipe e SESMT (mobilizacao_equipe): pessoas por máquina com a situação de liberação, sugeridas pela alocação ativa
-     na TAG. Nada entra sozinho: a sugestão só grava quando alguém confirma (D10, também na troca de máquina).
-   ==================================================================== */
 
-let _mobContratos = [];   // linhas de vw_mobilizacoes_contrato
-let _mobLive      = [];   // mobilizacoes (menos canceladas) com os campos que o quadro não traz
-let _mobEquipe    = [];   // mobilizacao_equipe (null = tabela indisponível)
-let _mobOS        = [];   // manutencoes abertas (agendada, em andamento) por TAG
-let _mobPendObra  = [];   // pendências de nível contrato da obra aberta
-let _mobSugAloc   = [];   // alocações ativas nas TAGs do contrato aberto
+
+
+
+
+
+
+
+
+
+
+
+let _mobContratos = [];
+let _mobLive      = [];
+let _mobEquipe    = [];
+let _mobOS        = [];
+let _mobPendObra  = [];
+let _mobSugAloc   = [];
 let _mobAba       = "maquinas";
 const _mobColapsadasCtr = new Set(["encerradas"]);
 
@@ -29,7 +29,7 @@ const MOB_COLUNAS_CTR = [
 ];
 const MOB_ETAPAS = [["prevista", "Prevista"], ["em_preparacao", "Em preparação"], ["em_transito", "Em trânsito"], ["em_obra", "Em obra"], ["desmobilizada", "Desmobilizada"]];
 const MOB_TIPO_LBL = { helice: "Hélice contínua", secante: "Hélice secante", raiz: "Estaca raiz", trado: "Trado mecanizado", outro: "Outro" };
-// situação de liberação do SESMT por pessoa (check em mobilizacao_equipe.situacao)
+
 const MOB_EQ_SITUACAO = {
   pendente:            { rot: "Pendente",            cls: "perigo" },
   documentos_enviados: { rot: "Documentos enviados", cls: "aviso" },
@@ -38,13 +38,13 @@ const MOB_EQ_SITUACAO = {
   liberado:            { rot: "Liberado",            cls: "ok" },
   nao_se_aplica:       { rot: "Não se aplica",       cls: "" }
 };
-/* quem monta a equipe e muda a situação: espelha as policies de mobilizacao_equipe (has_role cobre diretor no banco;
-   aqui a lista precisa trazê-lo). Auditor fica de fora pela policy restritiva. */
+
+
 const MOB_EQ_CARGOS = ["diretor", "sesmt", "rh", "logistica", "engenheiro", "assistente_engenharia", "encarregado"];
 function mobEquipePodeEditar(){ return !!usuarioAtual && MOB_EQ_CARGOS.includes(usuarioAtual.cargo); }
 function mobEqLiberado(e){ return e.situacao === "liberado" || e.situacao === "nao_se_aplica"; }
 
-/* ---------- Carga (chamada por carregarMobilizacoes) ---------- */
+
 const MOB_LIVE_SELECT = "id,obra_id,equipamento_id,status,data_mobilizacao_prev,data_saida_real,data_chegada_real,data_desmob_prev,data_desmob_real,viagem_ida_id,viagem_volta_id,acessorios_ids,desmob_motivo,volta_prevista,origem_mobilizacao_id,created_at";
 const MOB_EQ_SELECT = "id,mobilizacao_id,funcionario_id,funcao,situacao,observacao,atualizado_em,funcionario:funcionarios(nome)";
 async function mobCarregarContratos(){
@@ -60,7 +60,7 @@ async function mobCarregarContratos(){
   _mobOS        = osRes.error ? [] : (osRes.data || []);
 }
 
-/* ---------- Ajudantes ---------- */
+
 function mobLiveDe(id){ return _mobLive.find(x => x.id === id) || null; }
 function mobCardDe(id){ return _mobCards.find(c => c.id === id) || {}; }
 function mobTagDe(m){
@@ -70,14 +70,14 @@ function mobTagDe(m){
 function mobObraCodDe(m){ return mobCardDe(m.id).obra_codigo || (_mobObras.find(o => o.id === m.obra_id) || {}).codigo || "?"; }
 function mobEquipeDe(mobId){ return _mobEquipe.filter(e => e.mobilizacao_id === mobId); }
 function mobNomeEq(e){ return (e.funcionario && e.funcionario.nome) || "?"; }
-/* data ISO ± n dias (o addDiasISO do core.js conta só a partir de hoje) */
+
 function mobSomarDias(iso, n){ const [a, m, d] = String(iso).split("-").map(Number); return dataLocalISO(new Date(a, m - 1, d + n)); }
 const MOB_ORDEM_ST = ["em_preparacao", "em_transito", "prevista", "em_obra", "desmobilizada"];
 function mobOrdemMaq(a, b){
   return MOB_ORDEM_ST.indexOf(a.status) - MOB_ORDEM_ST.indexOf(b.status)
     || String(mobTagDe(a) || "zz").localeCompare(String(mobTagDe(b) || "zz"), "pt-BR", { numeric: true });
 }
-/* máquinas do contrato: as vivas; se todas já saíram, as desmobilizadas dos últimos 30 dias */
+
 function mobsDoContrato(obraId){
   const todas = _mobLive.filter(m => m.obra_id === obraId);
   const vivas = todas.filter(m => m.status !== "desmobilizada");
@@ -88,7 +88,7 @@ function mobTipoContrato(k){
   const t = _mobCards.find(c => c.obra_id === k.obra_id && c.tipo_servico);
   return (t && t.tipo_servico) || k.tipo_proposta || "";
 }
-/* o que a linha da máquina diz de data: sai, saiu, chegou, desmobilização prevista */
+
 function mobDataMaquina(m){
   switch(m.status){
     case "prevista": case "em_preparacao": return m.data_mobilizacao_prev ? "sai " + dataBR(m.data_mobilizacao_prev) : "sem data de saída";
@@ -98,7 +98,7 @@ function mobDataMaquina(m){
     default: return "";
   }
 }
-/* selos da máquina: [texto, classe, explicação] */
+
 function mobSelosMaquina(m){
   const s = [];
   if(mobEhNova(m.id)) s.push(["nova", "ok", "Mobilização prevista criada nos últimos 7 dias."]);
@@ -126,7 +126,7 @@ function mobSelosHTML(m){
   return mobSelosMaquina(m).map(([t, cls, d]) => `<span class="mob-chip ${esc(cls)}" title="${esc(d)}">${esc(t)}</span>`).join("");
 }
 
-/* ---------- Filtros ---------- */
+
 function mobPreencherFiltrosCtr(){
   const selTipo = $("mob-f-tipo"), selResp = $("mob-f-resp");
   if(selTipo){
@@ -157,7 +157,7 @@ function mobCtrFiltrados(){
   });
 }
 
-/* ---------- Visão Quadro: um cartão por contrato ---------- */
+
 function mobLinhaCardHTML(m){
   return `<div class="mob-ctr-maq">
     <div class="mob-ctr-maq-cab">${uiCodigo(mobTagDe(m) || "a definir")}<span class="mob-chip st">${esc(MOB_STATUS[m.status] || m.status)}</span><span class="meta">${esc(mobDataMaquina(m))}</span></div>
@@ -217,7 +217,7 @@ function renderQuadroMob(){
   }));
 }
 
-/* ---------- Visão Por máquina: onde está cada TAG hoje e para onde vai ---------- */
+
 function renderPorMaquinaMob(){
   const cont = $("mob-conteudo");
   if(!cont) return;
@@ -248,7 +248,7 @@ function renderPorMaquinaMob(){
   cont.querySelectorAll("a[data-mob]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); abrirMobilizacao(a.dataset.mob); }));
 }
 
-/* ---------- Visão Lista: uma linha por máquina ---------- */
+
 function renderListaMob(){
   const cont = $("mob-conteudo");
   if(!cont) return;
@@ -273,7 +273,7 @@ function renderListaMob(){
   });
 }
 
-/* ---------- Minhas pendências: pessoas a liberar (SESMT), de todas as obras, em ordem de saída ---------- */
+
 function mobPessoasALiberarHTML(){
   const vivos = new Set(["prevista", "em_preparacao", "em_transito", "em_obra"]);
   const lista = _mobEquipe.filter(e => !mobEqLiberado(e)).map(e => ({ e, m: mobLiveDe(e.mobilizacao_id) }))
@@ -296,7 +296,7 @@ function mobLigarPessoasALiberar(cont){
   cont.querySelectorAll("select[data-eq-sit]").forEach(s => s.addEventListener("change", () => mobEquipeAtualizar(s.dataset.eqSit, { situacao: s.value }, s)));
 }
 
-/* ---------- Ficha do contrato ---------- */
+
 function abrirContratoMob(obraId, aba){
   const ms = mobsDoContrato(obraId);
   const m = ms[0] || _mobLive.find(x => x.obra_id === obraId);
@@ -309,7 +309,7 @@ async function mobCarregarSugestoesEquipe(obraId){
   const { data } = await sb.from("alocacoes").select("funcionario_id,equipamento_id,obra_id,funcionario:funcionarios(nome,funcao)").eq("status", "ativa").in("equipamento_id", tags);
   _mobSugAloc = data || [];
 }
-/* D10: na troca de máquina a equipe e o kit da máquina que saiu são só sugestão; alguém confirma */
+
 function mobTrocaAnterior(m){
   if(!m || !["prevista", "em_preparacao"].includes(m.status)) return null;
   return _mobLive.filter(x => x.obra_id === m.obra_id && x.id !== m.id && x.status === "desmobilizada" && x.desmob_motivo === "troca_maquina")
@@ -334,7 +334,7 @@ function mobPendLinhasHTML(lista){
     </div>`).join("") || uiVazio("Sem pendências.");
 }
 const MOB_ABAS = [["maquinas", "Máquinas"], ["equipe", "Equipe e SESMT"], ["kit", "Kit e materiais"], ["escopo", "Escopo"], ["condicoes", "Condições e contato"], ["pendencias", "Pendências"], ["viagens", "Viagens e notas"], ["custo", "Custo"], ["conversa", "Conversa"]];
-// fase 157c: a aba Custo só aparece para quem lê financeiro (o banco só devolve a vw_mobilizacao_resultado a esses cargos)
+
 function mobAbas(){ return MOB_ABAS.filter(a => a[0] !== "custo" || podeVerValorObra()); }
 
 function renderDrawerMob(){
@@ -355,7 +355,7 @@ function renderDrawerMob(){
   const transicoesDe = (x, sm) => podeEditar ? (MOB_TRANSICOES[x.status] || []).map(([st, lbl, cls]) => `<button type="button" class="${esc(cls)}${sm ? " btn-sm" : ""}" data-mob-tr="${esc(st)}" data-mob-id="${esc(x.id)}">${esc(lbl)}</button>`).join("") : "";
   const abas = mobAbas();
   const abaAtual = abas.some(a => a[0] === _mobAba) ? _mobAba : "maquinas";
-  const pane = (k2, html) => `<div class="mob-aba" data-aba="${esc(k2)}"${k2 === abaAtual ? "" : " hidden"}>${/* html */ html}</div>`;
+  const pane = (k2, html) => `<div class="mob-aba" data-aba="${esc(k2)}"${k2 === abaAtual ? "" : " hidden"}>${  html}</div>`;
   const nEq = mobEquipeDe(m.id), nLib = nEq.filter(mobEqLiberado).length;
   const pendAbCtr = _mobPendObra.filter(p => !p.concluida).length, pendAbMaq = _mobPendAberta.filter(p => !p.concluida).length;
   const anterior = mobTrocaAnterior(m);
@@ -505,22 +505,22 @@ function renderDrawerMob(){
   mobLigarApoio("mob", m.obra_id, "mob-equip");
   mobRenderEquipeFicha();
   mobRenderKit();
-  if(typeof frmKitMobRender === "function") frmKitMobRender(m); else if($("mob-frm-kit")) $("mob-frm-kit").innerHTML = "";   // fase 191b
+  if(typeof frmKitMobRender === "function") frmKitMobRender(m); else if($("mob-frm-kit")) $("mob-frm-kit").innerHTML = "";
   mobRenderMateriais();
   mobRenderSeparacao();
   mobRenderViagens();
   mobRenderCusto();
   mobRenderCno();
-  if(typeof renderEscopoContratado === "function") renderEscopoContratado($("mob-escopo-orc"), m.obra_id, () => _mobAberta === m);   // lote S65-g (#318)
+  if(typeof renderEscopoContratado === "function") renderEscopoContratado($("mob-escopo-orc"), m.obra_id, () => _mobAberta === m);
   if(typeof manRenderChecklistMob === "function") manRenderChecklistMob(m, "mob-checklist");
   $("mob-ver-origem")?.addEventListener("click", e => { e.preventDefault(); abrirMobilizacao(m.origem_mobilizacao_id); });
   ["mob-cobrar-ida", "mob-cobrar-volta"].forEach(id => $(id)?.addEventListener("change", () => mobSalvarCobranca(m)));
   mobSugerirDesmobPrev(m);
 }
 
-/* ---------- Lote S65-f (#319): CNO da obra na ficha da mobilização ----------
-   Número de obras.cno e o PDF mais recente da categoria CNO (vw_obra_cno_documento, a mesma do RH). O bucket
-   obras-documentos é lido por todo usuário ativo; o link abre por URL assinada, como a aba Documentos da obra. */
+
+
+
 async function mobRenderCno(){
   const box = $("mob-cno"); const m = _mobAberta; if(!box || !m) return;
   if(!m.obra_id){ box.innerHTML = uiVazio("Mobilização sem obra."); return; }
@@ -544,10 +544,10 @@ async function mobRenderCno(){
   });
 }
 
-/* ---------- Fase 157c: receita × custo por perna ----------
-   Lê vw_mobilizacao_resultado (uma linha por perna). Cobrado = itens de medição ligados à máquina e à perna (o orçado fica
-   de contexto); custo = deslocamento da obra (vw_custos) das viagens da perna: frota pelo km, frete pelo título. Perna sem
-   medição sai "sem receita"; sem viagem com valor, "sem custo". O título abre pela viagem (não há ficha de título no app). */
+
+
+
+
 const MOB_SUBTIPO_LBL = { frota_propria: "Frota própria", frete_terceirizado: "Frete terceirizado", misto: "Frota e frete" };
 async function mobRenderCusto(){
   const box = $("mob-custo"); const m = _mobAberta; if(!box || !m) return;
@@ -564,7 +564,7 @@ async function mobRenderCusto(){
   ]);
   if(!$("mob-custo") || _mobAberta !== m) return;
   const vgs = rv.data || [], tits = rt.data || [];
-  const linha = (rot, valorHTML, dica) => `<div class="custos-linha"${dica ? ` title="${esc(dica)}"` : ""}><span>${esc(rot)}</span><strong data-val-sens>${/* html */ valorHTML}</strong></div>`;
+  const linha = (rot, valorHTML, dica) => `<div class="custos-linha"${dica ? ` title="${esc(dica)}"` : ""}><span>${esc(rot)}</span><strong data-val-sens>${  valorHTML}</strong></div>`;
   const perna = (p, rot) => {
     const l = linhas.find(x => x.perna === p) || {};
     const med = Number(l.valor_medido || 0), cst = Number(l.custo || 0);
@@ -577,16 +577,16 @@ async function mobRenderCusto(){
       ${linha("Custo", cst > 0 ? brl(cst) : `<span class="mob-chip aviso">sem custo</span>`, "Deslocamento lançado na obra pelas viagens desta perna")}
       ${linha("Resultado", med > 0 || cst > 0 ? brl(med - cst) : "—", "Cobrado menos custo")}
       ${linha("Quem fez", esc(MOB_SUBTIPO_LBL[l.subtipo] || "—") + (l.transportador ? " · " + esc(l.transportador) : ""))}
-      <div class="mob-card-chips">${/* html */ viagens.join(" ") || `<span class="meta">Sem viagem nesta perna.</span>`} ${/* html */ titulos.join(" ")}</div>
+      <div class="mob-card-chips">${  viagens.join(" ") || `<span class="meta">Sem viagem nesta perna.</span>`} ${  titulos.join(" ")}</div>
     </div>`;
   };
   box.innerHTML = `<div class="custos-resumo">${perna("ida", "Ida (mobilização)")}${perna("volta", "Volta (desmobilização)")}</div>`;
 }
 
-/* ---------- Fase 157b (A7): cobrar cada perna em medição ----------
-   "Sugerir do período" da medição só propõe a perna marcada. A volta da sede nasce sem cobrar a ida e a desmobilização
-   para manutenção na sede grava a volta sem cobrar (regra no banco). Muda quem grava medição, pela RPC
-   mobilizacao_definir_cobranca (a mesma lista de medicoes_write; diretor entra). */
+
+
+
+
 const MOB_COBRANCA_CARGOS = ["diretor", "admin", "engenheiro", "comercial", "financeiro", "assistente_engenharia"];
 function mobPodeDefinirCobranca(){ return !!usuarioAtual && MOB_COBRANCA_CARGOS.includes(usuarioAtual.cargo); }
 function mobCobrancaHTML(m){
@@ -612,7 +612,7 @@ async function mobSalvarCobranca(m){
   aviso("app-aviso", `Cobrança em medição: ida ${m.cobrar_ida ? "cobrada" : "não cobrada"}, volta ${m.cobrar_volta ? "cobrada" : "não cobrada"}.`, "ok");
 }
 
-/* ---------- Aba Equipe e SESMT ---------- */
+
 function mobEqSituacaoChip(e){
   const s = MOB_EQ_SITUACAO[e.situacao] || { rot: e.situacao, cls: "" };
   return `<span class="mob-chip ${esc(s.cls)}">${esc(s.rot)}</span>`;
@@ -661,7 +661,7 @@ function mobRenderEquipeFicha(){
   box.querySelectorAll("[data-eq-rem]").forEach(b => b.addEventListener("click", () => mobEquipeRemover(b.dataset.eqRem)));
   box.querySelectorAll("[data-eq-add]").forEach(b => b.addEventListener("click", () => mobEquipeAdicionar(b.dataset.eqAdd, [{ funcionario_id: b.dataset.func, funcao: b.dataset.funcao || null }])));
   box.querySelectorAll("[data-eq-add-todos]").forEach(b => b.addEventListener("click", () => mobEquipeAdicionar(b.dataset.eqAddTodos, (box._sug[b.dataset.eqAddTodos] || []).map(s => ({ funcionario_id: s.funcionario_id, funcao: s.funcao || null })))));
-  box.querySelectorAll("[data-eq-aloc]").forEach(b => b.addEventListener("click", () => mobOferecerMoverAlocacao(b.dataset.eqAloc)));   // fase 157e
+  box.querySelectorAll("[data-eq-aloc]").forEach(b => b.addEventListener("click", () => mobOferecerMoverAlocacao(b.dataset.eqAloc)));
   box.querySelectorAll("input[data-eq-busca]").forEach(inp => mobLigarBuscaPessoa(inp, box.querySelector(`[data-eq-res="${inp.dataset.eqBusca}"]`), inp.dataset.eqBusca));
   mobAtualizarBadgeEquipe();
 }
@@ -722,7 +722,7 @@ async function mobEquipeRemover(id){
   _mobEquipe = _mobEquipe.filter(x => x.id !== id);
   mobRenderEquipeFicha();
 }
-/* D6: quem ainda não foi liberado pelo SESMT na equipe desta máquina */
+
 function mobEquipeNaoLiberados(mobId){ return mobEquipeDe(mobId).filter(e => !mobEqLiberado(e)); }
 async function mobRegistrarSaidaSemLiberacao(mobId, pessoas){
   const txt = "Saída para a obra registrada com equipe não liberada pelo SESMT (confirmado na tela): "
@@ -731,11 +731,11 @@ async function mobRegistrarSaidaSemLiberacao(mobId, pessoas){
   if(error) aviso("app-aviso", "A saída foi registrada, mas a nota na conversa não: " + error.message, "erro");
 }
 
-/* ---------- Fase 157e: equipe ligada à Alocação ----------
-   Na chegada da máquina ("Chegou na obra"), ou depois pela aba Equipe e SESMT, quem pode movimentar funcionário
-   (lotacaoPodeOperar: diretor, admin, logística, RH) confirma pessoa a pessoa quem passa a ficar alocado na obra e na
-   TAG desde a data da chegada. Grava pela RPC mobilizacao_mover_equipe, que chama a funcionario_movimentar da fase 151
-   (mesma regra e mesmo histórico). D7: desmobilizar não mexe na alocação. */
+
+
+
+
+
 let _mobAlocCtx = null;
 function mobPodeMoverAlocacao(){ return typeof lotacaoPodeOperar === "function" && lotacaoPodeOperar(); }
 function mobAlocRotulo(obra, tag){ return `${obra || "sem obra"}${tag ? "/" + tag : ""}`; }

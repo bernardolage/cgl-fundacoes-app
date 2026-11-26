@@ -1,30 +1,30 @@
-/* ====================================================================
-   Módulo: Fabricação (fase 84, 19/10/2026)
-   Ordem de fabricação da oficina, como no Odoo (mrp.production): o que vai ser feito e quanto, os componentes
-   consumidos do estoque (RPC fabricacao_consumir), as horas por funcionário e centro de trabalho e o custo real que
-   sai disso: componentes + mão de obra do funcionário (HE ×2) + máquina = horas × R$/h do centro, sem ×2 (lote S70-e;
-   gatilhos recalculam custo_componentes, custo_horas, custo_maquina e custo_real, salvo custo manual). Concluir (RPC fabricacao_concluir) dá entrada no estoque, cria as peças com marcação em
-   Acessórios ou lança o custo direto na obra/TAG/centro (vw_custos, ramo fabricacao).
-   Painel no padrão Serviços (lista / por status), ficha no padrão Odoo. Prefixo fab-. Desenho copiado de Reparos.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
 
 let _fabView = "lista";
 let _fabLista = [];
-let _fabAtual = null;          // ordem aberta
+let _fabAtual = null;
 let _fabItens = [];
 let _fabHoras = [];
-let _fabCentros = [];          // centros_trabalho
+let _fabCentros = [];
 let _fabFuncs = [];
-let _fabModelos = [];          // fabricacao_modelos (listas de materiais)
-let _fabAceModelos = [];       // acessorio_modelos ativos (destino acessório)
+let _fabModelos = [];
+let _fabAceModelos = [];
 let _fabEquips = [];
 let _fabObras = [];
 let _fabCentrosCusto = [];
-let _fabProd = null;           // produto produzido escolhido na ficha
+let _fabProd = null;
 let _fabCarregado = false;
-let _fabPreset = "";           // filtro de status pedido pela Sala de Comando
-let _fabCentroIds = null;      // ids das ordens com horas no centro filtrado (null = sem filtro)
-let _fabMd = null;             // lista de materiais aberta no modal
+let _fabPreset = "";
+let _fabCentroIds = null;
+let _fabMd = null;
 let _fabMdItens = [];
 let _fabMdProd = null;
 
@@ -38,7 +38,7 @@ const FAB_SELECT = "id,numero,status,descricao,produto_id,quantidade,quantidade_
 
 function fabPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "gestor_manutencao", "logistica", "almoxarife"].includes(usuarioAtual.cargo); }
 function fabEhDiretoria(){ return !!usuarioAtual && ["admin", "diretor"].includes(usuarioAtual.cargo); }
-function fabSt(st){ return st === "planejada" ? "rascunho" : st; }   // valor antigo do enum (fase 6) lido como rascunho
+function fabSt(st){ return st === "planejada" ? "rascunho" : st; }
 function fabTag(st){ const o = FAB_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function fabProdTxt(o){ return o.produto ? `${prodTxt(o.produto)}` : (o.descricao || "—"); }
 function fabProdLink(o){ return o.produto_id ? linkProduto(o.produto_id, fabProdTxt(o)) : esc(o.descricao || "—"); }
@@ -54,7 +54,7 @@ function fabDestinoLink(o){
   return esc(fabDestinoTxt(o));
 }
 function fabResp(id){ const f = _fabFuncs.find(x => x.id === id); return f ? f.nome : ""; }
-let _fabExtras = [], _fabExtrasPode = false;   // lote S60 (#254): outros responsáveis da ficha aberta
+let _fabExtras = [], _fabExtrasPode = false;
 function fabRespNomes(o){ return respTodos(o.responsavel_id, o.responsaveis_extra_ids, fabResp); }
 function fabRenderExtras(){
   respExtrasRender({ wrap: "fab-resp-extras", sel: "fab-resp-extra-add", extras: _fabExtras, principal: $("fab-resp").value, funcs: _fabFuncs, pode: _fabExtrasPode,
@@ -72,7 +72,7 @@ function fabQtdTxt(o){ const q = Number(o.quantidade || 0), p = Number(o.quantid
 function fabAceModeloTxt(m){ return `${(ACE_FAMILIA_LBL || {})[m.familia] || m.familia} · ${m.descricao}${m.medida ? " " + m.medida : ""}`; }
 function fabPendentes(){ return _fabItens.filter(i => i.produto_id && !i.movimentacao_estoque_id && !i.codigo_externo && Number(i.quantidade_prevista) > Number(i.quantidade_consumida)); }
 
-/* ---------- carga ---------- */
+
 async function carregarFabricacao(force){
   const cont = $("fab-conteudo"); if(!cont) return;
   if(force || !_fabCarregado){
@@ -123,10 +123,10 @@ async function fabFetch(){
     if(r.error){ aviso("app-aviso", "Erro ao carregar as ordens de fabricação: " + r.error.message, "erro"); break; }
     out.push(...(r.data || []));
   }
-  await anexarCustoMO("of", out);   // lote S67-h
+  await anexarCustoMO("of", out);
   _fabLista = out;
 }
-/* filtro por centro de trabalho: ordens com pelo menos uma hora lançada nele */
+
 async function fabFiltrarCentro(){
   const ct = $("fab-f-centro")?.value || "";
   if(!ct){ _fabCentroIds = null; renderFabricacao(); return; }
@@ -135,7 +135,7 @@ async function fabFiltrarCentro(){
   renderFabricacao();
 }
 
-/* ---------- painel ---------- */
+
 function fabFiltrados(){
   const q = ($("fab-busca")?.value || "").trim().toLowerCase();
   const st = $("fab-f-status")?.value ?? "_abertas", rs = $("fab-f-resp")?.value || "", ds = $("fab-f-destino")?.value || "";
@@ -175,7 +175,7 @@ function renderFabricacao(){
   }
 }
 
-/* ---------- ficha ---------- */
+
 function novaOrdemFabricacao(pre){
   if(!fabPodeEditar()){ aviso("app-aviso", "Seu perfil não registra fabricação.", "erro"); return; }
   abrirFichaFabricacao(Object.assign({ id: null, numero: "(nova)", status: "rascunho", destino: "estoque", quantidade: 1, unidade: "un", data_abertura: hojeISO() }, pre || {}), [], []);
@@ -187,9 +187,9 @@ async function abrirOrdemFabricacao(id){
     sb.from("fabricacao_itens").select("*").eq("ordem_id", id).order("created_at"),
     sb.from("fabricacao_horas").select("*").eq("ordem_id", id).order("data").order("inicio").order("created_at")
   ]);
-  await aptCarregarAguardandoDoc(id);   // fase 188c
+  await aptCarregarAguardandoDoc(id);
   if(o.error || !o.data){ aviso("app-aviso", "Não foi possível abrir a ordem de fabricação" + (o.error ? ": " + o.error.message : "."), "erro"); return; }
-  await anexarCustoMO("of", o.data);   // lote S67-h
+  await anexarCustoMO("of", o.data);
   abrirFichaFabricacao(o.data, it.data || [], hs.data || []);
 }
 function abrirFichaFabricacao(o, itens, horas){
@@ -209,7 +209,7 @@ function abrirFichaFabricacao(o, itens, horas){
   $("fab-obs").value = o.observacoes || "";
   fabDestinoCampos();
   $("fab-ficha").querySelectorAll(".odoo-tab[data-tab=geral] input, .odoo-tab[data-tab=geral] select").forEach(el => el.disabled = !pode || fechada);
-  _fabExtras = (o.responsaveis_extra_ids || []).slice(); _fabExtrasPode = pode && !fechada; fabRenderExtras();   // lote S60 (#254)
+  _fabExtras = (o.responsaveis_extra_ids || []).slice(); _fabExtrasPode = pode && !fechada; fabRenderExtras();
   $("fab-h-data").value = hojeISO();
   fabAtualizarCabecalho();
   fabRenderItens(); fabRenderHoras(); fabRenderCustos();
@@ -239,7 +239,7 @@ function fabAtualizarCabecalho(){
   $("fab-chip-dest").innerHTML = fabDestinoLink(o);
   $("fab-chip-resp").textContent = respResumo(fabRespNomes(o)) || "—"; $("fab-chip-resp").title = fabRespNomes(o).join(", ");
   $("fab-chip-dias").textContent = novo ? "—" : (fabDias(o) ?? "—");
-  $("fab-chip-autor").textContent = autorOrdemTexto(o, o.autor);   // lote S65-h (#323)
+  $("fab-chip-autor").textContent = autorOrdemTexto(o, o.autor);
   $("fab-chip-odoo").style.display = o.codigo_externo ? "" : "none"; $("fab-chip-odoo-txt").textContent = o.codigo_externo || "";
   const pend = fabPendentes().length > 0;
   const temLista = !!o.modelo_id || _fabModelos.some(m => m.ativo !== false && (m.produto_id === o.produto_id || !o.produto_id));
@@ -324,7 +324,7 @@ async function fabAcao(acao){
   await abrirOrdemFabricacao(o.id);
 }
 
-/* OF nova (sem código do Odoo) só conclui com horas, centro de trabalho nas horas e material; o banco também trava */
+
 async function fabPodeConcluir(o){
   const { data, error } = await sb.rpc("fabricacao_pendencias_conclusao", { p_ordem: o.id });
   if(error){ rpcErro(error, "Não foi possível conferir a ordem"); return false; }
@@ -333,7 +333,7 @@ async function fabPodeConcluir(o){
   return false;
 }
 
-/* concluir com destino acessório: uma marcação por unidade; sugere a próxima da família */
+
 async function fabAbrirConcluirModal(){
   const o = _fabAtual; if(!o) return;
   const n = Math.round(fabQtd(o));
@@ -376,7 +376,7 @@ async function fabConcluirComMarcacoes(){
   await abrirOrdemFabricacao(o.id); fabAtivarTab("custos");
 }
 
-/* componentes */
+
 function fabRenderItens(){
   const tb = $("fab-itens"), pode = fabPodeEditar() && !["concluida", "cancelada"].includes(_fabAtual?.status);
   if(!_fabItens.length){ tb.innerHTML = `<tr><td colspan="8" class="vazio">${_fabAtual?.id ? "Nenhum componente lançado. Use \"Aplicar lista\" ou busque no catálogo." : "Salve a ordem para lançar componentes."}</td></tr>`; $("fab-itens-total").textContent = ""; return; }
@@ -406,11 +406,11 @@ async function fabAddItem(p){
   await abrirOrdemFabricacao(_fabAtual.id); fabAtivarTab("componentes");
 }
 
-/* horas */
+
 function fabRenderHoras(){
   const tb = $("fab-horas"), pode = fabPodeEditar() && !["concluida", "cancelada"].includes(_fabAtual?.status);
   const nomeF = id => (_fabFuncs.find(f => f.id === id) || {}).nome || "";
-  const ag = _fabAtual?.id ? aptTxtAguardando(_fabAtual.id, "OF") : "";   // fase 188c: HE aguardando, fora do total
+  const ag = _fabAtual?.id ? aptTxtAguardando(_fabAtual.id, "OF") : "";
   if(!_fabHoras.length){ tb.innerHTML = `<tr><td colspan="9" class="vazio">${_fabAtual?.id ? "Nenhuma hora lançada." : "Salve a ordem para lançar horas."}</td></tr>`; $("fab-horas-total").innerHTML = ag; return; }
   tb.innerHTML = _fabHoras.map(h => `<tr><td>${esc(nomeF(h.funcionario_id) || "—")}</td><td>${esc(fabCentroNome(h.centro_trabalho_id) || "—")}</td><td>${dataBR(h.data)}</td>
     <td>${h.inicio ? esc(String(h.inicio).slice(0, 5)) : "—"}</td><td>${h.fim ? esc(String(h.fim).slice(0, 5)) : "—"}</td><td>${h.hora_extra ? '<span class="tag ambar">HE</span>' : ""}</td>
@@ -420,7 +420,7 @@ function fabRenderHoras(){
   const porC = {}; _fabHoras.forEach(h => { const n = fabCentroNome(h.centro_trabalho_id) || "sem centro"; porC[n] = (porC[n] || 0) + Number(h.horas || 0); });
   const porF = {}; _fabHoras.forEach(h => { const n = nomeF(h.funcionario_id) || "sem funcionário"; porF[n] = (porF[n] || 0) + Number(h.horas || 0); });
   const lista = (m) => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ");
-  $("fab-horas-total").innerHTML = `Total: <strong>${num(soma(() => true))} h</strong>${soma(h => h.hora_extra) ? ` (${num(soma(h => h.hora_extra))} h de hora extra)` : ""}<br>Por centro: ${lista(porC)}<br>Por funcionário: ${lista(porF)}${/* html */ ag}`;
+  $("fab-horas-total").innerHTML = `Total: <strong>${num(soma(() => true))} h</strong>${soma(h => h.hora_extra) ? ` (${num(soma(h => h.hora_extra))} h de hora extra)` : ""}<br>Por centro: ${lista(porC)}<br>Por funcionário: ${lista(porF)}${  ag}`;
   tb.querySelectorAll(".fab-h-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("fabricacao_horas").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
@@ -436,14 +436,14 @@ async function fabAddHoras(){
   if(!reg.centro_trabalho_id){ aviso("app-aviso", "Escolha o centro de trabalho.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim){
-    reg.horas = 0;   // o gatilho calcula
+    reg.horas = 0;
     if(reg.fim <= reg.inicio){ aviso("app-aviso", "O fim precisa ser depois do início (hora que passa da meia-noite: uma linha por dia).", "erro"); return; }
   }
-  // fase 188b (#322): a mesma divisão do "Lançar horas"; a pessoa confere antes de gravar (aptDividirFicha, js/apontamentos.js)
+
   let div;
   try { div = await aptDividirFicha(reg); } catch(e){ aviso("app-aviso", e.message, "erro"); return; }
   if(!div) return;
-  // fase 188c (#322, D9): a parte normal grava direto; a hora extra vai para aprovação do gestor de acessórios
+
   const g = await aptGravarFicha("OF", _fabAtual.id, div.regs);
   if(g.erro && !g.gravadas){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
   ["fab-h-inicio", "fab-h-fim", "fab-h-horas", "fab-h-obs"].forEach(id => $(id).value = ""); aptMostrarHEFicha("fab-h");
@@ -451,14 +451,14 @@ async function fabAddHoras(){
   aptAvisoFicha("OF", g, div.regs.length, div.avisoExp);
 }
 
-/* custos */
+
 function fabRenderCustos(){
   const o = _fabAtual, c = $("fab-custos"); if(!o || !c) return;
   const pode = fabPodeEditar() && !!o.id;
   const horas = _fabHoras.reduce((t, h) => t + Number(h.horas || 0), 0);
   const porC = {};
   _fabHoras.forEach(h => { const k = h.centro_trabalho_id || "_"; const g = porC[k] = porC[k] || { nome: fabCentroNome(h.centro_trabalho_id) || "sem centro", custo: fabCentroCusto(h.centro_trabalho_id), normais: 0, he: 0 }; if(h.hora_extra) g.he += Number(h.horas || 0); else g.normais += Number(h.horas || 0); });
-  // lote S70-e: por centro, horas × R$/h = máquina (HE sem ×2; R$/h de hoje, a ordem fechada guarda o valor dela)
+
   const linhasC = Object.values(porC).sort((a, b) => (b.normais + b.he) - (a.normais + a.he)).map(g => {
     const h = g.normais + g.he;
     return `<div class="custos-linha"><span class="meta">${esc(g.nome)}: ${num(h)} h${g.he ? ` (${num(g.he)} HE)` : ""} × ${brl(g.custo)}/h</span><span class="meta">${brl(Math.round(h * g.custo * 100) / 100)}</span></div>`;
@@ -498,7 +498,7 @@ function fabRenderCustos(){
   });
 }
 
-/* ---------- centros de trabalho (configuração; diretoria edita custo/h) ---------- */
+
 async function fabAbrirCentros(){
   if(!_fabCarregado) await carregarFabricacao(false);
   const { data } = await sb.from("centros_trabalho").select("id,nome,setor,custo_hora,ativo,ordem").order("ordem").order("nome");
@@ -528,7 +528,7 @@ async function fabAddCentro(){
   _fabCarregado = false; await carregarFabricacao(true); await fabAbrirCentros();
 }
 
-/* ---------- listas de materiais (configuração) ---------- */
+
 async function fabAbrirModelos(){
   if(!_fabCarregado) await carregarFabricacao(false);
   const { data } = await sb.from("fabricacao_modelos").select("id,nome,produto_id,quantidade_base,ativo,codigo_externo,observacoes,produto:produtos(codigo,nome,unidade)").order("nome");
@@ -586,7 +586,7 @@ async function fabMdAddItem(p){
   await fabMdAbrir(_fabMd.id);
 }
 
-/* ---------- busca de produto (produzido, componente, lista) ---------- */
+
 function fabLigarBuscaProduto(inpId, listaId, aoEscolher, limparAoEscolher){
   const inp = $(inpId), lista = $(listaId); if(!inp || !lista) return;
   inp.addEventListener("input", debounce(async () => {
@@ -594,7 +594,7 @@ function fabLigarBuscaProduto(inpId, listaId, aoEscolher, limparAoEscolher){
     if(t.length < 2){ lista.style.display = "none"; return; }
     const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
     const res = data || [];
-    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
+    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${  prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
       || `<div class="resultado-item vazio">Nenhum produto.</div>`;
     lista.style.display = "";
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => {
@@ -605,7 +605,7 @@ function fabLigarBuscaProduto(inpId, listaId, aoEscolher, limparAoEscolher){
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 150));
 }
 
-/* ---------- ligação ---------- */
+
 function ligarFabricacao(){
   if(!$("sec-fabricacao")) return;
   document.querySelector('nav button[data-secao="fabricacao"]')?.addEventListener("click", () => carregarFabricacao(false));
@@ -623,7 +623,7 @@ function ligarFabricacao(){
     const el = e.target.closest("[data-id]"); if(el) abrirOrdemFabricacao(el.dataset.id);
   });
   $("btn-fab-voltar")?.addEventListener("click", mostrarPainelFabricacao);
-  $("fab-resp")?.addEventListener("change", () => { _fabExtras = _fabExtras.filter(x => x !== $("fab-resp").value); fabRenderExtras(); });   // lote S60 (#254)
+  $("fab-resp")?.addEventListener("change", () => { _fabExtras = _fabExtras.filter(x => x !== $("fab-resp").value); fabRenderExtras(); });
   $("btn-fab-salvar")?.addEventListener("click", () => comBotaoTravado("btn-fab-salvar", salvarOrdemFabricacao));
   document.querySelectorAll("#fab-ficha .fab-acao").forEach(b => b.addEventListener("click", () => comBotaoTravado(b.id, () => fabAcao(b.dataset.acao))));
   document.querySelectorAll("#fab-notebook button").forEach(b => b.addEventListener("click", () => fabAtivarTab(b.dataset.tab)));
@@ -636,7 +636,7 @@ function ligarFabricacao(){
   fabLigarBuscaProduto("fab-md-prod-busca", "fab-md-prod-res", p => { _fabMdProd = p; if(!$("fab-md-nome").value.trim()) $("fab-md-nome").value = p.nome; }, false);
   $("fab-md-prod-busca")?.addEventListener("input", () => { if(!$("fab-md-prod-busca").value.trim()) _fabMdProd = null; });
   fabLigarBuscaProduto("fab-md-comp-busca", "fab-md-comp-res", p => fabMdAddItem(p), true);
-  // modais
+
   $("btn-fab-cc-fechar")?.addEventListener("click", () => { $("fab-cc-modal").style.display = "none"; });
   $("fab-cc-modelo")?.addEventListener("change", () => { document.querySelectorAll("#fab-cc-marcacoes .fab-cc-marc").forEach(i => i.value = ""); fabRenderMarcacoes(Math.round(fabQtd(_fabAtual || {}))); });
   $("btn-fab-cc-ok")?.addEventListener("click", () => comBotaoTravado("btn-fab-cc-ok", fabConcluirComMarcacoes));

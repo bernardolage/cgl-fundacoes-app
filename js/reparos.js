@@ -1,31 +1,31 @@
-/* ====================================================================
-   Módulo: Reparos (fase 82, 16/10/2026)
-   Reparo de acessório ou TAG na oficina, como no Odoo: quem trabalhou (horas por funcionário, com
-   início e fim), as peças consumidas (baixa no estoque pela RPC reparo_consumir_pecas) e o custo
-   real que sai disso (gatilhos recalculam custo_pecas, custo_horas e custo_real, salvo custo manual).
-   Painel no padrão Serviços (lista / por status), ficha no padrão Odoo. Prefixo rep-.
-   A condição e o local da peça seguem o status do reparo (gatilho fn_reparo_sync_acessorio).
-   ==================================================================== */
+
+
+
+
+
+
+
+
 
 let _repView = "lista";
 let _repLista = [];
-let _repAtual = null;          // reparo aberto
+let _repAtual = null;
 let _repItens = [];
 let _repHoras = [];
 let _repEquips = [];
 let _repFuncs = [];
 let _repCustoHora = 0;
-let _repAce = null;            // acessório escolhido na ficha
+let _repAce = null;
 let _repCarregado = false;
 
 const REP_STATUS = { aberto: ["Aberto", "azul"], em_execucao: ["Em execução", "ambar"], concluido: ["Concluído", "verde"], cancelado: ["Cancelado", "cinza"] };
 const REP_STAGES = ["aberto", "em_execucao", "concluido"];
 const REP_SETOR = { caldeiraria: "Caldeiraria", usinagem: "Usinagem", mecanica: "Mecânica", eletrica: "Elétrica", pintura: "Pintura", externo: "Externo" };
 const REP_SELECT = "id,numero,status,descricao,motivo,setor,tipo_servico,acessorio_id,equipamento_id,responsavel_id,responsaveis_extra_ids,data_abertura,data_inicio,data_conclusao,custo_estimado,custo_pecas,custo_manual,observacoes,codigo_externo,codigo_externo_origem,created_at,criado_por,autor:profiles!reparos_caldeiraria_criado_por_fkey(nome),acessorio:acessorios(marcacao,familia,tipo,diametro_mm,modelo:acessorio_modelos(descricao,medida)),equipamento:equipamentos(codigo,nome)"
-  // fase 186b (#226): reparo externo (fornecedor, envio, orçamento, pedido ligado, retorno); etapa_externa e pedido_externo são campos calculados no banco
+
   + ",externo,fornecedor_id,enviado_em,nf_remessa_numero,orcamento_recebido_em,orcamento_valor,orcamento_pdf_path,pedido_id,retornou_em,nf_retorno_numero,fornecedor:fornecedores(razao_social,nome_fantasia)";
-/* lote S67-h: etapa_externa e pedido_externo (campos calculados da fase 186b) vêm da vw_reparo_externo: a função recebe a
-   linha inteira do reparo, que o usuário não lê mais pela API (custo_horas e custo_real fora). Só dos reparos externos */
+
+
 async function repAnexarExterno(linhas){
   const lista = [].concat(linhas || []).filter(Boolean);
   lista.forEach(x => { x.etapa_externa = null; x.pedido_externo = null; });
@@ -37,37 +37,37 @@ async function repAnexarExterno(linhas){
   lista.forEach(x => { const e = mapa.get(x.id); if(e){ x.etapa_externa = e.etapa_externa; x.pedido_externo = e.pedido_externo; } });
   return lista;
 }
-/* fase 186b: etapas do reparo externo (o status do reparo continua aberto, em execução, concluído ou cancelado) */
+
 const REP_ETAPAS = [["aguardando_envio", "Aguardando envio"], ["enviado", "Enviado"], ["aguardando_orcamento", "Aguardando orçamento"], ["orcamento_recebido", "Orçamento recebido"], ["pedido_aprovado", "Pedido aprovado"], ["retornou", "Retornou"]];
 const REP_PED_STATUS = { rascunho: "rascunho", em_cotacao: "em cotação", aguardando_aprovacao: "aguardando aprovação", aprovado: "aprovado", enviado: "enviado ao fornecedor", parcialmente_recebido: "recebido em parte", recebido: "recebido", cancelado: "cancelado" };
-const REP_ORC_BUCKET = "manutencao-anexos";   // fase 186b: PDF do orçamento em reparos/<id>/
-let _repForn = null;           // fase 186b: fornecedor do conserto escolhido na ficha
+const REP_ORC_BUCKET = "manutencao-anexos";
+let _repForn = null;
 
-/* lote S45 (L7): `logistica` registra reparo como registra fabricação (fabPodeEditar / fabricacao_pode_operar);
-   espelha reparos_caldeiraria_write, reparo_horas_write e reparo_itens_write da migration 20261020_loteS45_hoje_br. */
+
+
 function repPodeEditar(){ return !!usuarioAtual && ["admin", "diretor", "mecanico", "engenheiro", "gestor_acessorios", "gestor_manutencao", "logistica"].includes(usuarioAtual.cargo); }
-/* lote S43 (L10, pedido do Julio em 18/10): o almoxarife lança as peças consumidas e dá a baixa, como no Odoo;
-   status, horas, motivo e o resto da ficha seguem repPodeEditar(). Espelha reparo_itens_write e reparo_consumir_pecas.
-   Fase 90: o auxiliar de almoxarifado (equipe do Julio) faz o mesmo que ele na aba Peças. */
+
+
+
 function repPodeItens(){ return repPodeEditar() || (!!usuarioAtual && ["almoxarife", "auxiliar_almoxarifado"].includes(usuarioAtual.cargo)); }
 function repTag(st){ const o = REP_STATUS[st] || [st, "cinza"]; return `<span class="tag ${esc(o[1])}">${esc(o[0])}</span>`; }
 function repAlvoTxt(r){ return r.acessorio ? r.acessorio.marcacao : r.equipamento ? "TAG " + r.equipamento.codigo : "—"; }
 function repAlvoLink(r){ return r.acessorio_id ? linkAcessorio(r.acessorio_id, r.acessorio?.marcacao || "peça") : r.equipamento_id ? linkEquipamento(r.equipamento_id, "TAG " + (r.equipamento?.codigo || "")) : "—"; }
-/* lote S71-d (#348): coluna Descrição da lista = modelo da peça (descrição · medida, como em acePreencherModeloForm);
-   TAG de equipamento não tem modelo e mostra o nome do equipamento */
+
+
 function repModeloTxt(r){
   const m = r.acessorio?.modelo;
   if(m) return (m.descricao || "") + (m.medida && m.medida !== "-" ? " · " + m.medida : "");
   return r.equipamento ? (r.equipamento.nome || "") : "";
 }
-function repResp(id){ const f = _repFuncs.find(x => x.id === id); return f ? f.nome : ""; }   // responsavel_id → funcionarios
-let _repExtras = [];   // lote S60 (#254): outros responsáveis da ficha aberta
+function repResp(id){ const f = _repFuncs.find(x => x.id === id); return f ? f.nome : ""; }
+let _repExtras = [];
 function repRespNomes(r){ return respTodos(r.responsavel_id, r.responsaveis_extra_ids, repResp); }
 function repRenderExtras(){
   respExtrasRender({ wrap: "rep-resp-extras", sel: "rep-resp-extra-add", extras: _repExtras, principal: $("rep-resp").value, funcs: _repFuncs, pode: repPodeEditar(),
     aoMudar: l => { _repExtras = l; repRenderExtras(); } });
 }
-/* fase 186b: peça no fornecedor = reparo externo enviado, sem retorno, aberto ou em execução */
+
 function repNoFornecedor(r){ return !!(r.externo && r.enviado_em && !r.retornou_em && ["aberto", "em_execucao"].includes(r.status)); }
 function repDiasFornecedor(r){ return r.enviado_em ? Math.max(0, Math.round((new Date(hojeISO() + "T00:00:00") - new Date(r.enviado_em + "T00:00:00")) / 864e5)) : null; }
 function repFornNome(r){ return r.fornecedor ? (r.fornecedor.nome_fantasia || r.fornecedor.razao_social || "") : ""; }
@@ -78,7 +78,7 @@ function repDias(r){
   return Math.max(0, Math.round((new Date(fim + "T00:00:00") - new Date(r.data_abertura + "T00:00:00")) / 864e5));
 }
 
-/* ---------- carga ---------- */
+
 async function carregarReparos(force){
   const cont = $("rep-conteudo"); if(!cont) return;
   if(force || !_repCarregado){
@@ -112,10 +112,10 @@ async function repFetch(){
     if(r.error){ aviso("app-aviso", "Erro ao carregar reparos: " + r.error.message, "erro"); break; }
     out.push(...(r.data || []));
   }
-  await Promise.all([anexarCustoMO("reparo", out), repAnexarExterno(out)]);   // lote S67-h
+  await Promise.all([anexarCustoMO("reparo", out), repAnexarExterno(out)]);
   _repLista = out;
 }
-/* custo da hora da oficina (empresa_config): diretoria define; 0 até lá */
+
 function repRenderCustoHora(){
   const el = $("rep-custo-hora"); if(!el) return;
   const pode = !!usuarioAtual && ["diretor", "admin"].includes(usuarioAtual.cargo);
@@ -133,13 +133,13 @@ function repRenderCustoHora(){
   });
 }
 
-/* ---------- painel ---------- */
+
 function repFiltrados(){
   const q = ($("rep-busca")?.value || "").trim().toLowerCase();
   const st = $("rep-f-status")?.value || "", se = $("rep-f-setor")?.value || "", rs = $("rep-f-resp")?.value || "";
   return _repLista.filter(r => {
     if(st === "_abertos"){ if(!["aberto", "em_execucao"].includes(r.status)) return false; }
-    else if(st === "_fornecedor"){ if(!repNoFornecedor(r)) return false; }   // fase 186b
+    else if(st === "_fornecedor"){ if(!repNoFornecedor(r)) return false; }
     else if(st && r.status !== st) return false;
     if(se && r.setor !== se) return false;
     if(rs && r.responsavel_id !== rs && !(r.responsaveis_extra_ids || []).includes(rs)) return false;
@@ -150,7 +150,7 @@ function repFiltrados(){
 function renderReparos(){
   const cont = $("rep-conteudo"); if(!cont) return;
   document.querySelectorAll("#rep-views .serv-view-btn").forEach(b => b.classList.toggle("ativo", b.dataset.view === _repView));
-  // lote S52 (#164): a visão de horas troca os filtros (período, departamento, origem) e esconde a contagem por status
+
   const horas = _repView === "horas";
   document.querySelectorAll("#rep-painel [data-rep-so]").forEach(el => { el.style.display = el.dataset.repSo === (horas ? "horas" : "lista") ? "" : "none"; });
   const busca = $("rep-busca"); if(busca) busca.placeholder = horas ? "Buscar colaborador, ordem ou departamento…" : "Buscar nº, marcação, TAG, modelo, descrição, WH/RO…";
@@ -160,12 +160,12 @@ function renderReparos(){
   repRenderContagem(dados);
   if(!dados.length){ cont.innerHTML = `<p class="vazio">Nenhum reparo com esses filtros.</p>`; return; }
   if(_repView === "kanban"){
-    // fase 186b: coluna "No fornecedor" entre Em execução e Concluído; o reparo enviado sai das colunas de aberto e em execução
+
     const cols = ["aberto", "em_execucao", "_fornecedor", "concluido"].concat(dados.some(r => r.status === "cancelado") ? ["cancelado"] : []);
     cont.innerHTML = `<div class="serv-kanban">${cols.map(st => { const its = st === "_fornecedor" ? dados.filter(repNoFornecedor).sort((a, b) => String(a.enviado_em).localeCompare(String(b.enviado_em)))
         : dados.filter(r => r.status === st && !repNoFornecedor(r));
       const cab = st === "_fornecedor" ? `<span class="tag ambar" title="Reparo externo enviado ao fornecedor e ainda sem retorno">No fornecedor</span>` : repTag(st);
-      return `<div class="serv-kan-col"><div class="serv-kan-col-head">${/* html */ cab} <span class="contador">${its.length}</span></div>
+      return `<div class="serv-kan-col"><div class="serv-kan-col-head">${  cab} <span class="contador">${its.length}</span></div>
         ${its.slice(0, 200).map(r => `<div class="serv-kan-card" data-id="${esc(r.id)}">
           <div class="serv-kan-card-nome"><strong>${esc(r.numero || "")}</strong> <span class="meta">${dataBR(r.data_abertura)}${r.codigo_externo ? " · " + esc(r.codigo_externo) : ""}</span></div>
           <div>${esc(repAlvoTxt(r))}</div><div class="meta">${esc(r.descricao || "")}</div>
@@ -182,23 +182,23 @@ function renderReparos(){
   }
 }
 
-/* ---------- Horas por colaborador (lote S52, #164, Lais) ----------
-   Relatório de horas apropriadas na oficina, como o "Relatório de Apropriação de Horas" do Odoo: soma por colaborador das
-   horas lançadas em reparos (RP), ordens de fabricação (OF) e OS de manutenção (OS), lidas de vw_horas_oficina (security
-   invoker: vale a policy de cada tabela base). Filtros: período (padrão mês atual), departamento do RH (filhos de
-   MANUTENÇÃO + o que mais aparecer no período) e origem; a busca filtra por colaborador, ordem ou departamento. Clicar na
-   linha abre o detalhe por ordem. Exporta .xlsx (Resumo + Detalhe). Sem valores em R$: a bonificação é cálculo da Lais e o
-   custo da hora fica na ficha da ordem. O almoço já vem descontado em `horas` (gatilhos das três tabelas). */
-let _rephLinhas = [];          // lançamentos do período (vw_horas_oficina)
-let _rephDeps = null;          // departamentos (id, nome, parent_id) — carregados uma vez
-let _rephAberto = null;        // chave do colaborador com o detalhe aberto
-let _rephCarga = 0;            // token da carga (trocar o período cancela a anterior)
-let _rephPeriodo = "";         // "de|ate" da última carga
-let _rephAtivSem = [];         // lote S68-c1: atividades de OS com horário e sem hora lançada no período
-let _rephAtivAberto = false;   // lista dessas atividades aberta
+
+
+
+
+
+
+
+let _rephLinhas = [];
+let _rephDeps = null;
+let _rephAberto = null;
+let _rephCarga = 0;
+let _rephPeriodo = "";
+let _rephAtivSem = [];
+let _rephAtivAberto = false;
 const REPH_ORIGEM = { reparo: ["RP", "Reparo"], fabricacao: ["OF", "Fabricação"], manutencao: ["OS", "Manutenção"] };
-function rephHmin(h){ return horasHM(h, { zero: true }); }   // lote S65-a: formatador único do core.js
-const REPH_ORDEM_HE = ["reparo", "fabricacao", "manutencao"];   // lote S65-a (#301): HE por origem no resumo
+function rephHmin(h){ return horasHM(h, { zero: true }); }
+const REPH_ORDEM_HE = ["reparo", "fabricacao", "manutencao"];
 function rephMesISO(d){ return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function rephPeriodoPadrao(){
   const de = $("rep-h-de"), ate = $("rep-h-ate"); if(!de || !ate) return;
@@ -223,7 +223,7 @@ function rephDepOptions(){
   const man = (_rephDeps || []).find(d => String(d.nome || "").trim().toUpperCase() === "MANUTENÇÃO");
   const filhos = man ? (_rephDeps || []).filter(d => d.parent_id === man.id && d.ativo !== false) : [];
   const ids = new Set(filhos.map(d => d.id));
-  // departamentos que aparecem no período e não são da MANUTENÇÃO (ex.: a Lorrayne está no pai) entram depois
+
   const outros = {}; _rephLinhas.forEach(l => { if(l.departamento_id && !ids.has(l.departamento_id)) outros[l.departamento_id] = l.departamento_nome || "?"; });
   sel.innerHTML = `<option value="">Todos os departamentos</option>`
     + filhos.map(d => `<option value="${esc(d.id)}">${esc(d.nome)}</option>`).join("")
@@ -257,18 +257,18 @@ async function rephCarregar(){
   rephDepOptions();
   rephRender();
 }
-/* lote S68-c1 (#368): atividade de OS com executante, início e fim e sem hora lançada da mesma pessoa, OS e dia (o horário
-   da aba Atividades não é hora trabalhada). Lê manutencao_atividades com início no período; atividade de vários dias conta
-   como lançada se houver qualquer hora da pessoa na OS entre o dia de início e o de fim. */
+
+
+
 async function rephCarregarAtivSemHora(de, ate, linhas){
   _rephAtivSem = []; _rephAtivAberto = false;
   const r = await lerTudo(() => sb.from("manutencao_atividades")
     .select("id,manutencao_id,atividade,executante_id,data_inicio,data_fim,inicio,fim,manutencao:manutencoes(numero),executante:funcionarios(nome)")
     .not("executante_id", "is", null).not("inicio", "is", null).not("fim", "is", null)
     .gte("data_inicio", de).lte("data_inicio", ate));
-  if(r.error) return;   // o aviso é auxiliar: sem leitura, a Planilha segue sem ele
+  if(r.error) return;
   const horas = new Set(linhas.filter(l => l.origem === "manutencao").map(l => `${l.ordem_id}|${l.funcionario_id}|${l.data}`));
-  // hora extra aguardando aprovação também é hora lançada (ainda fora da planilha)
+
   const ap = await lerTudo(() => sb.from("apontamento_aprovacoes").select("id,documento_id,funcionario_id,data")
     .eq("tipo", "OS").eq("status", "aguardando").gte("data", de));
   (ap.data || []).forEach(x => horas.add(`${x.documento_id}|${x.funcionario_id}|${x.data}`));
@@ -322,12 +322,12 @@ function rephOrdemLink(l){
 function rephRender(){
   const cont = $("rep-conteudo"); if(!cont) return;
   const de = $("rep-h-de")?.value || "", ate = $("rep-h-ate")?.value || "";
-  if(!_rephLinhas.length && _rephPeriodo !== `${de}|${ate}`){ rephCarregar(); return; }   // 1ª abertura ou período trocado sem carga
+  if(!_rephLinhas.length && _rephPeriodo !== `${de}|${ate}`){ rephCarregar(); return; }
   const linhas = rephFiltradas(), res = rephResumo(linhas);
   const tot = res.reduce((s, r) => s + r.horas, 0), totHe = res.reduce((s, r) => s + r.he, 0), totOrd = new Set(linhas.map(l => l.origem + ":" + l.ordem_id)).size;
   $("rep-contador").textContent = `${res.length} colaborador(es) · ${horasHM(tot, { zero: true })} h`;
   if(!linhas.length){ cont.innerHTML = rephAvisoAtivHTML() + `<p class="vazio">Nenhuma hora lançada em reparos, fabricação ou manutenção nesse período com esses filtros.</p>`; return; }
-  const hr = l => l.inicio && l.fim ? `${esc(String(l.inicio).slice(0, 5))}–${esc(String(l.fim).slice(0, 5))}` : "—";   // linha do Odoo sem horário
+  const hr = l => l.inicio && l.fim ? `${esc(String(l.inicio).slice(0, 5))}–${esc(String(l.fim).slice(0, 5))}` : "—";
   const detalhe = r => `<tr class="reph-det"><td colspan="9"><div class="tabela-rola" style="margin:2px 0 6px;"><table>
       <thead><tr><th>Data</th><th>Ordem</th><th>Descrição</th><th>Abertura</th><th>Início–fim</th><th class="num">Horas</th><th class="num">h:min</th><th>Obs.</th></tr></thead>
       <tbody>${r.linhas.slice().sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.inicio || "").localeCompare(String(b.inicio || ""))).map(l => `<tr>
@@ -361,8 +361,8 @@ function rephExportar(){
   XLSX.writeFile(wb, `horas-oficina-${de}_${ate}.xlsx`);
 }
 
-/* lote S50 (#142, Lucas): contagem por status no topo do painel, sobre a lista já filtrada (busca, status, setor,
-   responsável e período): a soma dos chips é o total "N reparos". Ordem do fluxo (REP_STAGES) e cancelado no fim. */
+
+
 function repRenderContagem(dados){
   const el = $("rep-st-chips"); if(!el) return;
   const n = dados.length;
@@ -370,7 +370,7 @@ function repRenderContagem(dados){
     + REP_STAGES.concat(["cancelado"]).map(st => `<span>${repTag(st)}<span class="contador">${dados.filter(r => r.status === st).length}</span></span>`).join("");
 }
 
-/* ---------- ficha ---------- */
+
 function novoReparo(pre){
   if(!repPodeEditar()){ aviso("app-aviso", "Seu perfil não registra reparos.", "erro"); return; }
   abrirFichaReparo(Object.assign({ id: null, numero: "(novo)", status: "aberto", setor: "caldeiraria", tipo_servico: "recuperacao_estrutural", data_abertura: hojeISO() }, pre || {}), [], []);
@@ -382,9 +382,9 @@ async function abrirReparo(id){
     sb.from("reparo_itens").select("*").eq("reparo_id", id).order("created_at"),
     sb.from("reparo_horas").select("*").eq("reparo_id", id).order("data").order("inicio")
   ]);
-  await aptCarregarAguardandoDoc(id);   // fase 188c
+  await aptCarregarAguardandoDoc(id);
   if(r.error || !r.data){ aviso("app-aviso", "Não foi possível abrir o reparo" + (r.error ? ": " + r.error.message : "."), "erro"); return; }
-  await Promise.all([anexarCustoMO("reparo", r.data), repAnexarExterno(r.data)]);   // lote S67-h
+  await Promise.all([anexarCustoMO("reparo", r.data), repAnexarExterno(r.data)]);
   abrirFichaReparo(r.data, it.data || [], hs.data || []);
 }
 function abrirFichaReparo(r, itens, horas){
@@ -398,8 +398,8 @@ function abrirFichaReparo(r, itens, horas){
   $("rep-resp").value = r.responsavel_id || ""; $("rep-desc").value = r.descricao || ""; $("rep-motivo").value = r.motivo || "";
   $("rep-abertura").value = r.data_abertura || ""; $("rep-inicio").value = r.data_inicio || ""; $("rep-conclusao").value = r.data_conclusao || ""; $("rep-obs").value = r.observacoes || "";
   $("rep-ficha").querySelectorAll(".odoo-tab[data-tab=geral] input, .odoo-tab[data-tab=geral] select, .odoo-tab[data-tab=geral] textarea").forEach(el => el.disabled = !pode);
-  repPreencherExterno();   // fase 186b
-  _repExtras = (r.responsaveis_extra_ids || []).slice(); repRenderExtras();   // lote S60 (#254)
+  repPreencherExterno();
+  _repExtras = (r.responsaveis_extra_ids || []).slice(); repRenderExtras();
   $("rep-h-data").value = hojeISO();
   repAtualizarCabecalho();
   repRenderItens(); repRenderHoras(); repRenderCustos();
@@ -419,9 +419,9 @@ function repAtualizarCabecalho(){
   $("rep-chip-setor").textContent = REP_SETOR[r.setor] || "—";
   $("rep-chip-resp").textContent = respResumo(repRespNomes(r)) || "—"; $("rep-chip-resp").title = repRespNomes(r).join(", ");
   $("rep-chip-dias").textContent = repDias(r) ?? "—";
-  $("rep-chip-autor").textContent = autorOrdemTexto(r, r.autor);   // lote S65-h (#323)
+  $("rep-chip-autor").textContent = autorOrdemTexto(r, r.autor);
   $("rep-chip-odoo").style.display = r.codigo_externo ? "" : "none"; $("rep-chip-odoo-txt").textContent = r.codigo_externo || "";
-  // fase 186b: chip do pedido do conserto
+
   const ped = r.pedido_externo;
   $("rep-chip-pedido").style.display = ped ? "" : "none";
   $("rep-chip-pedido-txt").innerHTML = ped ? `<a href="#" class="rep-ped-link" data-id="${esc(ped.id)}" title="Abrir o pedido em Compras">${esc(ped.numero || "pedido")}</a> <span class="meta">${esc(REP_PED_STATUS[ped.status] || ped.status || "")}</span>` : "";
@@ -429,21 +429,21 @@ function repAtualizarCabecalho(){
   const pendBaixa = _repItens.some(i => i.tipo === "consumo" && !i.movimentacao_estoque_id && !i.codigo_externo && i.produto_id);
   const mostra = { "btn-rep-salvar": pode && st !== "cancelado", "btn-rep-iniciar": pode && !novo && st === "aberto", "btn-rep-concluir": pode && !novo && ["aberto", "em_execucao"].includes(st),
     "btn-rep-cancelar": pode && !novo && ["aberto", "em_execucao"].includes(st), "btn-rep-baixa": repPodeItens() && !novo && st !== "cancelado" && pendBaixa, "btn-rep-imprimir": !novo,
-    // fase 186b: ações do reparo externo
+
     "btn-rep-orcamento": pode && ext && !pedAtivo, "btn-rep-pedido": pode && ext && !pedAtivo && Number(r.orcamento_valor || 0) > 0,
     "btn-rep-retorno": pode && !!r.externo && !novo && !!r.enviado_em && !r.retornou_em && st !== "cancelado" };
   Object.entries(mostra).forEach(([id, on]) => { const b = $(id); if(b) b.style.display = on ? "" : "none"; });
   const sb2 = (id, n) => { const b = $(id); if(b){ b.querySelector(".sb-num").textContent = n; b.classList.toggle("zero", !n || n === "R$ 0,00"); } };
   sb2("sb-rep-pecas", _repItens.length); sb2("sb-rep-horas", num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0)));
   sb2("sb-rep-custo", brlMO(r.custo_real));
-  $("rep-itens-add").style.display = repPodeItens() && !novo && st !== "cancelado" ? "" : "none";   // lote S43: almoxarife também
+  $("rep-itens-add").style.display = repPodeItens() && !novo && st !== "cancelado" ? "" : "none";
   $("rep-horas-add").style.display = pode && !novo && st !== "cancelado" ? "" : "none";
 }
 function repAtivarTab(nome){
   document.querySelectorAll("#rep-notebook button").forEach(b => b.classList.toggle("ativo", b.dataset.tab === nome));
   document.querySelectorAll("#rep-ficha .odoo-tab").forEach(t => t.classList.toggle("ativa", t.dataset.tab === nome));
 }
-/* lote S60 (#251): documento para a oficina, no modelo de manImprimirOS. Sem R$ e sem custo. Hex só aqui, porque o gerador roda fora do CSS do app. */
+
 async function repImprimir(){
   const r = _repAtual; if(!r?.id) return;
   const td = "border:1px solid #444;padding:3px 5px;font-size:10px;vertical-align:top;";
@@ -473,12 +473,12 @@ async function repImprimir(){
     <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
       <tr><td style="${th}" colspan="5">PEÇAS</td></tr>
       <tr><td style="${th}width:30px;">ITEM</td><td style="${th}">DESCRIÇÃO</td><td style="${th}width:40px;">UN</td><td style="${th}width:60px;">QTD</td><td style="${th}width:70px;">TIPO</td></tr>
-      ${/* html */ pecas}
+      ${  pecas}
     </table>
     <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
       <tr><td style="${th}" colspan="5">APROPRIAÇÃO DE MÃO DE OBRA · TOTAL ${num(totalH)} H</td></tr>
       <tr><td style="${th}">NOME</td><td style="${th}width:70px;">DATA</td><td style="${th}width:60px;">INÍCIO</td><td style="${th}width:60px;">FIM</td><td style="${th}width:60px;">HORAS</td></tr>
-      ${/* html */ horas}
+      ${  horas}
     </table>
     <table style="width:100%;border-collapse:collapse;margin-top:28px;">
       <tr><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>EXECUTANTE</td><td style="${td}height:44px;vertical-align:bottom;text-align:center;font-size:9px;">_______________________________<br/>RESPONSÁVEL</td></tr>
@@ -493,7 +493,7 @@ async function salvarReparo(){
   const reg = { acessorio_id: _repAce ? _repAce.id : null, equipamento_id: $("rep-equip").value || null, setor: $("rep-setor").value || null, tipo_servico: $("rep-tipo").value,
     responsavel_id: $("rep-resp").value || null, responsaveis_extra_ids: _repExtras.filter(x => x !== $("rep-resp").value), descricao: $("rep-desc").value.trim(), motivo: $("rep-motivo").value.trim() || null,
     data_abertura: $("rep-abertura").value || hojeISO(), data_inicio: $("rep-inicio").value || null, data_conclusao: $("rep-conclusao").value || null, observacoes: $("rep-obs").value.trim() || null };
-  // fase 186b: dados do reparo externo (sem a marca, o banco não aceita fornecedor, envio nem retorno)
+
   const ext = $("rep-x-externo").checked;
   Object.assign(reg, { externo: ext, fornecedor_id: ext && _repForn ? _repForn.id : null, enviado_em: ext ? $("rep-x-enviado").value || null : null,
     nf_remessa_numero: ext ? $("rep-x-nf-rem").value.trim() || null : null, retornou_em: ext ? $("rep-x-retorno").value || null : null,
@@ -534,9 +534,9 @@ async function repAcao(acao){
   await abrirReparo(r.id);
 }
 
-/* peças */
+
 function repRenderItens(){
-  const tb = $("rep-itens"), pode = repPodeItens() && _repAtual?.status !== "cancelado";   // lote S43: almoxarife remove item sem baixa
+  const tb = $("rep-itens"), pode = repPodeItens() && _repAtual?.status !== "cancelado";
   if(!_repItens.length){ tb.innerHTML = `<tr><td colspan="8" class="vazio">${_repAtual?.id ? "Nenhuma peça lançada." : "Salve o reparo para lançar peças."}</td></tr>`; return; }
   tb.innerHTML = _repItens.map(i => {
     const baixa = i.movimentacao_estoque_id ? '<span class="tag verde">baixada no estoque</span>' : i.codigo_externo ? '<span class="tag cinza">baixa no Odoo</span>'
@@ -561,17 +561,17 @@ async function repAddItem(p){
   await abrirReparo(_repAtual.id); repAtivarTab("pecas");
 }
 
-/* horas */
+
 function repRenderHoras(){
   const tb = $("rep-horas"), pode = repPodeEditar() && _repAtual?.status !== "cancelado";
   const nomeF = id => (_repFuncs.find(f => f.id === id) || {}).nome || "";
-  const ag = _repAtual?.id ? aptTxtAguardando(_repAtual.id, "RP") : "";   // fase 188c: HE aguardando, fora do total
+  const ag = _repAtual?.id ? aptTxtAguardando(_repAtual.id, "RP") : "";
   if(!_repHoras.length){ tb.innerHTML = `<tr><td colspan="7" class="vazio">${_repAtual?.id ? "Nenhuma hora lançada." : "Salve o reparo para lançar horas."}</td></tr>`; $("rep-horas-total").innerHTML = ag; return; }
   tb.innerHTML = _repHoras.map(h => `<tr><td>${esc(nomeF(h.funcionario_id) || "—")}</td><td>${dataBR(h.data)}</td><td>${h.inicio ? esc(String(h.inicio).slice(0, 5)) : "—"}</td><td>${h.fim ? esc(String(h.fim).slice(0, 5)) : "—"}</td>
     <td class="num">${num(h.horas)}${h.hora_extra ? ' <span class="tag ambar" title="hora extra, custa ×2">HE</span>' : ""}</td><td class="meta">${esc(h.observacao || "")}${h.codigo_externo ? " · Odoo" : ""}</td>
     <td>${pode && !h.codigo_externo ? `<button type="button" class="btn-sec btn-sm rep-h-rem" data-id="${esc(h.id)}" title="remover">×</button>` : ""}</td></tr>`).join("");
   const porF = {}; _repHoras.forEach(h => { const n = nomeF(h.funcionario_id) || "sem funcionário"; porF[n] = (porF[n] || 0) + Number(h.horas || 0); });
-  const heRep = _repHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);   // fase 156a (HE)
+  const heRep = _repHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
   $("rep-horas-total").innerHTML = `Total: <strong>${num(_repHoras.reduce((t, h) => t + Number(h.horas || 0), 0))} h</strong>${heRep ? ` (${num(heRep)} h de hora extra)` : ""} · ` + Object.entries(porF).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${esc(n)} ${num(v)} h`).join(" · ") + ag;
   tb.querySelectorAll(".rep-h-rem").forEach(b => b.addEventListener("click", async () => {
     const { error } = await sb.from("reparo_horas").delete().eq("id", b.dataset.id);
@@ -583,18 +583,18 @@ async function repAddHoras(){
   if(!_repAtual?.id) return;
   const reg = { reparo_id: _repAtual.id, funcionario_id: $("rep-h-func").value || null, data: $("rep-h-data").value || hojeISO(),
     inicio: $("rep-h-inicio").value || null, fim: $("rep-h-fim").value || null, horas: $("rep-h-horas").value === "" ? null : Number($("rep-h-horas").value), observacao: $("rep-h-obs").value.trim() || null,
-    hora_extra: false };   // lote S69-j (#369): HE só automática (fim de semana, feriado e fora do expediente)
+    hora_extra: false };
   if(!reg.funcionario_id){ aviso("app-aviso", "Escolha o funcionário.", "erro"); return; }
   if(!(reg.inicio && reg.fim) && reg.horas == null){ aviso("app-aviso", "Informe início e fim (o sistema calcula as horas) ou as horas.", "erro"); return; }
   if(reg.inicio && reg.fim){
-    reg.horas = 0;   // o gatilho calcula
+    reg.horas = 0;
     if(reg.fim <= reg.inicio){ aviso("app-aviso", "O fim precisa ser depois do início (hora que passa da meia-noite: uma linha por dia).", "erro"); return; }
   }
-  // fase 188b (#322): a mesma divisão do "Lançar horas" e da ficha da OF; antes, marcar HE aqui mandava a linha inteira
+
   let div;
   try { div = await aptDividirFicha(reg); } catch(e){ aviso("app-aviso", e.message, "erro"); return; }
   if(!div) return;
-  // fase 188c (#322, D9): a parte normal grava direto; a hora extra (marcada, ou sábado, domingo e feriado) vai para aprovação do gestor de acessórios
+
   const g = await aptGravarFicha("RP", _repAtual.id, div.regs);
   if(g.erro && !g.gravadas){ aviso("app-aviso", "Não foi possível lançar: " + g.erro, "erro"); return; }
   ["rep-h-inicio", "rep-h-fim", "rep-h-horas", "rep-h-obs"].forEach(id => $(id).value = ""); aptMostrarHEFicha("rep-h");
@@ -602,12 +602,12 @@ async function repAddHoras(){
   aptAvisoFicha("RP", g, div.regs.length, div.avisoExp);
 }
 
-/* custos */
+
 function repRenderCustos(){
   const r = _repAtual, c = $("rep-custos"); if(!r || !c) return;
   const pode = repPodeEditar() && !!r.id;
   const horas = _repHoras.reduce((t, h) => t + Number(h.horas || 0), 0), he = _repHoras.reduce((t, h) => t + (h.hora_extra ? Number(h.horas || 0) : 0), 0);
-  if(r.pedido_id){   // fase 186b (D11): com pedido ligado o custo real é o total do pedido e não se digita
+  if(r.pedido_id){
     const ped = r.pedido_externo || {};
     c.innerHTML = `<div class="custos-resumo">
         <div><div class="mov-ace-sug-grupo-t">Composição</div>
@@ -646,11 +646,11 @@ function repRenderCustos(){
   });
 }
 
-/* ---------- reparo externo (fase 186b, #226) ----------
-   Etapa do reparo, não cadastro novo (D11): fornecedor, envio com a NF de remessa feita como hoje (D3, sem NF-e pelo app),
-   orçamento com PDF, pedido de compra gerado pela RPC reparo_externo_gerar_pedido (aplicação direta, rascunho, segue o fluxo
-   de Compras) e retorno. Com pedido ligado o custo real é o total do pedido (gatilho no banco). A peça fica "No fornecedor"
-   (acessorios.local_tipo) do envio até o retorno, pelo gatilho fn_reparo_externo_local. */
+
+
+
+
+
 function repPreencherExterno(){
   const r = _repAtual; if(!r) return;
   const pode = repPodeEditar() && r.status !== "cancelado";
@@ -660,7 +660,7 @@ function repPreencherExterno(){
   $("rep-x-enviado").value = r.enviado_em || ""; $("rep-x-nf-rem").value = r.nf_remessa_numero || "";
   $("rep-x-retorno").value = r.retornou_em || ""; $("rep-x-nf-ret").value = r.nf_retorno_numero || "";
   $("rep-ficha").querySelectorAll(".odoo-tab[data-tab=externo] .grade input").forEach(el => el.disabled = !pode);
-  // com pedido ligado a marca não sai (o pedido continua sendo o custo do reparo)
+
   $("rep-x-externo").disabled = !pode || !!r.pedido_id;
   $("rep-x-externo").title = r.pedido_id ? "Reparo com pedido de compra ligado continua externo" : "Peça enviada ao fornecedor para conserto";
   repRenderExterno();
@@ -706,7 +706,7 @@ async function repSalvarOrcamento(){
   if(f){
     if(!/\.pdf$/i.test(f.name)){ aviso("app-aviso", "O orçamento anexado tem de ser PDF.", "erro"); return; }
     if(f.size > 20 * 1024 * 1024){ aviso("app-aviso", "PDF acima de 20 MB.", "erro"); return; }
-    // supabase-js ignora contentType quando o corpo é File: reembala em Blob com o MIME da extensão
+
     const caminho = `reparos/${r.id}/orcamento_${Date.now()}.pdf`;
     const up = await sb.storage.from(REP_ORC_BUCKET).upload(caminho, new Blob([f], { type: "application/pdf" }), { cacheControl: "3600", contentType: "application/pdf", upsert: false });
     if(up.error){ aviso("app-aviso", "PDF não enviado: " + up.error.message, "erro"); return; }
@@ -764,7 +764,7 @@ function repLigarBuscaFornecedor(){
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 150));
 }
 
-/* buscas */
+
 function repLigarBuscaAcessorio(){
   const inp = $("rep-ace-busca"), lista = $("rep-ace-res"); if(!inp || !lista) return;
   inp.addEventListener("input", debounce(async () => {
@@ -790,7 +790,7 @@ function repLigarBuscaProduto(){
     if(t.length < 2){ lista.style.display = "none"; return; }
     const { data } = await sb.from("produtos").select("id,codigo,nome,unidade,estoque_atual,custo_ultimo").eq("ativo", true).or(`nome.ilike.%${t}%,codigo.ilike.%${t}%,codigo_barras.eq.${t}`).order("nome").limit(25);
     const res = data || [];
-    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${/* html */ prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
+    lista.innerHTML = res.map(p => `<div class="resultado-item" data-id="${esc(p.id)}">${  prodBuscaHtml(p, res)} <span class="meta" style="float:right;">${num(p.estoque_atual || 0)} ${esc(p.unidade || "un")} · ${brl(p.custo_ultimo || 0)}</span></div>`).join("")
       || `<div class="resultado-item vazio">Nenhum produto.</div>`;
     lista.style.display = "";
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => { ev.preventDefault(); inp.value = ""; lista.style.display = "none"; repAddItem(res.find(x => x.id === d.dataset.id)); }));
@@ -798,7 +798,7 @@ function repLigarBuscaProduto(){
   inp.addEventListener("blur", () => setTimeout(() => { lista.style.display = "none"; }, 150));
 }
 
-/* ---------- ligação ---------- */
+
 function ligarReparos(){
   if(!$("sec-reparos")) return;
   document.querySelector('nav button[data-secao="reparos"]')?.addEventListener("click", () => carregarReparos(false));
@@ -806,7 +806,7 @@ function ligarReparos(){
   $("rep-busca")?.addEventListener("input", debounce(renderReparos));
   ["rep-f-status", "rep-f-setor", "rep-f-resp"].forEach(id => $(id)?.addEventListener("change", renderReparos));
   $("rep-f-periodo")?.addEventListener("change", async () => { await repFetch(); renderReparos(); });
-  // lote S52 (#164): filtros da visão de horas
+
   ["rep-h-de", "rep-h-ate"].forEach(id => $(id)?.addEventListener("change", rephCarregar));
   $("rep-h-atalho")?.addEventListener("change", e => { if(e.target.value){ rephAtalho(e.target.value); e.target.value = ""; rephCarregar(); } });
   ["rep-h-dep", "rep-h-origem"].forEach(id => $(id)?.addEventListener("change", rephRender));
@@ -815,16 +815,16 @@ function ligarReparos(){
   $("btn-rep-novo")?.addEventListener("click", () => novoReparo());
   $("rep-conteudo")?.addEventListener("click", e => {
     if(e.target.closest("a")) return;
-    if(_repView === "horas"){   // lote S52: a linha do colaborador abre/fecha o detalhe por ordem
-      if(e.target.closest("#reph-ativ-ver")){ _rephAtivAberto = !_rephAtivAberto; rephRender(); return; }   // lote S68-c1
+    if(_repView === "horas"){
+      if(e.target.closest("#reph-ativ-ver")){ _rephAtivAberto = !_rephAtivAberto; rephRender(); return; }
       const l = e.target.closest("tr.reph-linha"); if(!l) return;
       _rephAberto = _rephAberto === l.dataset.chave ? null : l.dataset.chave; rephRender(); return;
     }
     const el = e.target.closest("[data-id]"); if(el) abrirReparo(el.dataset.id);
   });
   $("btn-rep-voltar")?.addEventListener("click", mostrarPainelReparos);
-  $("btn-rep-imprimir")?.addEventListener("click", () => comBotaoTravado("btn-rep-imprimir", repImprimir));   // lote S60 (#251)
-  $("rep-resp")?.addEventListener("change", () => { _repExtras = _repExtras.filter(x => x !== $("rep-resp").value); repRenderExtras(); });   // lote S60 (#254)
+  $("btn-rep-imprimir")?.addEventListener("click", () => comBotaoTravado("btn-rep-imprimir", repImprimir));
+  $("rep-resp")?.addEventListener("change", () => { _repExtras = _repExtras.filter(x => x !== $("rep-resp").value); repRenderExtras(); });
   $("btn-rep-salvar")?.addEventListener("click", () => comBotaoTravado("btn-rep-salvar", salvarReparo));
   document.querySelectorAll("#rep-ficha .rep-acao").forEach(b => b.addEventListener("click", () => comBotaoTravado(b.id, () => repAcao(b.dataset.acao))));
   document.querySelectorAll("#rep-notebook button").forEach(b => b.addEventListener("click", () => repAtivarTab(b.dataset.tab)));
@@ -832,7 +832,7 @@ function ligarReparos(){
   $("btn-rep-h-add")?.addEventListener("click", () => comBotaoTravado("btn-rep-h-add", repAddHoras));
   repLigarBuscaAcessorio();
   repLigarBuscaProduto();
-  // fase 186b: reparo externo
+
   repLigarBuscaFornecedor();
   $("rep-x-externo")?.addEventListener("change", repRenderExterno);
   $("btn-rep-orcamento")?.addEventListener("click", () => { repAtivarTab("externo"); $("rep-x-orc-valor")?.focus(); });

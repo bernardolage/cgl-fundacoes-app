@@ -1,9 +1,9 @@
-/* ====================================================================
-   js/ui_catalogo.js — monta o catálogo vivo ui.html (fase 193a). Só é carregado pelo ui.html, nunca pelo app.
-   Dado de exemplo inventado (nenhuma obra, pessoa ou valor real) e nenhuma chamada de rede.
-   Cada item: nome da função, para que serve, trecho de uso e o exemplo renderizado (normal, vazio e erro).
-   ==================================================================== */
-/* o app tem esc() no core.js; o catálogo não carrega o core (que abriria o Supabase), então traz a mesma função */
+
+
+
+
+
+
 function esc(s){
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -255,7 +255,7 @@ function catRender(){
   document.getElementById("cat-corpo").innerHTML = CAT_ITENS.map(it => `<section class="cat-item" id="${esc(catIdDe(it.fn))}">
     <header class="cat-item-cab"><h2>${esc(it.titulo)}</h2><code>${esc(it.fn)}</code></header>
     <p class="cat-item-para">${esc(it.para)}</p>
-    <div class="cat-exemplos">${it.exemplos().map(([rot, html]) => `<div class="cat-exemplo"><span class="rotulo-caps">${esc(rot)}</span><div class="cat-palco">${/* html */ html}</div></div>`).join("")}</div>
+    <div class="cat-exemplos">${it.exemplos().map(([rot, html]) => `<div class="cat-exemplo"><span class="rotulo-caps">${esc(rot)}</span><div class="cat-palco">${  html}</div></div>`).join("")}</div>
     <details class="cat-uso"><summary>Trecho de uso</summary><pre><code>${esc(it.uso)}</code></pre></details>
   </section>`).join("");
 }
@@ -266,7 +266,7 @@ function catLigar(){
   const atualizarTema = () => { const e = raiz.dataset.theme === "escuro"; btnTema.setAttribute("aria-pressed", String(e)); btnTema.textContent = e ? "Tema claro" : "Tema escuro"; };
   btnTema.addEventListener("click", () => {
     if(raiz.dataset.theme === "escuro") delete raiz.dataset.theme; else raiz.dataset.theme = "escuro";
-    try { localStorage.setItem("cgl-tema", raiz.dataset.theme === "escuro" ? "escuro" : "claro"); } catch(_){ /* sem storage */ }
+    try { localStorage.setItem("cgl-tema", raiz.dataset.theme === "escuro" ? "escuro" : "claro"); } catch(_){   }
     atualizarTema();
   });
   atualizarTema();

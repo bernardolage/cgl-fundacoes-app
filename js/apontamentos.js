@@ -1,34 +1,34 @@
-/* ====================================================================
-   Módulo: Apontamentos da oficina (fase 156a, #262, 10/11/2026)
-   Horas de RP (reparo), OS (manutenção) e OF (fabricação) numa tela só. Cada linha grava na tabela de horas do
-   próprio documento (reparo_horas, manutencao_horas, fabricacao_horas), pela policy dela: a tela não abre permissão
-   nova. Sábado, domingo e feriado não gravam direto: vão para apontamento_aprovacoes e só entram (e viram custo)
-   quando o responsável do setor aprova (RPC apontamento_aprovar). OS = gestor de manutenção; RP e OF = gestor de
-   acessórios; o diretor aprova qualquer uma; quem lançou nunca aprova a própria.
-   Documento concluído ou cancelado não aceita hora pela tela única. Prefixo: apt-.
-   Fase 156b: a foto do quadro (js/apontamentos_quadro.js) vira linhas desta mesma grade, com origem 'quadro'.
-   Fase 188b (#322): ao sair do Início, do Fim ou da Data, a linha que passa do expediente da oficina (fabricacao_expediente)
-   se desdobra em partes normal e HE (RPC apontamento_dividir_he); "Manter numa linha" desfaz, com motivo. Sábado, domingo
-   e feriado continuam com o dia inteiro em HE e indo para aprovação.
-   Fase 188c (#322): toda hora extra vai para aprovação, também a de dia útil (a parte normal grava direto). A ficha do RP,
-   da OS e da OF usa aptGravarFicha; a HE aguardando aparece na ficha fora do total (aptTxtAguardando).
-   Lote S69-j (#369): HE só automática. A caixa "HE" saiu da grade e das fichas; a HE vem só da regra (fim de semana e
-   feriado inteiros, dia útil fora do expediente pela divisão) e aparece como "HE calculada", só leitura.
-   Lote S69-k (#360): HE de RP é decidida pelo gestor de acessórios ou pelo de manutenção (OS e OF como antes).
-   ==================================================================== */
 
-let _aptHoras = [];        // vw_apontamentos no período
-let _aptAprov = [];        // apontamento_aprovacoes (aguardando + decididas no período)
-let _aptDocs = [];         // documentos abertos (para a busca da grade)
-let _aptDocNum = {};       // id → { tipo, numero, status, equipamento } (abertos e os que aparecem nas aprovações)
-let _aptFuncs = [];        // funcionários ativos
-let _aptCentros = [];      // centros de trabalho ativos
-let _aptGrade = [];        // linhas da grade de lançamento
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _aptHoras = [];
+let _aptAprov = [];
+let _aptDocs = [];
+let _aptDocNum = {};
+let _aptFuncs = [];
+let _aptCentros = [];
+let _aptGrade = [];
 let _aptView = "horas";
-let _aptDiaAprov = {};     // data → exige aprovação (cache do apontamento_dia_aprovacao)
-let _aptAtiv = {};         // manutencao_id → atividades pendentes da OS
-let _aptExp = null;        // fase 188b: { seg_qui: {entrada, saida}, sexta: {...} } (null = não lido)
-let _aptDivSeq = 0;        // fase 188b: grupo das partes de uma linha dividida
+let _aptDiaAprov = {};
+let _aptAtiv = {};
+let _aptExp = null;
+let _aptDivSeq = 0;
 
 const APT_TIPO = {
   RP: { rotulo: "RP (reparo)", tabela: "reparo_horas", col: "reparo_id", secao: "reparos" },
@@ -41,18 +41,18 @@ const APT_STATUS_DOC = { aberto: "aberto", em_execucao: "em execução", conclui
 const APT_DOC_ABERTO = { RP: ["aberto", "em_execucao"], OS: ["agendada", "em_andamento"], OF: ["rascunho", "planejada", "confirmada", "em_producao", "pausada"] };
 const APT_DIA_SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
-/* Quem grava hora em cada tipo: espelha as policies de reparo_horas, manutencao_horas (manutencao_pode_operar) e
-   fabricacao_horas (fabricacao_pode_operar). Listas em core.js (APT_CARGOS_GRAVAM), usadas também pelo menu. */
+
+
 function aptPodeGravar(tipo){
   if(!usuarioAtual || ehSomenteLeitura()) return false;
   return (APT_CARGOS_GRAVAM[tipo] || []).includes(usuarioAtual.cargo);
 }
 function aptPodeLancar(){ return ["RP", "OS", "OF"].some(aptPodeGravar); }
-/* Quem decide a hora de fim de semana: espelha apontamento_conferir_decisor (has_role cobre o diretor) */
+
 function aptPodeDecidir(a){
   if(!usuarioAtual || ehSomenteLeitura() || !a || a.status !== "aguardando" || a.lancado_por === usuarioAtual.id) return false;
   if(usuarioAtual.cargo === "diretor") return true;
-  if(a.tipo === "RP") return ["gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo);   // lote S69-k (#360)
+  if(a.tipo === "RP") return ["gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo);
   return a.tipo === "OS" ? usuarioAtual.cargo === "gestor_manutencao" : usuarioAtual.cargo === "gestor_acessorios";
 }
 
@@ -65,7 +65,7 @@ function aptRotuloDoc(d){
     .filter(Boolean).join(" · ");
 }
 
-/* ---------- carga ---------- */
+
 async function carregarApontamentos(){
   if(!$("apt-de").value){ $("apt-de").value = hojeISO(); $("apt-ate").value = hojeISO(); }
   $("btn-apt-lancar").style.display = aptPodeLancar() ? "" : "none";
@@ -77,8 +77,8 @@ async function carregarApontamentos(){
   await Promise.all([aptCarregarHoras(), aptCarregarAprovacoes()]);
   aptRender();
 }
-/* funcionários e centros de trabalho; erro de leitura vira aviso (antes a lista vinha vazia sem dizer nada) e a próxima
-   abertura da grade tenta de novo */
+
+
 async function aptCarregarCadastros(){
   const [f, c] = await Promise.all([
     _aptFuncs.length ? { data: _aptFuncs } : lerTudo(() => sb.from("funcionarios").select("id,nome,funcao").eq("ativo", true), "id"),
@@ -111,7 +111,7 @@ async function aptCarregarAprovacoes(){
   _aptAprov = ag.data.concat(dec.data);
   await aptNumerosDocs(_aptAprov.map(a => ({ tipo: a.tipo, id: a.documento_id })));
 }
-/* número e status dos documentos citados nas aprovações (aberto ou não) */
+
 async function aptNumerosDocs(lista){
   const falta = { RP: [], OS: [], OF: [] };
   lista.forEach(x => { if(!_aptDocNum[x.id] && !falta[x.tipo].includes(x.id)) falta[x.tipo].push(x.id); });
@@ -123,7 +123,7 @@ async function aptNumerosDocs(lista){
     }
   }));
 }
-/* documentos abertos para a busca da grade: número do app, código do Odoo e TAG */
+
 async function aptCarregarDocs(){
   const eq = "equipamento:equipamentos!{T}_equipamento_id_fkey(codigo)";
   const ac = "acessorio:acessorios!{T}_acessorio_id_fkey(marcacao)";
@@ -142,7 +142,7 @@ async function aptCarregarDocs(){
   $("apt-docs").innerHTML = _aptDocs.map(d => `<option value="${esc(aptRotuloDoc(d))}"></option>`).join("");
 }
 
-/* ---------- painel ---------- */
+
 function aptRender(){
   const nAg = _aptAprov.filter(a => a.status === "aguardando").length;
   $("apt-n-aguardando").textContent = nAg ? `(${nAg})` : "";
@@ -158,12 +158,12 @@ function aptRenderHoras(){
   const linhas = _aptHoras.filter(h => (!soQuadro || h.origem === "quadro") && aptFiltroBusca([h.numero, h.equipamento, h.funcionario, h.observacao, h.centro].join(" ")))
     .sort((a, b) => String(b.data).localeCompare(String(a.data)) || String(a.funcionario || "").localeCompare(String(b.funcionario || ""), "pt-BR") || String(a.inicio || "").localeCompare(String(b.inicio || "")));
   $("apt-contador").textContent = `(${linhas.length})`;
-  // total de horas por funcionário e dia, sem R$
+
   const tot = {};
   linhas.forEach(h => { const k = (h.funcionario || "sem funcionário") + "|" + h.data; tot[k] = (tot[k] || 0) + Number(h.horas || 0); });
   const totTxt = Object.entries(tot).sort((a, b) => a[0].localeCompare(b[0], "pt-BR")).map(([k, v]) => {
     const [n, d] = k.split("|"); return `${esc(n)} ${esc(dataBR(d))}: <strong>${esc(num(v))} h</strong>`; });
-  $("apt-totais").innerHTML = totTxt.length ? `Total por funcionário e dia: ${/* html */ totTxt.join(" · ")}` : "";
+  $("apt-totais").innerHTML = totTxt.length ? `Total por funcionário e dia: ${  totTxt.join(" · ")}` : "";
   if(!linhas.length){ $("apt-conteudo").innerHTML = `<p class="vazio">Nenhuma hora lançada no período.</p>`; return; }
   $("apt-conteudo").innerHTML = `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Documento</th><th>TAG</th><th>Funcionário</th><th>Início</th><th>Fim</th><th class="num">Horas</th><th>Observação</th><th>Origem</th></tr></thead><tbody>
     ${linhas.map(h => `<tr><td>${esc(dataBR(h.data))} <span class="meta">${esc(aptDiaSemana(h.data))}</span></td>
@@ -234,19 +234,19 @@ function aptAbrirDoc(tipo, id){
   else if(tipo === "OS" && typeof abrirManutencao === "function") abrirManutencao(id);
   else if(tipo === "OF" && typeof abrirOrdemFabricacao === "function") abrirOrdemFabricacao(id);
 }
-/* atalho do "Para regularizar" (dashboard.js) */
+
 async function aptAbrirAguardando(filtro){
   _aptView = "aprovacao";
   $("apt-tipo").value = filtro === "aprovacao_os" ? "OS" : "";
   await carregarApontamentos();
 }
 
-/* ---------- fase 188b: expediente da oficina e divisão da hora extra (#322) ---------- */
-/* Quem grava o expediente: espelha as policies de fabricacao_expediente (has_role cobre o diretor; auditor barrado) */
+
+
 const APT_EXP_CARGOS = ["diretor", "admin", "gestor_acessorios", "gestor_manutencao", "rh"];
 function aptPodeEditarExpediente(){ return !!usuarioAtual && !ehSomenteLeitura() && APT_EXP_CARGOS.includes(usuarioAtual.cargo); }
-/* Divide [início, fim] do dia pelo expediente da oficina (RPC apontamento_dividir_he). Usada no "Lançar horas" e no
-   lançamento rápido das fichas do RP, da OS e da OF (aptDividirFicha). Devolve { partes: [{inicio, fim, hora_extra}], aviso }. */
+
+
 async function aptDividirHE(data, inicio, fim){
   const { data: partes, error } = await sb.rpc("apontamento_dividir_he", { p_data: data, p_inicio: inicio, p_fim: fim });
   if(error) throw new Error("Não foi possível conferir o expediente da oficina: " + error.message.replace(/^.*?: /, ""));
@@ -254,15 +254,15 @@ async function aptDividirHE(data, inicio, fim){
   return { partes: lista, aviso: (partes || []).map(p => p.aviso).find(Boolean) || "" };
 }
 function aptPartesTxt(partes){ return partes.map(p => `${p.inicio}–${p.fim} ${p.hora_extra ? "hora extra" : "normal"}`).join(" · "); }
-/* Ficha do RP, da OS ou da OF: a mesma divisão do "Lançar horas" (fase 188b). Quando [início, fim] passa do expediente,
-   mostra as partes e a pessoa escolhe gravar separado ou manter numa linha (com motivo, que vai para a observação).
-   reg = linha no formato da tabela de horas. Devolve { regs, avisoExp }, ou null quando a pessoa desistiu.
-   Lança erro quando não consegue ler o expediente (quem chama avisa). */
+
+
+
+
 async function aptDividirFicha(reg){
   if(!(reg.inicio && reg.fim)) return { regs: [reg], avisoExp: "" };
   const r = await aptDividirHE(reg.data, reg.inicio, reg.fim);
   if(r.partes.length <= 1){
-    if(!r.aviso && r.partes[0]?.hora_extra) reg.hora_extra = true;   // toda fora do expediente
+    if(!r.aviso && r.partes[0]?.hora_extra) reg.hora_extra = true;
     return { regs: [reg], avisoExp: r.aviso };
   }
   const faixa = `${aptHora(reg.inicio)}–${aptHora(reg.fim)}`;
@@ -284,7 +284,7 @@ async function aptDividirFicha(reg){
   reg.observacao = aptObsComMotivo(reg.observacao, motivo);
   return { regs: [reg], avisoExp: "" };
 }
-/* Aviso depois de gravar pela ficha: o que gravou, o que foi para aprovação e o expediente não configurado */
+
 function aptAvisoFicha(tipo, g, nLinhas, avisoExp){
   if(g.erro) aviso("app-aviso", g.erro, "erro");
   else if(g.aguardando) aviso("app-aviso", `${g.gravadas ? `${g.gravadas} linha(s) normal(is) gravada(s); ` : ""}${g.aguardando} de hora extra aguardando aprovação. ${aptAvisoAprovacao(tipo)}`, "ok");
@@ -292,19 +292,19 @@ function aptAvisoFicha(tipo, g, nLinhas, avisoExp){
   else if(avisoExp) aviso("app-aviso", `Hora gravada. ${avisoExp}: a hora extra de dia útil não foi separada.`, "aviso");
 }
 
-/* ---------- fase 188c (#322): toda hora extra vai para aprovação, também a de dia útil ---------- */
-/* Quem aprova (decisão 9 da fase 156; RP também o gestor de manutenção, lote S69-k): OS = gestor de manutenção;
-   RP = gestor de acessórios ou de manutenção; OF = gestor de acessórios; a diretoria aprova qualquer uma */
+
+
+
 function aptQuemAprova(tipo){ return tipo === "OS" ? "gestor de manutenção" : tipo === "RP" ? "gestor de acessórios ou de manutenção" : "gestor de acessórios"; }
 function aptAvisoAprovacao(tipo){ return `Hora extra vai para aprovação do ${aptQuemAprova(tipo)}.`; }
-/* Ficha do RP, da OS ou da OF: as linhas normais gravam direto na tabela do documento; as de hora extra (marcadas, ou em
-   sábado, domingo e feriado) vão para apontamento_aprovacoes. O banco recusa HE gravada direto (trg_*_horas_he_aprovacao).
-   regs = linhas no formato da tabela de horas. Devolve { gravadas, aguardando, erro }. */
+
+
+
 async function aptGravarFicha(tipo, docId, regs){
   for(const r of regs) if(!r.hora_extra && r.data && await aptExigeAprovacao(r.data)) r.hora_extra = true;
   const he = regs.filter(r => r.hora_extra), normais = regs.filter(r => !r.hora_extra);
   if(he.some(r => !r.inicio || !r.fim)) return { gravadas: 0, aguardando: 0, erro: "Hora extra vai para aprovação e precisa de início e fim." };
-  // lote S69-h1 (#339): a mesma checagem de repetida do "Lançar horas" (aptGravarLinha); recusa antes de gravar qualquer parte
+
   const rep = await aptRepetidaFicha(tipo, docId, regs);
   if(rep) return { gravadas: 0, aguardando: 0, erro: rep };
   if(normais.length){
@@ -321,8 +321,8 @@ async function aptGravarFicha(tipo, docId, regs){
   }
   return { gravadas: normais.length, aguardando: he.length, erro: "" };
 }
-/* lote S69-h1 (#339): repetida na ficha = mesma hora (documento, funcionário, data e início) já gravada na tabela do documento
-   ou já aguardando aprovação; as mensagens são as do "Lançar horas". Devolve o texto da recusa ou "" (linha sem início não confere). */
+
+
 function aptNumeroDocAtual(tipo){
   const d = tipo === "RP" ? (typeof _repAtual !== "undefined" ? _repAtual : null)
     : tipo === "OS" ? (typeof _manAtual !== "undefined" ? _manAtual : null)
@@ -342,8 +342,8 @@ async function aptRepetidaFicha(tipo, docId, regs){
   }
   return "";
 }
-/* Hora extra aguardando aprovação de um documento: aparece na ficha numa linha à parte, fora do total e do custo (D12) */
-let _aptAgDoc = {};   // documento_id → [{funcionario_id, data, inicio, fim}] (funcionario_id: lote S68-c1)
+
+let _aptAgDoc = {};
 async function aptCarregarAguardandoDoc(docId){
   if(!docId) return;
   const { data, error } = await sb.from("apontamento_aprovacoes").select("id,funcionario_id,data,inicio,fim").eq("documento_id", docId).eq("status", "aguardando").order("data").range(0, 999);
@@ -400,7 +400,7 @@ async function aptSalvarExpediente(){
   if($("apt-exp-resumo")) $("apt-exp-resumo").textContent = aptExpResumo();
   aviso("app-aviso", "Expediente da oficina salvo.", "ok");
 }
-/* Linha da grade que passa do expediente vira duas ou três (normal e HE); a pessoa confere antes de gravar */
+
 async function aptAplicarDivisao(i){
   const l = _aptGrade[i];
   if(!l || l.semDividir || ["gravada", "aguardando"].includes(l.estado) || !l.data || !l.inicio || !l.fim || l.fim <= l.inicio) return false;
@@ -408,7 +408,7 @@ async function aptAplicarDivisao(i){
   if(av){ l.msg = av; l.avisoExp = true; }
   else if(l.avisoExp){ l.msg = ""; l.avisoExp = false; }
   if(partes.length <= 1){
-    // lote S69-j: a HE segue sempre o expediente (não há mais marca à mão); fim de semana e feriado são HE inteiros
+
     if(!av && partes[0]) l.hora_extra = partes[0].hora_extra || await aptExigeAprovacao(l.data);
     return true;
   }
@@ -436,12 +436,12 @@ function aptManterUmaLinha(i){
   aptRenderGrade();
 }
 
-/* Lote S69-j (#369): etiqueta só de leitura da HE calculada pela regra (sem caixa para marcar à mão) */
+
 function aptHECalculada(tipo){
   return `<span class="tag ambar" title="hora extra calculada pela regra: sábado, domingo e feriado inteiros; em dia útil, o que passa do expediente da oficina. Custa ×2 e vai para aprovação do ${esc(aptQuemAprova(tipo))}">HE calculada</span>`;
 }
-/* Ficha do RP, da OS e da OF: mostra, só para leitura, a HE que a regra vai calcular para data, início e fim do formulário.
-   pref = "rep-h", "man-h" ou "fab-h"; o resultado vai em #<pref>-he. */
+
+
 async function aptMostrarHEFicha(pref){
   const el = $(pref + "-he"); if(!el) return;
   const data = $(pref + "-data")?.value || hojeISO(), ini = $(pref + "-inicio")?.value, fim = $(pref + "-fim")?.value;
@@ -456,11 +456,11 @@ async function aptMostrarHEFicha(pref){
       else if(r.aviso) txt = r.aviso;
     } else txt = "calculada ao informar início e fim";
   } catch(e){ txt = e.message; }
-  if(el.dataset.chave !== chave) return;   // o formulário mudou enquanto conferia
+  if(el.dataset.chave !== chave) return;
   el.innerHTML = he ? `<span class="tag ambar">HE calculada</span> ${esc(txt)}` : esc(txt);
 }
 
-/* ---------- grade de lançamento ---------- */
+
 function aptLinhaNova(base){
   return { doc: null, docTxt: "", funcionario_id: base?.funcionario_id || "", data: base?.data || $("apt-de").value || hojeISO(),
     inicio: "", fim: "", observacao: "", centro_trabalho_id: base?.centro_trabalho_id || "", hora_extra: false,
@@ -479,10 +479,10 @@ async function aptCarregDocsComAviso(){
   $("apt-grade").innerHTML = `<tr><td colspan="9" class="vazio">Carregando documentos abertos…</td></tr>`;
   await aptCarregarDocs();
 }
-/* "RP 734", "RP-2026-00734", "OS 1410", código do Odoo ou o rótulo escolhido na lista → documento */
+
 async function aptResolverDoc(txt){
   const t = String(txt || "").trim(); if(!t) return { doc: null };
-  if(!_aptDocs.length) await aptCarregarDocs();   // "Atualizar" com a grade aberta esvazia a lista
+  if(!_aptDocs.length) await aptCarregarDocs();
   const porRotulo = _aptDocs.find(d => aptRotuloDoc(d) === t);
   if(porRotulo) return { doc: porRotulo };
   const up = t.toUpperCase().replace(/\s+/g, " ");
@@ -490,13 +490,13 @@ async function aptResolverDoc(txt){
   if(exato.length === 1) return { doc: exato[0] };
   const m = up.match(/^(RP|OS|OF|OR|OP)?[\s-]*(?:(\d{4})[\s-]+)?0*(\d{1,6})$/);
   if(m){
-    const tipos = m[1] === "RP" || m[1] === "OS" || m[1] === "OF" ? [m[1]] : ["RP", "OS", "OF"];   // OR/OP do quadro antigo: qualquer tipo
+    const tipos = m[1] === "RP" || m[1] === "OS" || m[1] === "OF" ? [m[1]] : ["RP", "OS", "OF"];
     const casa = d => { const p = String(d.numero || "").match(/^(\w+)-(\d{4})-0*(\d+)$/); return p && tipos.includes(d.tipo) && Number(p[3]) === Number(m[3]) && (!m[2] || p[2] === m[2]); };
     const abertos = _aptDocs.filter(casa), comPrefixo = tipos.length === 1;
     if(abertos.length === 1 && comPrefixo) return { doc: abertos[0] };
     if(abertos.length > 1) return { doc: null, msg: `Mais de um documento possível (${abertos.map(d => d.numero).join(", ")}): escolha na lista.` };
     if(abertos.length === 1) return { doc: null, msg: `Sem o prefixo RP, OS ou OF o número não basta (candidato: ${abertos[0].numero}): escolha na lista.` };
-    // nenhum aberto: procura fechado para dizer o porquê
+
     const fechado = await aptProcurarFechado(tipos, m[3], m[2]);
     if(fechado && aptDocAberto(fechado))
       return { doc: null, msg: `${fechado.numero} está aberto, mas não está na sua lista: seu perfil não lança hora nesse documento.` };
@@ -521,7 +521,7 @@ async function aptCarregarAtividades(manId){
   const { data } = await sb.from("manutencao_atividades").select("id,ordem,atividade,situacao").eq("manutencao_id", manId).eq("situacao", "pendente").order("ordem");
   _aptAtiv[manId] = data || [];
 }
-/* sugestão da atividade pela observação digitada: a de mais palavras em comum (marcar como executada é escolha de quem aponta) */
+
 function aptSugerirAtividade(l){
   const ativ = l.doc?.tipo === "OS" ? (_aptAtiv[l.doc.id] || []) : [];
   const pal = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter(w => w.length > 3);
@@ -530,15 +530,15 @@ function aptSugerirAtividade(l){
   ativ.forEach(a => { const n = pal(a.atividade).filter(w => obs.has(w)).length; if(n > pontos){ pontos = n; melhor = a.id; } });
   return melhor;
 }
-/* linha vinda da foto do quadro: o que estava escrito, os candidatos a documento e o porquê da sugestão */
+
 function aptQuadroInfo(l, i){
   const q = l.quadro, cands = q.candidatos || [];
   const sel = cands.length ? `<select data-i="${esc(i)}" data-c="cand" title="documentos possíveis para o número do quadro"><option value="">— ${esc(cands.length)} documento(s) possível(is) —</option>${cands.map((c, k) => `<option value="${esc(k)}">${esc(c.doc.numero)} · ${esc(aptStatusDoc(c.doc.status))}${c.doc.equipamento ? " · " + esc(c.doc.equipamento) : ""}${c.sugestao ? " (sugestão)" : ""}</option>`).join("")}</select>` : "";
   const conf = Object.entries(q.confianca || {}).filter(([, v]) => v === "baixa").map(([k]) => k);
   return `<div class="meta">Quadro: <span class="ui-codigo">${esc(q.texto || "—")}</span> · ${esc(q.responsavel || "—")}${q.situacao ? " · " + esc({ ok: "OK", paralisado: "paralisada", em_andamento: "em andamento" }[q.situacao] || q.situacao) : ""}${conf.length ? ` · <span class="txt-perigo">leitura duvidosa: ${esc(conf.join(", "))}</span>` : ""}</div>
-    ${/* html */ sel}${q.porque ? `<div class="meta">${esc(q.porque)}</div>` : ""}`;
+    ${  sel}${q.porque ? `<div class="meta">${esc(q.porque)}</div>` : ""}`;
 }
-/* fase 188b: parte de uma linha dividida pelo expediente (etiqueta HE e "Manter numa linha" na primeira parte) */
+
 function aptDivInfo(l, i){
   if(!l.div || ["gravada", "aguardando"].includes(l.estado)) return "";
   const primeira = _aptGrade.findIndex(x => x.div === l.div) === i;
@@ -552,27 +552,27 @@ function aptRenderGrade(){
   $("apt-grade").innerHTML = _aptGrade.map((l, i) => {
     const d = l.doc;
     let extra = "";
-    // lote S69-j (#369): sem caixa; a HE é só calculada (a parte de linha dividida já mostra a sua em aptDivInfo)
+
     const he = d && l.hora_extra && !l.div ? aptHECalculada(d.tipo) : "";
-    if(d?.tipo === "OF") extra = `<select data-i="${i}" data-c="centro_trabalho_id">${/* html */ centros}</select>
-      ${/* html */ he}`;
+    if(d?.tipo === "OF") extra = `<select data-i="${i}" data-c="centro_trabalho_id">${  centros}</select>
+      ${  he}`;
     else if(d?.tipo === "OS"){
       const at = _aptAtiv[d.id] || [];
       extra = at.length ? `<select data-i="${i}" data-c="atividade_id" title="atividade da OS (sugerida pela observação)"><option value="">— atividade da OS —</option>${at.map(a => `<option value="${esc(a.id)}">${esc(a.atividade)}</option>`).join("")}</select>
         <label class="meta"><input type="checkbox" data-i="${i}" data-c="concluir_atividade" ${l.concluir_atividade ? "checked" : ""} /> marcar executada</label>` : `<span class="meta">sem atividade pendente</span>`;
-      extra += ` ${/* html */ he}`;
+      extra += ` ${  he}`;
     } else if(d?.tipo === "RP") extra = he;
     const docInfo = (d ? `<div class="meta">${esc(APT_TIPO[d.tipo].rotulo)}${d.equipamento ? " · " + esc(d.equipamento) : ""}${aptDocAberto(d) ? "" : ` · <span class="txt-perigo">${esc(aptStatusDoc(d.status))}</span>`}</div>` : "")
       + (l.quadro ? aptQuadroInfo(l, i) : "");
     return `<tr data-i="${i}">
-      <td><input list="apt-docs" data-i="${i}" data-c="docTxt" value="${esc(l.docTxt)}" placeholder="RP 734, OS 1410, TAG…" style="min-width:200px;" />${/* html */ docInfo}</td>
-      <td><select data-i="${i}" data-c="funcionario_id">${/* html */ funcs}</select></td>
+      <td><input list="apt-docs" data-i="${i}" data-c="docTxt" value="${esc(l.docTxt)}" placeholder="RP 734, OS 1410, TAG…" style="min-width:200px;" />${  docInfo}</td>
+      <td><select data-i="${i}" data-c="funcionario_id">${  funcs}</select></td>
       <td><input type="date" data-i="${i}" data-c="data" value="${esc(l.data)}" /></td>
       <td><input type="time" data-i="${i}" data-c="inicio" value="${esc(l.inicio)}" /></td>
       <td><input type="time" data-i="${i}" data-c="fim" value="${esc(l.fim)}" /></td>
       <td><input data-i="${i}" data-c="observacao" value="${esc(l.observacao)}" placeholder="atividade" /></td>
-      <td>${/* html */ extra}</td>
-      <td>${/* html */ aptDivInfo(l, i)}${l.quadro ? `<label class="meta" title="sem a marca a linha não grava"><input type="checkbox" data-i="${i}" data-c="incluir" ${l.incluir !== false ? "checked" : ""} /> incluir</label> ` : ""}${l.estado ? `<span class="tag ${esc(tagEst[l.estado] || "cinza")}">${esc({ gravada: "gravada", aguardando: "aguardando aprovação", recusada: "não gravou", repetida: "já lançada" }[l.estado])}</span>` : ""}
+      <td>${  extra}</td>
+      <td>${  aptDivInfo(l, i)}${l.quadro ? `<label class="meta" title="sem a marca a linha não grava"><input type="checkbox" data-i="${i}" data-c="incluir" ${l.incluir !== false ? "checked" : ""} /> incluir</label> ` : ""}${l.estado ? `<span class="tag ${esc(tagEst[l.estado] || "cinza")}">${esc({ gravada: "gravada", aguardando: "aguardando aprovação", recusada: "não gravou", repetida: "já lançada" }[l.estado])}</span>` : ""}
         ${l.msg ? `<div class="meta">${esc(l.msg)}</div>` : ""}
         ${l.estado === "repetida" && l.existente && aptHora(l.existente.fim) !== l.fim ? `<button type="button" class="btn-sec btn-sm apt-atualizar-fim" data-i="${i}">Atualizar o fim para ${esc(l.fim)}</button>` : ""}</td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo apt-linha-rem" data-i="${i}" title="tirar a linha" aria-label="tirar a linha">×</button></td></tr>`;
@@ -596,7 +596,7 @@ async function aptGradeMudou(el){
     l.doc = r.doc; l.msg = r.msg || ""; l.atividade_id = ""; l.concluir_atividade = false;
     if(r.doc && aptDocAberto(r.doc)) l.docTxt = aptRotuloDoc(r.doc);
     if(l.doc?.tipo === "OS") await aptCarregarAtividades(l.doc.id);
-    if(l.doc && !l.hora_extra) l.hora_extra = await aptExigeAprovacao(l.data);   // HE em RP, OS e OF: fim de semana e feriado vêm marcados
+    if(l.doc && !l.hora_extra) l.hora_extra = await aptExigeAprovacao(l.data);
     l.atividade_id = aptSugerirAtividade(l);
     aptRenderGrade();
   } else if(c === "observacao" && l.doc?.tipo === "OS" && !l.atividade_id){
@@ -605,17 +605,17 @@ async function aptGradeMudou(el){
   } else if(c === "data"){
     if(l.doc) l.hora_extra = await aptExigeAprovacao(l.data);
     l.divChave = `${l.data}|${l.inicio}|${l.fim}`;
-    await aptAplicarDivisao(i);   // fase 188b: a data muda o expediente (sexta tem o seu; fim de semana é HE inteiro)
+    await aptAplicarDivisao(i);
     aptRenderGrade();
   }
 }
-/* fase 188b: ao sair do Início ou do Fim, confere o expediente e divide a linha; o foco segue para o campo clicado */
+
 async function aptGradeSaiuHora(e){
   const el = e.target.closest('[data-c="inicio"], [data-c="fim"]'); if(!el) return;
   const i = Number(el.dataset.i), l = _aptGrade[i]; if(!l) return;
   l[el.dataset.c] = el.value;
   const chave = `${l.data}|${l.inicio}|${l.fim}`;
-  if(l.divChave === chave) return;   // nada mudou desde a última conferência
+  if(l.divChave === chave) return;
   l.divChave = chave;
   const antes = _aptGrade.length, heAntes = l.hora_extra, msgAntes = l.msg;
   await aptAplicarDivisao(i);
@@ -637,14 +637,14 @@ async function aptExigeAprovacao(d){
   }
   return _aptDiaAprov[d];
 }
-/* mesma hora já gravada no documento (documento, funcionário, data e início) */
+
 async function aptJaLancada(d, l){
   const t = APT_TIPO[d.tipo];
   const { data, error } = await sb.from(t.tabela).select("id,fim").eq(t.col, d.id).eq("funcionario_id", l.funcionario_id).eq("data", l.data).eq("inicio", l.inicio).range(0, 0);
   return { ja: data && data[0] ? data[0] : null, erro: error || null };
 }
-/* Uma linha: confere, procura repetida e grava na tabela do documento (hora normal) ou em apontamento_aprovacoes (hora extra:
-   sábado, domingo, feriado ou marcada HE em dia útil, fase 188c) */
+
+
 async function aptGravarLinha(l){
   const d = l.doc;
   const recusa = msg => { l.estado = "recusada"; l.msg = msg; };
@@ -657,8 +657,8 @@ async function aptGravarLinha(l){
   if(d.tipo === "OF" && !l.centro_trabalho_id) return recusa("Escolha o centro de trabalho da OF.");
   const t = APT_TIPO[d.tipo];
   const fdsFer = await aptExigeAprovacao(l.data);
-  const aprovar = fdsFer || !!l.hora_extra;   // fase 188c (D9): toda hora extra vai para aprovação, também a de dia útil
-  // repetida: mesma hora já gravada no documento ou já esperando aprovação
+  const aprovar = fdsFer || !!l.hora_extra;
+
   const { ja, erro: eJa } = await aptJaLancada(d, l);
   if(eJa) return recusa("Não foi possível conferir repetição: " + eJa.message);
   if(ja){ l.estado = "repetida"; l.existente = ja; l.msg = `Já lançada em ${d.numero} (fim ${aptHora(ja.fim)}).`; return; }
@@ -676,10 +676,10 @@ async function aptGravarLinha(l){
       + (l.atividade_id && l.concluir_atividade ? " A atividade da OS não foi marcada: marque na ficha depois da aprovação." : "");
     return;
   }
-  const reg = { [t.col]: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim, horas: 0,   // o gatilho calcula
+  const reg = { [t.col]: d.id, funcionario_id: l.funcionario_id, data: l.data, inicio: l.inicio, fim: l.fim, horas: 0,
     observacao: aptObsComMotivo(l.observacao, l.motivoUmaLinha), origem: l.origem || "apontamento" };
   if(d.tipo === "OS") reg.funcionario_nome = aptNomeFunc(l.funcionario_id) || null;
-  reg.hora_extra = false;   // fase 188c: aqui só chega hora normal; a HE foi para aprovação acima
+  reg.hora_extra = false;
   if(d.tipo === "OF") reg.centro_trabalho_id = l.centro_trabalho_id;
   const { error } = await sb.from(t.tabela).insert(reg);
   if(error) return recusa(error.message.replace(/^.*?: /, ""));
@@ -691,8 +691,8 @@ async function aptGravarLinha(l){
   }
 }
 async function aptGravarGrade(){
-  // lote S69-j (#369): a HE é só automática; antes de gravar, toda linha ainda não conferida (a da foto do quadro também)
-  // passa pela divisão do expediente. Se alguma se dividir, a pessoa confere as partes e grava de novo.
+
+
   let dividiu = false;
   for(let i = _aptGrade.length - 1; i >= 0; i--){
     const l = _aptGrade[i], chave = `${l.data}|${l.inicio}|${l.fim}`;
@@ -713,10 +713,10 @@ async function aptGravarGrade(){
     if(l.estado === "gravada" || l.estado === "aguardando") continue;
     try { await aptGravarLinha(l); } catch(e){ l.estado = "recusada"; l.msg = e.message; }
   }
-  if(typeof aqAposGravar === "function") await aqAposGravar(usadas);   // foto do quadro: registra o que foi conferido
+  if(typeof aqAposGravar === "function") await aqAposGravar(usadas);
   const n = st => usadas.filter(l => l.estado === st).length;
   const gravadas = n("gravada"), aguardando = n("aguardando"), presas = usadas.filter(l => !["gravada", "aguardando"].includes(l.estado)).length;
-  // as que gravaram saem da grade; as recusadas e repetidas ficam com o motivo
+
   _aptGrade = _aptGrade.filter(l => !["gravada", "aguardando"].includes(l.estado) || (l.estado === "gravada" && l.msg));
   if(!_aptGrade.length) _aptGrade = [aptLinhaNova(usadas[usadas.length - 1])];
   aptRenderGrade();
@@ -735,14 +735,14 @@ async function aptAtualizarFim(i){
   await aptCarregarHoras(); aptRender();
 }
 
-/* ---------- ligações ---------- */
+
 function ligarApontamentos(){
   const nav = document.querySelector('nav button[data-secao="apontamentos"]');
   if(!nav) return;
   nav.addEventListener("click", () => carregarApontamentos());
   $("btn-apt-atualizar").addEventListener("click", () => comBotaoTravado("btn-apt-atualizar", async () => {
     _aptDocs = []; _aptAtiv = {}; await carregarApontamentos();
-    if($("apt-grade-box").style.display !== "none") await aptCarregarDocs();   // grade aberta: a lista de documentos volta já
+    if($("apt-grade-box").style.display !== "none") await aptCarregarDocs();
   }));
   ["apt-de", "apt-ate", "apt-tipo", "apt-func"].forEach(id => $(id).addEventListener("change", async () => {
     if(id === "apt-de" && $("apt-ate").value < $("apt-de").value) $("apt-ate").value = $("apt-de").value;
@@ -784,7 +784,7 @@ function ligarApontamentos(){
     if(e.target.id === "btn-apt-recusar-lote"){ const ids = sel(); if(!ids.length){ aviso("app-aviso", "Selecione as horas.", "erro"); return; } comBotaoTravado(e.target, () => aptRecusar(ids)); }
   });
 }
-/* Lote S69-j: a HE calculada nas fichas do RP, da OS e da OF acompanha data, início e fim */
+
 function ligarHEFichas(){
   ["rep-h", "man-h", "fab-h"].forEach(pref => ["data", "inicio", "fim"].forEach(c => {
     const el = $(`${pref}-${c}`);

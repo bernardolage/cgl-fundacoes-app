@@ -1,23 +1,23 @@
-/* ====================================================================
-   Módulo: Foto do quadro da oficina (fase 156b, #262, 11/11/2026)
-   A edge function extrair-quadro-oficina transcreve a foto do "Quadro de acompanhamento da produção"; aqui cada
-   linha do quadro é casada com o documento (RP/OS/OF) e o funcionário e vira linha da grade de Apontamentos
-   (js/apontamentos.js), com origem 'quadro'. Nada grava sem a conferência e o Gravar de quem aponta.
-   Regras (decisões do Bernardo de 10/11/2026):
-   - prefixo do app (RP, OS, OF) casa só com aquele tipo, pelo número do app: um aberto vem escolhido;
-   - OR, OP ou outro texto: lista os candidatos (número do app de qualquer tipo e código do Odoo da OF) sem escolher;
-   - EQ sem documento não grava: lista os documentos abertos do equipamento;
-   - funcionário pelo primeiro nome; com homônimos, vale quem lançou hora na oficina nos últimos 60 dias;
-   - atividade que passa do dia é dividida pela jornada (seg-qui 07:00–17:00, sex 07:00–16:00); as partes em sábado,
-     domingo ou feriado ficam sem "incluir" para a pessoa confirmar e, incluídas, vão para aprovação;
-   - "Paralizado DD/MM HH:MM" grava até a paralisação e deixa a atividade pendente; sem fim, a linha espera a foto
-     do dia seguinte; mesma hora já gravada aparece "já lançada".
-   Registro em apontamento_importacoes (foto no bucket apontamentos-quadro, JSON da IA e o que foi gravado).
-   Prefixo: aq / apt-quadro-.
-   ==================================================================== */
 
-let _aqImport = null;          // { id, data_foto, gravadas: [] } da leitura aberta na grade
-let _aqFuncsOficina = null;    // Set de funcionario_id com hora de oficina nos últimos 60 dias
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _aqImport = null;
+let _aqFuncsOficina = null;
 const AQ_LETRA_TIPO = { OR: "RP", RP: "RP", OS: "OS", OP: "OF", OF: "OF" };
 const AQ_JORNADA_INI = "07:00";
 
@@ -26,7 +26,7 @@ function aqFimJornada(d){ return new Date(d + "T12:00:00").getDay() === 5 ? "16:
 function aqProxDia(d){ const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() + 1); return dataLocalISO(x); }
 function aqNumApp(numero){ const p = String(numero || "").match(/^(RP|OS|OF)-\d{4}-0*(\d+)$/); return p ? Number(p[2]) : null; }
 
-/* candidatos a documento para "OR 734", "OS 1410", "OP 072", "EQ HG/07"… → { doc, candidatos: [{ doc, sugestao }], porque } */
+
 async function aqCandidatosDoc(tipoTxt, numTxt){
   const tipo = String(tipoTxt || "").toUpperCase().replace(/[^A-Z]/g, "");
   const numStr = String(numTxt || "").trim();
@@ -42,7 +42,7 @@ async function aqCandidatosDoc(tipoTxt, numTxt){
       ? { doc: null, candidatos: [{ doc: fechado, sugestao: false }], porque: `${fechado.numero} está ${aptStatusDoc(fechado.status)}: não recebe hora (quem pode reabrir decide).` }
       : { doc: null, candidatos: [], porque: `${tipo} ${numStr} não está entre os documentos abertos que você pode lançar.` };
   }
-  // OR, OP ou outro: número do app de qualquer tipo + código do Odoo (WH/MO/000NN) da OF; nenhum vem escolhido
+
   const alvo = AQ_LETRA_TIPO[tipo] || null;
   const vistos = new Set();
   const cands = _aptDocs.filter(d => aqNumApp(d.numero) === n
@@ -60,7 +60,7 @@ async function aqCandidatosDoc(tipoTxt, numTxt){
     ? { doc: null, candidatos: [{ doc: fechado, sugestao: false }], porque: `Só ${fechado.numero} (${aptStatusDoc(fechado.status)}): não recebe hora; escolha outro documento.` }
     : { doc: null, candidatos: [], porque: `"${tipo} ${numStr}": nenhum documento aberto com esse número.` };
 }
-/* "EQ 07", "EQ HG/07", "EQ 78": documentos abertos do equipamento (código NN-XX), nenhum escolhido */
+
 function aqCandidatosEquip(numStr){
   const t = String(numStr || "").toUpperCase();
   const n = Number((t.match(/(\d+)/) || [])[1]);
@@ -70,7 +70,7 @@ function aqCandidatosEquip(numStr){
   return { doc: null, candidatos: cands.map(d => ({ doc: d, sugestao: false })),
     porque: `EQ ${numStr || ""} sem documento: abra a OS antes de apontar${cands.length ? ` ou escolha um dos ${cands.length} documento(s) aberto(s) do equipamento` : " (nenhum documento aberto do equipamento)"}.` };
 }
-/* primeiro nome → funcionário; homônimos: quem lançou hora na oficina nos últimos 60 dias */
+
 function aqCasarFunc(nome){
   const pn = aqNorm(nome).split(/\s+/)[0];
   if(!pn) return { id: "", porque: "Sem responsável no quadro: escolha o funcionário." };
@@ -85,7 +85,7 @@ async function aqCarregarFuncsOficina(){
   const { data, error } = await lerTudo(() => sb.from("vw_apontamentos").select("id,funcionario_id").gte("data", dataLocalISO(de)), "id");
   _aqFuncsOficina = new Set(error ? [] : (data || []).map(h => h.funcionario_id).filter(Boolean));
 }
-/* "AAAA-MM-DDTHH:MM" → partes por dia pela jornada */
+
 function aqDividir(ini, fim){
   const [d0, h0] = ini.split("T"), [d1, h1] = fim.split("T");
   if(d1 < d0 || (d1 === d0 && h1 <= h0)) return [];
@@ -97,14 +97,14 @@ function aqDividir(ini, fim){
   }
   return partes;
 }
-/* "Paralizado 03/11 10:00" → "2026-11-03T10:00" (ano do início) */
+
 function aqParalisadoDaObs(obs, ini){
   const m = String(obs || "").match(/(\d{1,2})\s*\/\s*(\d{1,2})\D+(\d{1,2})\s*[:h.]\s*(\d{2})/);
   if(!m || !ini) return null;
   return `${ini.slice(0, 4)}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}T${m[3].padStart(2, "0")}:${m[4]}`;
 }
 
-/* linhas da IA → linhas da grade */
+
 async function aqCasarLinhas(lista, dataFoto){
   if(!_aptDocs.length) await aptCarregarDocs();
   if(!_aptFuncs.length) await aptCarregarCadastros();
@@ -137,7 +137,7 @@ async function aqCasarLinhas(lista, dataFoto){
       saida.push(l);
     }
   }
-  // já lançadas: a foto do dia seguinte repete o quadro
+
   for(const l of saida){
     if(!l.doc || !l.funcionario_id || !l.inicio || l.incluir === false) continue;
     const { ja } = await aptJaLancada(l.doc, l);
@@ -146,7 +146,7 @@ async function aqCasarLinhas(lista, dataFoto){
   return saida;
 }
 
-/* ---------- leitura da foto ---------- */
+
 function aqAbrir(){
   $("apt-quadro-box").style.display = "";
   if(!$("apt-quadro-data").value) $("apt-quadro-data").value = hojeISO();
@@ -171,7 +171,7 @@ async function aqLerFoto(){
     "A leitura demorou demais. Tente de novo com uma foto de frente para o quadro.", 200000);
   if(error){
     let detalhe = error.message || "";
-    try { if(error.context && typeof error.context.json === "function"){ const b = await error.context.json(); if(b?.error) detalhe = b.error; } } catch(_){ /* fica a mensagem */ }
+    try { if(error.context && typeof error.context.json === "function"){ const b = await error.context.json(); if(b?.error) detalhe = b.error; } } catch(_){   }
     st.textContent = ""; aviso("app-aviso", "Não foi possível ler a foto: " + detalhe, "erro"); return;
   }
   const { data: imp, error: eImp } = await sb.from("apontamento_importacoes").insert({ data_foto: dataFoto, foto_path: caminho,
@@ -188,7 +188,7 @@ async function aqLerFoto(){
   aviso("app-aviso", `${(data.linhas || []).length} linha(s) lidas no quadro, ${linhas.length} na grade; ${prontas} com documento e funcionário sugeridos. Confira cada uma antes de Gravar.`
     + (data.duvidas?.length ? ` Dúvidas da leitura: ${data.duvidas.join("; ")}` : ""), "aviso");
 }
-/* depois do Gravar: guarda na importação o que foi gravado (a diferença para o extraído é o que a pessoa corrigiu) */
+
 async function aqAposGravar(usadas){
   if(!_aqImport) return;
   const novas = usadas.filter(l => l.quadro && ["gravada", "aguardando"].includes(l.estado));

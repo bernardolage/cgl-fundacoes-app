@@ -1,20 +1,20 @@
-/* ====================================================================
-   Módulo: Propostas (geração de PDF a partir do orçamento)
-   Renderiza o orçamento como uma Proposta Comercial CGL (modelos
-   RG 11.8 HÉLICE, RG 11.9 TRADO, RG 11.10 RAIZ e RG 11.11 SECANTE).
 
-   Arquitetura:
-     - Funções `bloco*` retornam fragmentos HTML reutilizáveis.
-     - Funções `conteudo*` retornam blocos específicos por tipo
-       de proposta (encargos, cláusulas, observações).
-     - `montarHtmlProposta(dados)` monta o documento final.
-     - `visualizarProposta(orcId)` abre o PDF em nova aba.
-     - `baixarProposta(orcId)` salva o PDF no disco.
 
-   Dependência externa: html2pdf.js (carregado no index.html).
-   ==================================================================== */
 
-/* ---------- Dados institucionais (constantes) ---------- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const CGL_INFO = {
   razao_social: "CGL FUNDAÇÕES LTDA",
   endereco:     "AVENIDA HEMATITA, 562 – DISTRITO INDUSTRIAL - ITABIRA / MG",
@@ -23,13 +23,13 @@ const CGL_INFO = {
   site:         "www.cglfundacoes.com.br"
 };
 
-/* Logo oficial (lote S41, chamado #36): img/logo-cgl.png pelo helper único do core.js,
-   o mesmo da medição e do pedido de compra. */
+
+
 function obterLogoHTML(){
   return pdfCabecalhoHTML();
 }
 
-/* mapa tipo_proposta -> rótulo + código RG */
+
 const PROPOSTA_TIPOS = {
   helice:  { rotulo: "HÉLICE",  codigo: "RG 11.8",  revisao_padrao: "01 - 03/06/2024" },
   trado:   { rotulo: "TRADO",   codigo: "RG 11.9",  revisao_padrao: "01 - 03/06/2024" },
@@ -38,10 +38,10 @@ const PROPOSTA_TIPOS = {
   outro:   { rotulo: "PROPOSTA",codigo: "RG 11.0",  revisao_padrao: "01" }
 };
 
-/* lote S71-e (#378, Thales): nome do PDF no padrão do comercial, "<num>-<ano> - <CLIENTE> - <TIPO>.pdf"
-   (ex.: "8934-2026 - PIIMO EMPREENDIMENTOS IMOBILIARIOS LTDA - RAIZ.pdf"). Mesmo padrão do anexo do e-mail
-   (enviar-orcamento, nomeAnexoProposta), sem o RG. Sem cliente sai só número e tipo; tipo fora do mapa é omitido;
-   os caracteres proibidos no Windows viram espaço. */
+
+
+
+
 const PROPOSTA_TIPO_ARQ = { helice: "HELICE", trado: "TRADO", raiz: "RAIZ", secante: "SECANTE" };
 function propostaNomeArquivo(orc, cliente){
   const o = orc || {}, c = cliente || {};
@@ -52,12 +52,12 @@ function propostaNomeArquivo(orc, cliente){
   return partes.join(" - ").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
 }
 
-/* Fase 40: condição de pagamento padrão do modelo. É o texto que a ficha do orçamento
-   traz preenchido; o que o comercial editar em orcamentos.condicoes_pagamento substitui
-   esta cláusula na proposta. */
-/* Chamado #12 (Thales, 16/09/2026; texto aprovado pelo Bernardo): condição de pagamento padrão com o prazo
-   do saldo e a forma de pagamento escolhidos na aba Comerciais do orçamento. O texto gerado vai para
-   orcamentos.condicoes_pagamento e continua editável na negociação. */
+
+
+
+
+
+
 const PRAZOS_PAGAMENTO_EXTENSO = { 5: "cinco", 7: "sete", 10: "dez", 15: "quinze", 20: "vinte", 21: "vinte e um", 28: "vinte e oito", 30: "trinta", 45: "quarenta e cinco", 60: "sessenta", 90: "noventa" };
 function textoPagamentoPadrao(prazoDias, forma){
   const n = Number(prazoDias) > 0 ? Number(prazoDias) : 15;
@@ -71,7 +71,7 @@ function textoPagamentoPadrao(prazoDias, forma){
 }
 const TEXTO_PAGAMENTO_PADRAO = textoPagamentoPadrao(15, "deposito");
 
-/* parágrafo institucional padrão (texto "Desde 1997...") */
+
 const TEXTO_INSTITUCIONAL =
   'Desde 1997, a CGL FUNDAÇÕES, <b>ESPECIALIZADA EM ESTACA HÉLICE CONTÍNUA MONITORADA, ' +
   'ESTACA SECANTE (PAREDE DIAFRAGMA COM ESTACAS SECANTES), ESTACAS RAIZ, TIRANTES, SOLO ' +
@@ -80,16 +80,16 @@ const TEXTO_INSTITUCIONAL =
   'vem atender a solicitação de V. Sas. e apresentar nossa <b>proposta</b> para execução ' +
   'dos serviços em referência nas condições abaixo discriminadas.';
 
-/* nota de rodapé sobre retenção INSS, comum a todos os modelos */
+
 const NOTA_INSS =
   '* Conforme inciso VI do artigo 30 da Lei 8.212/91 e em conformidade com o inciso II do parágrafo 3° ' +
   'do artigo 220 do Decreto 3.048/99 e Instrução Normativa nº 2110/2022 ART 130 PARÁGRAFO 1º, não se ' +
   'aplicam às disposições de retenção de 11% para os serviços geotécnicos e de fundações, tais como, ' +
   'obras de contenção e tirantes, sondagens, estacas, sapatas, fundações especiais, etc.';
 
-/* ---------- Helpers de formatação ---------- */
 
-/* "2026-07-01" -> "01 Julho de 2026" (formato do cabeçalho dos modelos) */
+
+
 function dataPorExtensoBR(iso){
   if(!iso) return "";
   const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
@@ -99,10 +99,10 @@ function dataPorExtensoBR(iso){
   return `${p[2]} ${meses[Number(p[1])-1]} de ${p[0]}`;
 }
 
-/* Número e ano da proposta: orcNumeroPartes / orcNumeroExibicao (js/orcamentos.js, lote S44 #66).
-   Antes `numeroLimpo` juntava todos os dígitos e "8827/2026" saía "88272026 / 2026". */
 
-/* ---------- CSS embutido para impressão A4 ---------- */
+
+
+
 const CSS_PROPOSTA = `
   @page { size: A4; margin: 12mm 10mm; }
   * { box-sizing: border-box; }
@@ -182,14 +182,14 @@ const CSS_PROPOSTA = `
   .nao-quebrar { page-break-inside: avoid; }
 `;
 
-/* ---------- Blocos reutilizáveis ---------- */
 
-/* cabeçalho institucional com logo, identificação do documento e meta-dados */
-/* lote S42 (L3): sigla de norma (NBR-7212, NBR-12.655) fica inteira na mesma linha; recebe texto já escapado */
-function siglasSemQuebra(html){ return /* html */ String(html || "").replace(/\bNBR-?\s?[\d.]+/g, m => `<span class="sigla">${esc(m)}</span>`); }
 
-/* lote S42 (L2): "Página i de N" saiu daqui (era "1 de 1" num PDF de 5 páginas) e vai no carimbo do rodapé de cada
-   página (pdfCarimbarRodape, core.js), que conhece o total */
+
+
+function siglasSemQuebra(html){ return   String(html || "").replace(/\bNBR-?\s?[\d.]+/g, m => `<span class="sigla">${esc(m)}</span>`); }
+
+
+
 function blocoCabecalho(tipo, codigoModelo, revisao){
   const t = PROPOSTA_TIPOS[tipo] || PROPOSTA_TIPOS.outro;
   const codigo = codigoModelo || t.codigo;
@@ -219,11 +219,11 @@ function blocoCabecalho(tipo, codigoModelo, revisao){
     </table>`;
 }
 
-/* bloco de identificação do destinatário (cliente) + cidade/data */
+
 function blocoDestinatario(cliente, cidadeEmissao, dataOrcamento, orcamento){
   if(!cliente) cliente = {};
   const o = orcamento || {};
-  /* fase 40: contato da proposta (A/c, tel, e-mail) por orçamento; cadastro do cliente é o fallback */
+
   return `
     <div class="destinatario nao-quebrar">
       <div class="data-cidade">${esc(cidadeEmissao || "Itabira/MG")}, ${esc(dataPorExtensoBR(dataOrcamento))}</div>
@@ -239,7 +239,7 @@ function blocoDestinatario(cliente, cidadeEmissao, dataOrcamento, orcamento){
     </div>`;
 }
 
-/* faixa central com o número da proposta */
+
 function blocoNumeroProposta(numero, dataOrcamento, revisao){
   return `
     <div class="numero-proposta">
@@ -248,7 +248,7 @@ function blocoNumeroProposta(numero, dataOrcamento, revisao){
     </div>`;
 }
 
-/* parágrafo introdutório + referência da obra */
+
 function blocoIntroducao(referenciaObra, tipo){
   const tipoNome = (PROPOSTA_TIPOS[tipo] || PROPOSTA_TIPOS.outro).rotulo;
   return `
@@ -263,11 +263,11 @@ function blocoIntroducao(referenciaObra, tipo){
     <div class="par-intro nao-quebrar">${TEXTO_INSTITUCIONAL}</div>`;
 }
 
-/* bloco "CONDIÇÕES GERAIS DA PROPOSTA" com escopo dos serviços.
-   Fase 40: a ressalva cita só o que o cliente NÃO forneceu (projeto e/ou sondagem —
-   orcamentos.projeto_fornecido / sondagem_fornecida; o campo antigo
-   projeto_sondagem_fornecido = true continua valendo como "forneceu os dois").
-   Prazo e local de execução, quando preenchidos, saem aqui. */
+
+
+
+
+
 function _propostaRessalva(o){
   const temProj = o.projeto_fornecido === true || o.projeto_sondagem_fornecido === true;
   const temSond = o.sondagem_fornecida === true || o.projeto_sondagem_fornecido === true;
@@ -297,10 +297,10 @@ function blocoCondicoesGerais(escopo, equipamento, orcamento){
     </div>`;
 }
 
-/* itens virtuais gerados a partir dos flags do orçamento (CGL fornece...).
-   Fase 40: os flags mudam a matriz de encargos; o item só é acrescentado se o quadro
-   ainda não tiver um item equivalente (antes o diesel saía duplicado) e, no caso da
-   hospedagem, se houver valor mensal (antes imprimia R$ 0,00). */
+
+
+
+
 function itensVirtuais(orcamento, itens){
   const extras = [];
   const temItem = (re) => (itens || []).some(it => re.test(String(it.descricao || "")));
@@ -313,7 +313,7 @@ function itensVirtuais(orcamento, itens){
       _virtual:       true
     });
   }
-  // lote S45 (L10): o item "Alimentação no canteiro" (VRB.ALC) não substitui a hospedagem; só um item de hospedagem suprime o virtual
+
   if(orcamento.cgl_fornece_hospedagem && Number(orcamento.hospedagem_valor_mensal || 0) > 0 && !temItem(/hosped/i)){
     extras.push({
       descricao:      "Hospedagem e alimentação externa (fornecidas pela CGL)",
@@ -326,21 +326,21 @@ function itensVirtuais(orcamento, itens){
   return extras;
 }
 
-/* Fase 40: totais da proposta. ISS "por dentro" = subtotal × p/(100-p) (é assim que a
-   RG 11.8 chega aos R$ 23.478,80 sobre R$ 446.097,12).
-   Chamado #18 (Thales, 21/09/2026): iss_por_dentro desmarcado = ISS não entra na
-   proposta (linha some do quadro e o total = subtotal). Antes virava "por fora". */
+
+
+
+
 function calcularTotaisProposta(itens, orcamento){
   const subtotal = (itens || []).reduce((s, it) => s + Number(it.quantidade || 0) * Number(it.valor_unitario || 0), 0);
   const p  = Number((orcamento && orcamento.iss_percentual) || 0);
-  const iss = orcIssSobre(subtotal, orcamento);   // lote S44 (L8): mesma conta da ficha e da lista (js/orcamentos.js)
+  const iss = orcIssSobre(subtotal, orcamento);
   const pTxt = String(p).replace(".", ",").replace(/,0+$/, "");
   const rotulo = iss > 0 ? `ISS ${pTxt}%` : "";
   return { subtotal, iss, total: subtotal + iss, rotulo };
 }
 
-/* numeração do quadro: `secao` define o agrupador (N) e os subitens recebem N.1, N.2; grava it._num (usado nas
-   "Obs: Item N"). Devolve as linhas na ordem ({ secao } ou { it, num }) e o próximo número (o da linha do ISS). */
+
+
 function _propostaLinhasQuadro(itens){
   const linhas = [];
   let nivel = 1, secaoAtual = null, secaoNumero = null, subIndex = 0;
@@ -365,9 +365,9 @@ function _propostaLinhasQuadro(itens){
   return { linhas, proximo: nivel };
 }
 
-/* quadro de preços com auto-numeração 1, 2, ..., 7.1, 7.2 quando há `secao`.
-   Fase 40: grava it._num (usado nas "Obs: Item N"), quantidade 0 sai como "-" e
-   a linha do ISS entra no fim do quadro, somada ao Valor Total Estimado. */
+
+
+
 function blocoQuadroPrecos(itens, orcamento){
   if(!itens || !itens.length){
     return `
@@ -390,8 +390,8 @@ function blocoQuadroPrecos(itens, orcamento){
       </thead>
       <tbody>`;
 
-  /* auto-numeração: secao define agrupador (N), subitens recebem N.1, N.2 (fase 187d: em _propostaLinhasQuadro, a
-     mesma do PDF com texto) */
+
+
   const quadro = _propostaLinhasQuadro(itens);
   const nivel = quadro.proximo;
 
@@ -437,12 +437,12 @@ function blocoQuadroPrecos(itens, orcamento){
   return html;
 }
 
-/* observações dos itens listadas após o quadro. Fase 40: usa a numeração real do quadro
-   ("Obs: Item N - …"); texto que já começa com "Obs" (orçamentos antigos) sai como está.
-   Nota interna do catálogo (16/11/2026): `notasInternas` é o Set dos textos de servicos.nota_interna (sem espaços nas
-   pontas); observação idêntica a uma nota interna (orçamento feito antes da separação no catálogo) não sai. Compara com
-   todas as notas, não só a do serviço do item: em 13 itens a observação ficou na linha depois de trocar o item. Texto
-   escrito à mão sai. */
+
+
+
+
+
+
 function _propostaObservacoes(itens, notasInternas){
   const notas = notasInternas instanceof Set ? notasInternas : new Set();
   return (itens || []).filter(i => i.observacao && i.observacao.trim() && !notas.has(i.observacao.trim())).map(i => {
@@ -460,15 +460,15 @@ function blocoObservacoesItens(itens, notasInternas){
     </div>`;
 }
 
-/* nota de rodapé sobre INSS (mesma em todos os modelos) */
+
 function blocoNotaINSS(){
   return `<div class="nota-inss nao-quebrar">${NOTA_INSS}</div>`;
 }
 
-/* bloco do responsável comercial (assinatura) */
-/* Assinatura (orçamento 8896/2026, 10/11/2026): o cargo saía como o enum do banco ("diretor") e o telefone como foi
-   digitado no perfil ("31971555..."). Cargo pelo rótulo de CARGOS (usuarios.js); telefone com DDD entre parênteses e
-   traço depois dos 5 primeiros dígitos (4 no fixo de 8). Menos de 10 dígitos sai como está. */
+
+
+
+
 function _propostaCargo(c){
   if(!c) return "Comercial";
   return (typeof CARGOS !== "undefined" && CARGOS[c]) || (String(c).charAt(0).toUpperCase() + String(c).slice(1).replace(/_/g, " "));
@@ -496,7 +496,7 @@ function blocoComercial(responsavel){
     </div>`;
 }
 
-/* bloco "De acordo" enxuto (sem mais o quadro de informações de NF) */
+
 function blocoDeAcordo(){
   return `
     <div class="nf-dados nao-quebrar">
@@ -511,7 +511,7 @@ function blocoDeAcordo(){
     </div>`;
 }
 
-/* rodapé com endereço e contatos da CGL */
+
 function blocoRodapeEmpresa(){
   return `
     <div class="rodape-empresa nao-quebrar">
@@ -521,14 +521,14 @@ function blocoRodapeEmpresa(){
     </div>`;
 }
 
-/* ====================================================================
-   Conteúdo específico por tipo (encargos, cláusulas, observações)
-   Implementação em etapas — primeiro HÉLICE completo, depois os demais.
-   ==================================================================== */
 
-/* fase 106b: cláusulas que se repetem, iguais, nos RG 11.9 (Trado), 11.10 (Raiz) e 11.11 (Secante).
-   Texto do documento da qualidade, revisão 01 de 03/06/2024 (anexos do chamado #17); erros de digitação
-   corrigidos e listados no PR da 106b. Valores citados (R$ 380,00, R$ 10,00/m³…) são texto contratual. */
+
+
+
+
+
+
+
 const TXT_RG = {
   mobTransporte: "Fornecimento e Transporte de equipe e equipamentos necessários para Mobilização e Desmobilização. " +
     "(O transporte dos equipamentos e materiais será de responsabilidade da CONTRATADA até o limite em que " +
@@ -560,7 +560,7 @@ const TXT_RG = {
   assinarRdo: "Analisar e assinar diariamente os Diários de Obra (RDO's) da Contratada.",
   prazoMedicoes: "As medições terão prazo de 4 dias úteis para serem analisadas e aprovadas pela contratante. Após esse período, as mesmas serão consideradas aprovadas e originarão as respectivas notas fiscais/duplicatas.",
   retencao: "A Contratada não aceitará a aplicação de retenção técnica sobre os valores das medições realizadas. Como alternativa à retenção, a Contratada disponibiliza, mediante solicitação, a apresentação de Seguro Garantia, nos termos da legislação vigente.",
-  /* decisão do Bernardo em 27/10/2026: o RG diz 80%, a proposta passa a dizer 100% (hélice, trado e secante) */
+
   bits: "Na escavação em materiais com spt acima de 35 golpes ou ponta de bits, os preços terão acréscimo de 100%.",
   chuva: "CHUVA: em caso de paralisações das atividades por motivo de chuva intermitente e/ou praça de trabalho saturada, que impossibilite trânsito de equipamentos pesados, será considerado 50% do faturamento mínimo acordado para cobrir despesas da CONTRATADA.",
   atraso: "O atraso no pagamento pela CONTRATANTE, acarretará a mesma, multa de 2,0% (dois por cento) ao mês, mais juros diários de 0,10% (dez centésimos) ao dia, até o pagamento.",
@@ -575,11 +575,11 @@ const TXT_RG = {
   sobraConcreto: "Aproveitamento do concreto eventualmente não utilizado por defeito de nossos equipamentos, sobras e/ou com tempo de aplicação vencido, sem ônus para a Contratada."
 };
 
-/* Encargos de Responsabilidade — tabela CONTRATANTE | CGL | Não Aplica.
-   Cada item: { d: descrição, r: 'CONTRATANTE'|'CGL'|'NAO', destaque?: true,
-                gatilho?: 'diesel'|'hospedagem' (flag que muda a responsabilidade) }
-   Os destaques (linhas amarelas) correspondem a itens críticos do PDF.
-   `flags` é o objeto orcamento — usado para alternar responsáveis dos itens com gatilho. */
+
+
+
+
+
 function encargosHelice(flags){
   const f = flags || {};
   return [
@@ -608,8 +608,8 @@ function encargosHelice(flags){
     { d: "Vigilância e Proteção dos Equipamentos, ferramentas e utensílios alocados na obra.", r: "CONTRATANTE" },
     { d: "Fornecimento água, energia elétrica (ponto trifásico 220 v para atender um motor de 10 cv), iluminação, instalações sanitárias, condições mínimas segurança para nossos colaboradores conforme NR-18.", r: "CONTRATANTE" },
     { d: "Hospedagem (limite de 2 pessoas por quarto) e alimentação externa (café da manhã, almoço e jantar) à obra para colaboradores.", r: f.cgl_fornece_hospedagem ? "CGL" : "CONTRATANTE", destaque: true },
-    // lote S44 (L7, #62, decisão do Bernardo em 19/10): com o adicional de alimentação marcado no orçamento a
-    // responsabilidade passa para a CGL e o texto acompanha; sem ele, como sempre foi
+
+
     f.cgl_fornece_alimentacao
       ? { d: "Alimentação dentro do canteiro de obras para colaboradores, por conta da CGL (03 funcionários por HC)", r: "CGL", destaque: true }
       : { d: "Alimentação dentro do canteiro de obras para colaboradores. (03 funcionários por HC)", r: "CONTRATANTE", destaque: true },
@@ -626,8 +626,8 @@ function encargosHelice(flags){
   ];
 }
 
-/* Fase 145b: a limpeza entra na cláusula do refuro, com o mesmo texto de valor, só nas propostas novas (orçamento criado
-   a partir de 19/11/2026). A proposta já emitida continua a imprimir o texto com que foi enviada. */
+
+
 const CLAUSULA_LIMPEZA_DESDE = "2026-11-19";
 function _clausulaRefuro(orcamento){
   const criado = orcamento && orcamento.created_at ? String(orcamento.created_at).slice(0, 10) : null;
@@ -636,10 +636,10 @@ function _clausulaRefuro(orcamento){
   }
   return "Nos casos em que for preciso refurar ou fazer a limpeza de estacas, por qualquer motivo alheio à CGL (exemplos: dificuldade na inserção da armação, concreto insuficiente para finalização da estaca, concreto fora da especificação causando entupimentos, etc.), será cobrado o metro linear do refuro ou da limpeza no mesmo valor praticado para o furo.";
 }
-/* CRITÉRIOS DE MEDIÇÃO / CONDIÇÕES DE PAGAMENTOS — texto integral do PDF.
-   Itens com destaque=true são impressos em negrito + itálico no PDF original. */
+
+
 function criteriosMedicaoHelice(orcamento){
-  /* fase 40: condição de pagamento editada no orçamento substitui a cláusula padrão */
+
   const pagamento = (orcamento && orcamento.condicoes_pagamento && orcamento.condicoes_pagamento.trim())
     || textoPagamentoPadrao(orcamento && orcamento.prazo_pagamento_dias, orcamento && orcamento.pagamento_forma);
   return [
@@ -648,7 +648,7 @@ function criteriosMedicaoHelice(orcamento){
     { t: "O Diário de Obra será enviado em formato digital, e a Contratante disporá do prazo de 2 (dois) dias úteis, contados a partir do recebimento, para análise e eventual manifestação quanto ao seu conteúdo. Caso não haja qualquer contestação dentro desse prazo, o referido documento será considerado aceito e validado pelas partes." },
     { t: "Analisar e assinar diariamente os Diários de Obra (RDO's) da Contratada." },
     { t: "As medições terão prazo de 4 dias úteis para serem analisadas e aprovadas pela contratante. Após esse período, as mesmas serão consideradas aprovadas e originarão as respectivas notas fiscais/duplicatas." },
-    /* fase 106b: 80% → 100% (decisão do Bernardo em 27/10/2026, igual à linha de bits a 2×) */
+
     { t: TXT_RG.bits },
     { t: "A Contratada não aceitará a aplicação de retenção técnica sobre os valores das medições realizadas. Como alternativa à retenção, a Contratada disponibiliza, mediante solicitação, a apresentação de Seguro Garantia." },
     { t: "No caso da inserção das armaduras se darem com o uso de nossos equipamentos cobraremos de preço de R$ 0,75 por kg levantado." },
@@ -672,7 +672,7 @@ function criteriosMedicaoHelice(orcamento){
   ];
 }
 
-/* CONDIÇÕES GERAIS — bloco final com cláusulas operacionais */
+
 function condicoesGeraisHelice(){
   return [
     { t: "Caso houver necessidade de mudanças internas entre as frentes de serviços, ou a necessidade de desmontar a perfuratriz, será cobrada o período efetivamente paralisado até o reinicio dos serviços no valor de hora parada / Fat. Mínimo dia e ou Locação Diária." },
@@ -680,14 +680,14 @@ function condicoesGeraisHelice(){
   ];
 }
 
-/* ====================================================================
-   fase 106b: Trado (RG 11.9), Raiz (RG 11.10) e Secante (RG 11.11).
-   Mesma ordem e mesmas colunas do RG (os 5 primeiros encargos são da CGL, o
-   resto da CONTRATANTE, conferido pela posição do X no PDF); destaque = linha em
-   negrito no RG. Gatilhos de diesel, hospedagem e alimentação como na hélice.
-   ==================================================================== */
 
-/* pagamento: condição editada no orçamento ou a cláusula padrão (igual à hélice) */
+
+
+
+
+
+
+
 function _clausulaPagamento(orcamento){
   return (orcamento && orcamento.condicoes_pagamento && orcamento.condicoes_pagamento.trim())
     || textoPagamentoPadrao(orcamento && orcamento.prazo_pagamento_dias, orcamento && orcamento.pagamento_forma);
@@ -751,7 +751,7 @@ function criteriosMedicaoTrado(orcamento){
   ];
 }
 
-/* RG 11.9: as duas cláusulas são as mesmas do RG 11.8 (conferido em 09/11/2026) */
+
 function condicoesGeraisTrado(){ return condicoesGeraisHelice(); }
 
 function encargosRaiz(flags){
@@ -792,7 +792,7 @@ function encargosRaiz(flags){
   ];
 }
 
-/* RG 11.10 não tem a cláusula de bits (a raiz cobra rocha pelo preço de 2ª categoria do quadro) */
+
 function criteriosMedicaoRaiz(orcamento){
   return [
     { t: TXT_RG.medidas },
@@ -824,7 +824,7 @@ function criteriosMedicaoRaiz(orcamento){
   ];
 }
 
-/* RG 11.10: as duas cláusulas são as mesmas do RG 11.8 (conferido em 09/11/2026) */
+
 function condicoesGeraisRaiz(){ return condicoesGeraisHelice(); }
 
 function encargosSecante(flags){
@@ -866,8 +866,8 @@ function encargosSecante(flags){
   ];
 }
 
-/* RG 11.11: a cláusula do prazo das medições aparece duas vezes no RG (a segunda com a NFS-e);
-   transcrita como está, para a diretoria decidir */
+
+
 function criteriosMedicaoSecante(orcamento){
   return [
     { t: TXT_RG.medidas },
@@ -897,17 +897,17 @@ function criteriosMedicaoSecante(orcamento){
   ];
 }
 
-/* RG 11.11: as duas cláusulas são as mesmas do RG 11.8 (conferido em 09/11/2026) */
+
 function condicoesGeraisSecante(){ return condicoesGeraisHelice(); }
 
-/* CONTRATAÇÃO DOS SERVIÇOS */
+
 function contratacaoServicosTextoComum(){
   return [
     { t: "Em caso de aceitação da proposta, por estarem justas e assim contratadas, as partes firmam o presente instrumento em 2 (duas) vias de igual teor e forma, perante duas testemunhas, para que produza seus efeitos, valendo a mesma para fazer parte integrante ao contrato definitivo para todos os fins de direito, devendo ainda ser encaminhada uma Ordem de Compra de Serviço e os dados cadastrais a seguir requeridos." }
   ];
 }
 
-/* VALIDADE DA PROPOSTA */
+
 function validadeTextoComum(dias){
   const d = dias || 30;
   return [
@@ -918,8 +918,8 @@ function validadeTextoComum(dias){
   ];
 }
 
-/* dispatch por tipo de proposta — passa flags do orçamento para que os encargos
-   com gatilho (diesel, hospedagem) alterem a coluna marcada automaticamente */
+
+
 function encargosPorTipo(tipo, flags){
   switch(tipo){
     case "helice":  return encargosHelice(flags);
@@ -948,36 +948,36 @@ function condicoesGeraisPorTipo(tipo){
   }
 }
 
-/* ====================================================================
-   Fase 180e: modelo de proposta com versão aprovada pelo diretor.
-   O texto dos encargos e das cláusulas de cada segmento (hélice, trado, raiz, secante) vem da versão vigente do modelo
-   (tabelas modelos_documento e modelos_documento_versoes; view vw_modelos_vigentes), editada pelo jurídico em
-   Contratos › Modelos e aprovada só pelo diretor. A primeira versão vigente de cada segmento nasceu na migration com o
-   texto embutido abaixo (encargos*, criteriosMedicao*, condicoesGerais*, contratacao*, validade*), gerado por
-   scripts/gerar-modelos-proposta-180e.js; scripts/testar-fase180e-proposta.js confere que o HTML e o PDF saem iguais.
-   O texto embutido continua como reserva: sem a migration aplicada (tabela inexistente) ou sem versão vigente.
-   O comercial não edita texto (só flags e desconto): o texto é do modelo, não do orçamento.
 
-   Formato do texto do modelo (uma linha = um item; linha em branco é ignorada):
-     ## Encargos                         seção da tabela ENCARGOS DE RESPONSABILIDADE (uma só por modelo)
-     [CGL; destaque] texto               encargo: responsável CGL, CONTRATANTE ou NÃO APLICA; "destaque" = linha amarela
-     [CGL se diesel] texto               CGL quando o orçamento marca o flag, senão CONTRATANTE
-     [só com alimentação; CGL] texto     a linha só entra com o flag marcado ("só sem ..." = só sem o flag)
-     ## Cláusulas: TÍTULO DA SEÇÃO       seção de cláusulas, na ordem em que aparecem
-     [destaque] texto                    cláusula em negrito e itálico; sem colchete, cláusula normal
-   Flags: diesel, hospedagem, alimentação. Campos: {{pagamento}} (condição de pagamento do orçamento ou a padrão),
-   {{clausula_refuro}} (texto do refuro conforme a data do orçamento), {{validade_dias}} e {{validade_extenso}}.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const PROPOSTA_SEGMENTOS_MODELO = ["helice", "trado", "raiz", "secante"];
 const PROPOSTA_MODELO_FLAGS = { diesel: "cgl_fornece_diesel", hospedagem: "cgl_fornece_hospedagem", alimentacao: "cgl_fornece_alimentacao" };
 const PROPOSTA_MODELO_RESP = { cgl: "CGL", contratante: "CONTRATANTE", "nao aplica": "NAO" };
 const PROPOSTA_MODELO_CAMPOS = ["pagamento", "clausula_refuro", "validade_dias", "validade_extenso"];
 const _pmNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
-/* lê o texto do modelo: { encargos: [...] | null, clausulas: [{ titulo, itens }], erros: [{ linha, msg }] } */
+
 function propostaModeloLer(texto){
   const r = { encargos: null, clausulas: [], erros: [] };
-  let atual = null;   // "encargos" ou o objeto da seção de cláusulas
+  let atual = null;
   const erro = (linha, msg) => r.erros.push({ linha, msg });
   String(texto || "").split(/\r?\n/).forEach((bruta, i) => {
     const nl = i + 1;
@@ -1032,7 +1032,7 @@ function propostaModeloLer(texto){
   return r;
 }
 
-/* aplica o modelo lido ao orçamento: as mesmas listas que o texto embutido devolve ({ d, r, destaque } e { t, destaque }) */
+
 function propostaModeloAplicar(modelo, o){
   const orc = o || {};
   const d = orc.validade_dias || 30;
@@ -1051,7 +1051,7 @@ function propostaModeloAplicar(modelo, o){
   return { encargos, clausulas };
 }
 
-/* texto embutido (reserva e origem da primeira versão de cada modelo) */
+
 function propostaSecoesCodigo(tipo, o){
   return {
     encargos: encargosPorTipo(tipo, o),
@@ -1063,14 +1063,14 @@ function propostaSecoesCodigo(tipo, o){
     ]
   };
 }
-/* encargos e cláusulas da proposta, para o HTML e o PDF: do modelo vigente quando há, senão o texto embutido */
+
 function propostaSecoes(tipo, o, modelo){
   return modelo ? propostaModeloAplicar(modelo, o) : propostaSecoesCodigo(tipo, o);
 }
 
-/* versão vigente do modelo do segmento, já lida. null = texto embutido (segmento sem modelo, migration não aplicada
-   ou nenhuma versão vigente). Modelo vigente com erro de formato para a geração: nunca sai, sem aviso, um texto
-   diferente do aprovado. */
+
+
+
 async function propostaCarregarModelo(tipo){
   if(!PROPOSTA_SEGMENTOS_MODELO.includes(tipo)) return null;
   const { data, error } = await sb.from("vw_modelos_vigentes").select("versao_id,numero,texto,nome")
@@ -1089,7 +1089,7 @@ async function propostaCarregarModelo(tipo){
   return m;
 }
 
-/* renderiza tabela de encargos */
+
 function blocoEncargos(encargos){
   if(!encargos || !encargos.length) return "";
   const linhaX = (it) => {
@@ -1119,7 +1119,7 @@ function blocoEncargos(encargos){
     </table>`;
 }
 
-/* renderiza lista de cláusulas (CRITÉRIOS, CONDIÇÕES GERAIS, CONTRATAÇÃO, VALIDADE) */
+
 function blocoClausulas(titulo, itens){
   if(!itens || !itens.length) return "";
   return `
@@ -1129,9 +1129,9 @@ function blocoClausulas(titulo, itens){
     </div>`;
 }
 
-/* ====================================================================
-   Montagem do documento completo
-   ==================================================================== */
+
+
+
 function montarHtmlProposta(dados){
   const { orcamento, itens, cliente, responsavel } = dados;
   const tipo = orcamento.tipo_proposta || "helice";
@@ -1139,12 +1139,12 @@ function montarHtmlProposta(dados){
   const codigoModelo = orcamento.codigo_modelo || tInfo.codigo;
   const revisao      = orcamento.numero_revisao || "00";
 
-  /* combina itens reais do banco + itens virtuais gerados pelos flags
-     (Diesel quando cgl_fornece_diesel; Hospedagem quando cgl_fornece_hospedagem) —
-     fase 40: sem duplicar item que já está no quadro */
+
+
+
   const extras = itensVirtuais(orcamento, itens);
   const itensQuadro = [...(itens || []), ...extras];
-  const secoes = propostaSecoes(tipo, orcamento, dados.modelo);   // fase 180e: texto do modelo vigente do segmento
+  const secoes = propostaSecoes(tipo, orcamento, dados.modelo);
 
   const corpo = `
     ${blocoCabecalho(tipo, codigoModelo, revisao)}
@@ -1167,25 +1167,25 @@ function montarHtmlProposta(dados){
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Proposta ${esc(orcamento.numero || "")}</title>
 <style>${CSS_PROPOSTA}</style>
-</head><body>${/* html */ corpo}</body></html>`;
+</head><body>${  corpo}</body></html>`;
 }
 
-/* ====================================================================
-   Fase 187d (#306): proposta em PDF com texto nativo.
-   O html2pdf fotografava a página e o PDF era uma imagem: o Ctrl+F não achava o cliente nem o total e o texto copiado
-   não saía. Aqui o mesmo layout é escrito pela API do jsPDF que já vem no bundle do html2pdf (pdfNovoDocumento,
-   core.js): cabeçalho, destinatário, número, introdução, condições gerais, quadro de preços, nota do INSS,
-   observações, encargos, cláusulas, assinatura, "De acordo" e endereço; o rodapé (texto ISO 9001, "Página i de N" e
-   selo) é o mesmo pdfCarimbarRodape dos outros PDFs. Bloco que não cabe no fim da página vai inteiro para a seguinte
-   (como o .nao-quebrar do HTML); tabela repete o cabeçalho na página nova. Cores em RGB: exceção dos geradores de PDF.
-   A pré-visualização em HTML (visualizarProposta) continua pelo montarHtmlProposta.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
 const PPDF_ESQ = 10, PPDF_LARG = 190, PPDF_TOPO = 12;
-const PPDF_LIMITE = 297 - PDF_BASE_MIN_MM;   // abaixo ficam o texto e o selo do rodapé
-const PPDF_PT = 0.352778;                     // mm por ponto
+const PPDF_LIMITE = 297 - PDF_BASE_MIN_MM;
+const PPDF_PT = 0.352778;
 const PPDF_COR = { preto: [0, 0, 0], cinza: [217, 217, 217], cinzaEsc: [192, 192, 192], laranja: [249, 115, 22],
   laranjaEsc: [194, 65, 12], amarelo: [255, 247, 214], ambar: [161, 98, 7], branco: [255, 255, 255] };
-const PPDF_NB = "\u0001";   // espaço que não quebra a linha (sigla NBR, valor em R$); sai como espaço comum
+const PPDF_NB = "\u0001";
 
 function _ppFonte(pdf, estilo, tam, cor){
   pdf.setFont("helvetica", estilo || "normal");
@@ -1193,12 +1193,12 @@ function _ppFonte(pdf, estilo, tam, cor){
   pdf.setTextColor(...(cor || PPDF_COR.preto));
 }
 function _ppLh(tam){ return tam * PPDF_PT * 1.3; }
-function _ppBase(y, h, tam){ return y + h / 2 + tam * PPDF_PT * 0.359; }   // linha de base que centra a letra maiúscula
+function _ppBase(y, h, tam){ return y + h / 2 + tam * PPDF_PT * 0.359; }
 function _ppEstilo(p){ return p.b && p.i ? "bolditalic" : p.b ? "bold" : p.i ? "italic" : "normal"; }
 function _ppPagina(L){ L.pdf.addPage("a4", "portrait"); L.y = PPDF_TOPO; }
 function _ppGarantir(L, h){ if(L.y + h > PPDF_LIMITE && h <= PPDF_LIMITE - PPDF_TOPO && L.y > PPDF_TOPO + 0.1) _ppPagina(L); }
 
-/* "texto com <b>negrito</b>" → trechos { t, b, i, cor }. Só para os textos fixos deste arquivo (TEXTO_INSTITUCIONAL). */
+
 function _ppMarcado(s, base){
   const out = []; let b = !!(base && base.b), i = !!(base && base.i);
   String(s || "").split(/(<\/?[bi]>)/).forEach(p => {
@@ -1209,13 +1209,13 @@ function _ppMarcado(s, base){
   return out;
 }
 
-/* trechos → palavras medidas. Palavra sem espaço entre dois trechos (negrito colado em pontuação) fica junta. */
+
 function _ppPalavras(pdf, trechos, tam){
   const palavras = []; let atual = null, espaco = true;
   trechos.forEach(tr => {
     const est = _ppEstilo(tr);
     const txt = String(tr.t ?? "").split(PPDF_NB).map(pdfTextoWinAnsi).join(PPDF_NB)
-      .replace(/NBR-? (?=\d)/g, m => m.replace(" ", PPDF_NB));   // lote S42 (L3): sigla de norma não quebra
+      .replace(/NBR-? (?=\d)/g, m => m.replace(" ", PPDF_NB));
     txt.split(/(\n| +)/).forEach(tok => {
       if(!tok) return;
       if(tok === "\n"){ palavras.push({ quebra: true }); atual = null; espaco = true; return; }
@@ -1231,7 +1231,7 @@ function _ppPalavras(pdf, trechos, tam){
   return palavras;
 }
 
-/* palavra mais larga que a linha (e-mail, endereço sem espaço) é cortada por letra */
+
 function _ppCortarPalavra(pdf, p, larg, tam){
   if(p.w <= larg || p.pedacos.length !== 1) return [p];
   const pc = p.pedacos[0], partes = [];
@@ -1245,7 +1245,7 @@ function _ppCortarPalavra(pdf, p, larg, tam){
   return partes.map(t => { const w = pdf.getTextWidth(t); return { pedacos: [{ ...pc, t, w }], w }; });
 }
 
-/* quebra em linhas de largura `larg` (mm). Linha com fim = true termina parágrafo (não é justificada). */
+
 function _ppLinhas(pdf, trechos, larg, tam){
   _ppFonte(pdf, "normal", tam);
   const esp = pdf.getTextWidth(" ");
@@ -1264,7 +1264,7 @@ function _ppLinhas(pdf, trechos, larg, tam){
   return { linhas, esp };
 }
 
-/* escreve as linhas a partir do topo y. Cada palavra sai com o espaço depois dela, para o texto copiado sair legível. */
+
 function _ppDesenharLinhas(pdf, info, linhas, x, y, larg, tam, alinh){
   const lh = _ppLh(tam);
   linhas.forEach((lin, k) => {
@@ -1298,8 +1298,8 @@ function _ppTextoCentro(pdf, txt, x, y, w, h, tam, est, cor){
   pdf.text(pdfTextoWinAnsi(txt), x + w / 2, _ppBase(y, h, tam), { align: "center" });
 }
 
-/* caixa de texto na largura útil. op: tam, alinh (left|center|right|justify), padX, padY, fundo, borda, semTopo,
-   antes (mm acima), junto (não parte entre páginas; padrão true). Texto maior que uma página continua na seguinte. */
+
+
 function _ppOpCaixa(op){ return Object.assign({ tam: 9.5, alinh: "left", padX: 0, padY: 0, antes: 0, junto: true }, op); }
 function _ppAlturaCaixa(L, trechos, op){
   const o = _ppOpCaixa(op);
@@ -1326,9 +1326,9 @@ function _ppCaixa(L, trechos, op){
 const PPDF_TITULO = { tam: 9.5, alinh: "center", padY: 1.06, fundo: PPDF_COR.cinza, borda: true };
 function _ppTitulo(t){ return [{ t, b: true }]; }
 
-/* tabela. cols = larguras (mm); linha = { cels: [{ t | trechos, span, alinh, b, i, fundo, cor, semQuebra, tam, padX }],
-   fundo, tam }. Célula semQuebra (valor em R$, título de coluna) não quebra: a fonte diminui até caber, como o
-   white-space: nowrap do HTML. As linhas de `cab` repetem no topo de cada página; linha não parte entre páginas. */
+
+
+
 function _ppTabela(L, cols, cab, corpo, op){
   const o = Object.assign({ tam: 9.5, padX: 1.6, padY: 1.06, antes: 0 }, op), pdf = L.pdf;
   const medir = (lin) => {
@@ -1367,7 +1367,7 @@ function _ppTabela(L, cols, cab, corpo, op){
   });
 }
 
-/* cabeçalho institucional: logo | Sistema de Gestão da Qualidade / Tipo de Documento + nome | Identificação e Revisão */
+
 function _ppCabecalho(L, tipo, codigo, rev, logo){
   const pdf = L.pdf, x = PPDF_ESQ, y = L.y, t = PROPOSTA_TIPOS[tipo] || PROPOSTA_TIPOS.outro;
   const wLogo = 24, wMeta = 34, wMeio = PPDF_LARG - wLogo - wMeta;
@@ -1391,7 +1391,7 @@ function _ppCabecalho(L, tipo, codigo, rev, logo){
   L.y = y + h1 + h2;
 }
 
-/* "Itabira/MG, 01 Julho de 2026" à direita, "À", nome do cliente e os campos (contato do orçamento antes do cadastro) */
+
 function _ppDestinatario(L, cliente, o){
   const pdf = L.pdf, c = cliente || {};
   L.y += 2.6;
@@ -1409,7 +1409,7 @@ function _ppDestinatario(L, cliente, o){
   ].join("\n") }], { tam: 9, antes: 1, junto: false });
 }
 
-/* PROPOSTA CONTRATO: NNNN/AAAA   REV: xx, centrado */
+
 function _ppNumero(L, o, rev){
   const pdf = L.pdf;
   const partes = [
@@ -1424,7 +1424,7 @@ function _ppNumero(L, o, rev){
   L.y += h + 1.6;
 }
 
-/* CONDIÇÕES GERAIS DA PROPOSTA: título cinza e quadro amarelo em itálico, com escopo, ressalva, equipamento, local e prazo */
+
 function _ppCondicoesGerais(L, o){
   const escopo = String(o.escopo_servicos || o.observacoes || "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const ressalva = _propostaRessalva(o);
@@ -1441,7 +1441,7 @@ function _ppCondicoesGerais(L, o){
   _ppCaixa(L, tr, opC);
 }
 
-/* quadro de preços: mesma numeração, mesmas colunas e a linha do ISS antes do Valor Total Estimado */
+
 function _ppQuadroPrecos(L, itens, o){
   if(!itens.length){
     _ppCaixa(L, _ppTitulo("Quadro de Preços"), { ...PPDF_TITULO, antes: 2.1 });
@@ -1473,7 +1473,7 @@ function _ppQuadroPrecos(L, itens, o){
   _ppTabela(L, cols, cab, corpo, { antes: 2.1 });
 }
 
-/* ENCARGOS DE RESPONSABILIDADE: DESCRIÇÃO | CONTRATANTE | CGL | Não Aplica, linha de destaque em amarelo */
+
 function _ppEncargos(L, encargos){
   if(!encargos || !encargos.length) return;
   const tit = (t) => ({ t, b: true, alinh: "center", semQuebra: true });
@@ -1487,7 +1487,7 @@ function _ppEncargos(L, encargos){
   _ppTabela(L, [121.6, 22.8, 22.8, 22.8], cab, corpo, { antes: 3.2 });
 }
 
-/* cláusulas: título cinza e um quadro por cláusula (o título não fica sozinho no pé da página) */
+
 function _ppClausulas(L, titulo, itens){
   if(!itens || !itens.length) return;
   const opT = { ...PPDF_TITULO, antes: 3.2 };
@@ -1498,7 +1498,7 @@ function _ppClausulas(L, titulo, itens){
   itens.forEach(it => _ppCaixa(L, tr(it), opI));
 }
 
-/* assinatura da CGL e dados do responsável comercial */
+
 function _ppComercial(L, responsavel){
   const pdf = L.pdf, r = responsavel || {};
   const linhas = [{ t: (r.nome || "—") + "\n", b: true }, { t: _propostaCargo(r.cargo) + "\n" }];
@@ -1517,7 +1517,7 @@ function _ppComercial(L, responsavel){
   _ppCaixa(L, linhas, opC);
 }
 
-/* "De acordo: Em ___/___/____." com linha para assinatura, e a observação da alteração contratual */
+
 function _ppDeAcordo(L){
   const pdf = L.pdf;
   const obs = [{ t: "Obs: Favor enviar junto com o \"De acordo\" última alteração contratual e caso não seja assinado pelo representante legal da empresa enviar procuração." }];
@@ -1539,7 +1539,7 @@ function _ppDeAcordo(L){
   _ppCaixa(L, obs, { ...opO, junto: false });
 }
 
-/* monta o PDF da proposta (devolve o documento jsPDF; quem chama salva) */
+
 async function gerarPropostaPdfTexto(dados){
   const { orcamento: o, itens, cliente, responsavel } = dados;
   const tipo = o.tipo_proposta || "helice";
@@ -1564,7 +1564,7 @@ async function gerarPropostaPdfTexto(dados){
   _ppCaixa(L, [{ t: NOTA_INSS }], { tam: 7.5, alinh: "justify", padX: 1.6, padY: 1.06, borda: true, semTopo: true });
   _propostaObservacoes(itensQuadro, dados.notasInternas).forEach((t, k) =>
     _ppCaixa(L, [{ t }], { tam: 8.5, padX: 1.6, padY: 1.06, borda: true, semTopo: k > 0, antes: k ? 0 : 2.1 }));
-  const secoes = propostaSecoes(tipo, o, dados.modelo);   // fase 180e: o mesmo texto do HTML
+  const secoes = propostaSecoes(tipo, o, dados.modelo);
   _ppEncargos(L, secoes.encargos);
   secoes.clausulas.forEach(c => _ppClausulas(L, c.titulo, c.itens));
   _ppComercial(L, responsavel);
@@ -1584,12 +1584,12 @@ async function gerarPropostaPdfTexto(dados){
   return pdf;
 }
 
-/* ====================================================================
-   Funções públicas: buscar dados, visualizar e baixar
-   ==================================================================== */
 
-/* nota interna do catálogo (16/11/2026): Set com os textos de servicos.nota_interna, para o PDF não imprimir texto
-   interno. Só lê quando algum item tem observação. */
+
+
+
+
+
 async function propostaNotasInternas(itens){
   if(!itens.some(i => i.observacao && i.observacao.trim())) return new Set();
   const { data, error } = await sb.from("servicos").select("nota_interna").not("nota_interna", "is", null);
@@ -1597,7 +1597,7 @@ async function propostaNotasInternas(itens){
   return new Set((data || []).map(s => (s.nota_interna || "").trim()).filter(Boolean));
 }
 
-/* busca tudo necessário para montar a proposta */
+
 async function carregarDadosProposta(orcamentoId){
   const { data:orc, error:eOrc } = await sb.from("orcamentos")
     .select("*").eq("id", orcamentoId).single();
@@ -1618,7 +1618,7 @@ async function carregarDadosProposta(orcamentoId){
     const { data:r } = await sb.from("profiles").select("*").eq("id", orc.responsavel_id).single();
     responsavel = r;
   }
-  /* fallback: se o responsável não tem dados, usa o usuário logado */
+
   if(!responsavel){
     const { data:{ user } } = await sb.auth.getUser();
     if(user){
@@ -1627,16 +1627,16 @@ async function carregarDadosProposta(orcamentoId){
     }
   }
 
-  /* nota interna do catálogo de cada variante do orçamento, para o PDF não imprimir texto interno */
+
   const notasInternas = await propostaNotasInternas(itens || []);
 
-  /* fase 180e: encargos e cláusulas vêm do modelo vigente do segmento (Contratos › Modelos) */
+
   const modelo = await propostaCarregarModelo(orc.tipo_proposta || "helice");
 
   return { orcamento: orc, itens: itens || [], cliente, responsavel, notasInternas, modelo };
 }
 
-/* abre a proposta como HTML em nova aba (preview rápido) */
+
 async function visualizarProposta(orcamentoId){
   try {
     const dados = await carregarDadosProposta(orcamentoId);
@@ -1649,8 +1649,8 @@ async function visualizarProposta(orcamentoId){
   }
 }
 
-/* baixa a proposta como PDF. Fase 187d: com texto nativo (gerarPropostaPdfTexto); se ele falhar, sai como antes,
-   pelo html2pdf (imagem), para o comercial não ficar sem a proposta. */
+
+
 async function baixarProposta(orcamentoId){
   try {
     const dados = await carregarDadosProposta(orcamentoId);
@@ -1665,27 +1665,27 @@ async function baixarProposta(orcamentoId){
     }
     const html  = montarHtmlProposta(dados);
 
-    /* html2pdf precisa do HTML montado num container vivo no DOM */
+
     const wrap = document.createElement("div");
     wrap.innerHTML = html;
     const doc = wrap.querySelector("body") || wrap;
 
-    /* lote S41 (#36): margem interna, sem cortar linha/parágrafo/bloco e selo em toda página */
+
     await pdfGerar(doc, { filename: nomeArq });
   } catch(err){
     aviso("app-aviso", err.message || "Erro ao gerar o PDF.", "erro");
   }
 }
 
-/* fase 192b: o mesmo PDF com texto do botão PDF, em Blob, para o envio pela orcamento@ (sem o modo imagem: se o PDF
-   com texto falhar, o envio para e avisa, para nunca mandar ao cliente uma proposta diferente da baixada) */
+
+
 async function gerarPropostaPdfBlob(orcamentoId){
   const dados = await carregarDadosProposta(orcamentoId);
   const pdf = await gerarPropostaPdfTexto(dados);
   return pdf.output("blob");
 }
 
-/* ---------- Listeners (botões da ficha) ---------- */
+
 const btnVerProposta = $("btn-ver-proposta");
 if(btnVerProposta){
   btnVerProposta.addEventListener("click", () => {

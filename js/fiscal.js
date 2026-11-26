@@ -1,27 +1,27 @@
-/* ====================================================================
-   Fiscal (fase 105a, 22/10/2026) — cadastro que a NF-e de remessa e a NFS-e da medição vão exigir.
-   Spec: docs/specs/fase-105-emissao-fiscal-focus-nfe.md (parte 105a). Nada aqui fala com a Focus NFe.
 
-   - CPF/CNPJ: fiscalDocValido() espelha fiscal_doc_valido() do banco (dígitos verificadores; CNPJ alfanumérico
-     de jul/2026: as 12 primeiras posições aceitam letras, valor = código ASCII − 48).
-   - CEP → endereço e código IBGE do município pela ViaCEP (https://viacep.com.br/ws/<cep>/json/, campo "ibge").
-     Sem rede (ou com a ViaCEP fora), o usuário digita: nada trava.
-   - fiscalColunaExiste(): o front não quebra antes da migration 20261022_fase105a_cadastro_fiscal.sql. Cada tela
-     pergunta uma vez se a coluna nova existe e, sem ela, esconde/desliga os campos novos e não os manda no salvar.
-   - Bloco "Dados fiscais da empresa" (empresa_config.fiscal_*): desenhado em Configurações › Empresa e fiscal (diretor/admin) e na visão
-     "Pendências fiscais" de Clientes (gestor de acessórios, financeiro e logística não veem Configurações). Só quem passa
-     em podeEmitirFiscal() (core.js; fiscal_pode_emitir() no banco) grava; o admin vê e não edita (decisão 6).
-   - NCM de produtos, equipamentos e acessórios: js/fiscal_ncm.js.
-   - Fase 105b (NF-e de remessa/retorno pela Focus NFe): fiscalChamarFocus() fala com a edge function focus-nfe; o bloco
-     da empresa ganha sede, CST/CSOSN, CFOPs, texto legal, IBS/CBS, o certificado A1 (arquivo e senha vão direto para a
-     function e nunca ficam no banco, em log ou no console) e o registro do webhook. Sem a migration da 105b os campos
-     novos ficam desligados (fiscalColunaExiste).
-   - Fase 105c (NFS-e da medição): o bloco da empresa ganha os parâmetros da NFS-e (códigos de tributação nacional e
-     municipal do ISS, NBS, leiaute nfsen|nfse, Ambiente Nacional, natureza do modelo municipal, optante do Simples, texto
-     padrão da discriminação, municípios liberados e IBS/CBS da NFS-e). A emissão fica em js/medicoes.js (prefixo med-nfse-).
-   ==================================================================== */
 
-/* ---------- CPF / CNPJ ---------- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function fiscalDocLimpo(v){ return String(v || "").toUpperCase().replace(/[^0-9A-Z]/g, ""); }
 function fiscalDocValido(v){
   const d = fiscalDocLimpo(v);
@@ -47,7 +47,7 @@ function fiscalDocValido(v){
   }
   return false;
 }
-/* 14 posições → 00.000.000/0000-00; 11 → 000.000.000-00; outro tamanho volta como veio */
+
 function fiscalFormatarDoc(v){
   const d = fiscalDocLimpo(v);
   if(d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
@@ -60,12 +60,12 @@ function fiscalEmailsValidos(v){
   return t.split(/\s*[,;]\s*/).every(e => /^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(e));
 }
 
-/* ---------- a coluna nova já existe no banco? (uma consulta por tabela.coluna) ---------- */
+
 const _fiscalColunas = {};
 function fiscalColunaExiste(tabela, coluna){
   const k = tabela + "." + coluna;
   if(!_fiscalColunas[k]){
-    // só guarda a resposta certa (coluna existe, ou 42703 = não existe); falha de rede pergunta de novo na próxima vez
+
     _fiscalColunas[k] = sb.from(tabela).select(coluna).limit(1)
       .then(({ error }) => {
         if(error && error.code !== "42703") delete _fiscalColunas[k];
@@ -76,7 +76,7 @@ function fiscalColunaExiste(tabela, coluna){
   return _fiscalColunas[k];
 }
 
-/* ---------- CEP → endereço e IBGE (ViaCEP) ---------- */
+
 async function fiscalBuscarCep(cep){
   const d = String(cep || "").replace(/\D/g, "");
   if(d.length !== 8) return { erro: "CEP com 8 dígitos." };
@@ -93,9 +93,9 @@ async function fiscalBuscarCep(cep){
     return { erro: "Sem acesso à ViaCEP agora. Preencha cidade, UF e o código IBGE à mão." };
   } finally { if(tempo) clearTimeout(tempo); }
 }
-/* Liga CEP → campos. ids: { cep, botao, status, logradouro, bairro, cidade, uf, ibge }.
-   Busca ao sair do campo (CEP completo e diferente do último buscado) e no botão. Logradouro e bairro só são
-   preenchidos se estiverem vazios; cidade, UF e IBGE seguem o CEP (é o que a nota exige). */
+
+
+
 function fiscalLigarCep(ids){
   const elCep = $(ids.cep);
   if(!elCep || elCep.dataset.fiscalCep) return;
@@ -122,12 +122,12 @@ function fiscalLigarCep(ids){
   const b = $(ids.botao); if(b) b.addEventListener("click", () => buscar(true));
 }
 
-/* ---------- CNPJ → dados cadastrais (BrasilAPI) — lote S57b (#216, D-216a) ----------
-   Direto do navegador, como a ViaCEP (CSP connect-src libera https://brasilapi.com.br). Só pessoa jurídica com
-   14 dígitos: CPF nunca sai do app. Devolve { erro } ou os campos já no formato da tela (UF minúscula, CEP 00000-000,
-   situação cadastral; "ativa" = false vira aviso na tela).
-   hotfix 225: CNPJ fora do cache da BrasilAPI passa de 6 s; prazo de 15 s, uma nova tentativa em falha de rede ou 5xx
-   e mensagem própria para demora, sem internet e limite de consultas (429). */
+
+
+
+
+
+
 async function fiscalCnpjFetch(d){
   const ctl = typeof AbortController === "function" ? new AbortController() : null;
   const tempo = ctl ? setTimeout(() => ctl.abort(), 15000) : null;
@@ -170,7 +170,7 @@ async function fiscalBuscarCnpj(cnpj){
       uf:            txt(j.uf).toLowerCase(),
       telefone:      telD.length >= 10 ? `(${telD.slice(0, 2)}) ${telD.slice(2, -4)}-${telD.slice(-4)}` : "",
       email:         txt(j.email).toLowerCase(),
-      ibge:          /^\d{7}$/.test(txt(j.codigo_municipio_ibge)) ? txt(j.codigo_municipio_ibge) : "",   // lote S58 (#228)
+      ibge:          /^\d{7}$/.test(txt(j.codigo_municipio_ibge)) ? txt(j.codigo_municipio_ibge) : "",
       situacao:      situacao,
       ativa:         !situacao || situacao.toUpperCase() === "ATIVA"
     };
@@ -180,15 +180,15 @@ async function fiscalBuscarCnpj(cnpj){
   }
 }
 
-/* ---------- Dados fiscais da empresa (empresa_config.fiscal_*) ---------- */
+
 const FISCAL_REGIMES = { simples_nacional: "Simples Nacional", lucro_presumido: "Lucro presumido", lucro_real: "Lucro real" };
 const FISCAL_EMPRESA_COLS = "fiscal_cnpj,fiscal_razao_social,fiscal_ie,fiscal_im,fiscal_regime_tributario,fiscal_cnae,fiscal_codigo_servico,fiscal_item_lc116,fiscal_iss_aliquota,fiscal_nfe_serie,fiscal_nfe_proximo_numero,fiscal_nfse_serie,fiscal_nfse_proximo_numero,fiscal_ambiente,fiscal_contador_email";
 const FISCAL_EMPRESA_COLS_105B = "fiscal_uf,fiscal_codigo_municipio,fiscal_cst_icms_remessa,fiscal_cst_pis_cofins_remessa,fiscal_cst_pis_cofins_retorno,fiscal_texto_legal_remessa,fiscal_cfop_remessa_dentro_uf,fiscal_cfop_remessa_fora_uf,fiscal_cfop_retorno_dentro_uf,fiscal_cfop_retorno_fora_uf,fiscal_ibs_cbs_cst_remessa,fiscal_ibs_cbs_cclass_remessa,fiscal_certificado_validade,fiscal_certificado_enviado_em,fiscal_focus_webhook_registrado_em,fiscal_focus_webhook_ambiente";
-// hotfix NF-e de remessa C: CFOP, natureza e texto por tipo de item (máquina do imobilizado × acessório e produto)
+
 const FISCAL_EMPRESA_COLS_REMESSA_TIPO = "fiscal_cfop_imobilizado_dentro_uf,fiscal_cfop_imobilizado_fora_uf,fiscal_natureza_imobilizado,fiscal_natureza_material,fiscal_texto_imobilizado,fiscal_texto_material,fiscal_texto_patio";
 const FISCAL_EMPRESA_COLS_105C = "fiscal_codigo_tributacao_nacional_iss,fiscal_codigo_tributacao_municipal_iss,fiscal_codigo_nbs,fiscal_nfse_natureza_operacao,fiscal_optante_simples,fiscal_nfse_modelo,fiscal_nfse_ambiente_nacional,fiscal_nfse_texto_discriminacao,fiscal_nfse_municipios_liberados,fiscal_nfse_ibs_cbs_cst,fiscal_nfse_ibs_cbs_cclass";
-const _fiscalEmpresa = {};   // por prefixo: último registro lido
-/* o que falta para a primeira emissão (a 105b confere de novo antes de emitir) */
+const _fiscalEmpresa = {};
+
 function fiscalEmpresaPendencias(e){
   if(!e) return [];
   const vazio = v => v == null || String(v).trim() === "";
@@ -197,13 +197,13 @@ function fiscalEmpresaPendencias(e){
     vazio(e.fiscal_im) && "IM", vazio(e.fiscal_regime_tributario) && "regime", vazio(e.fiscal_cnae) && "CNAE",
     vazio(e.fiscal_codigo_servico) && "código de serviço", vazio(e.fiscal_iss_aliquota) && "ISS",
     (vazio(e.fiscal_nfe_serie) || vazio(e.fiscal_nfe_proximo_numero)) && "série/número da NF-e",
-    // fase 105c: a série e o número da DPS da NFS-e ficam com a Focus (painel dela); o par da 105a deixa de ser pendência
+
     !("fiscal_nfse_modelo" in e) && (vazio(e.fiscal_nfse_serie) || vazio(e.fiscal_nfse_proximo_numero)) && "série/número da NFS-e",
-    // fase 105b (só quando as colunas existem)
+
     ("fiscal_cst_icms_remessa" in e) && vazio(e.fiscal_cst_icms_remessa) && "CST/CSOSN da remessa",
     ("fiscal_codigo_municipio" in e) && (vazio(e.fiscal_uf) || vazio(e.fiscal_codigo_municipio)) && "UF/município da sede",
     ("fiscal_certificado_validade" in e) && vazio(e.fiscal_certificado_validade) && "certificado A1",
-    // fase 105c (só quando as colunas existem)
+
     ("fiscal_nfse_modelo" in e) && e.fiscal_nfse_modelo !== "nfse" && vazio(e.fiscal_codigo_tributacao_nacional_iss) && "código nacional do ISS",
     ("fiscal_nfse_modelo" in e) && e.fiscal_nfse_modelo !== "nfse" && e.fiscal_nfse_ambiente_nacional !== true && vazio(e.fiscal_codigo_tributacao_municipal_iss) && "código municipal do ISS"
   ].filter(Boolean);
@@ -263,11 +263,11 @@ async function fiscalEmpresaRender(pref){
   if(tem105b) fiscalCertificadoLigar(pref);
 }
 
-/* ---------- Fase 105b: NF-e de remessa e retorno (campos da empresa) ---------- */
+
 const FISCAL_CST_SUGESTOES = [["41", "não tributada (regime normal)"], ["50", "suspensão (regime normal)"], ["90", "outras (regime normal)"], ["400", "não tributada pelo Simples (CSOSN)"], ["900", "outras do Simples (CSOSN)"]];
-/* temTipo: colunas do hotfix NF-e de remessa C. Com elas, a remessa e o retorno saem com o CFOP do tipo do item
-   (máquina do imobilizado × acessório e produto), o retorno é nota de saída e os campos de retorno (1949/2949, CST 98)
-   deixam de aparecer: a function não os usa mais e o salvar não os toca. */
+
+
+
 function fiscalEmpresaHtml105b(pref, e, temTipo){
   const id = s => `${esc(pref)}-${esc(s)}`;
   const v = x => esc(x == null ? "" : x);
@@ -300,7 +300,7 @@ function fiscalEmpresaHtml105b(pref, e, temTipo){
       <div class="campo largo"><label>Texto legal (informações complementares)</label><textarea id="${id("texto-legal")}" rows="2" maxlength="2000" placeholder="ex.: base legal da não incidência do ICMS na remessa para prestação de serviço">${v(e.fiscal_texto_legal_remessa)}</textarea></div>
     </div>`;
 }
-/* campos da 105b no salvar: null = colunas ainda não existem; { erro } = valor inválido */
+
 function fiscalEmpresaValores105b(pref){
   if(!$(`${pref}-cfop-rd`)) return null;
   const g = s => ($(`${pref}-${s}`)?.value || "").trim();
@@ -315,7 +315,7 @@ function fiscalEmpresaValores105b(pref){
     fiscal_ibs_cbs_cclass_remessa: g("ibs-class").replace(/\D/g, "") || null,
     fiscal_texto_legal_remessa: g("texto-legal") || null
   };
-  // campos de retorno só quando aparecem (sem as colunas do hotfix NF-e de remessa C); com elas, ficam como estão no banco
+
   const temRetorno = !!$(`${pref}-cfop-td`);
   if(temRetorno){
     reg.fiscal_cst_pis_cofins_retorno = g("pis-ret").replace(/\D/g, "") || "98";
@@ -350,7 +350,7 @@ function fiscalEmpresaValores105b(pref){
   return erros.length ? { erro: erros.join("; ") } : reg;
 }
 
-/* ---------- Fase 105c: NFS-e da medição (campos da empresa) ---------- */
+
 const FISCAL_NFSE_NATUREZAS = [["1", "1 — tributação no município"], ["2", "2 — tributação fora do município"], ["3", "3 — isenção"],
   ["4", "4 — imune"], ["5", "5 — suspensa por decisão judicial"], ["6", "6 — suspensa por procedimento administrativo"]];
 function fiscalEmpresaHtml105c(pref, e){
@@ -385,7 +385,7 @@ function fiscalEmpresaHtml105c(pref, e){
       <div class="campo largo"><label>Texto padrão da discriminação</label><textarea id="${id("nfse-texto")}" rows="2" maxlength="600" placeholder="vai antes de BM, período, obra, contrato e itens">${v(e.fiscal_nfse_texto_discriminacao)}</textarea></div>
     </div>`;
 }
-/* campos da 105c no salvar: null = colunas ainda não existem; { erro } = valor inválido */
+
 function fiscalEmpresaValores105c(pref){
   if(!$(`${pref}-nfse-modelo`)) return null;
   const g = s => ($(`${pref}-${s}`)?.value || "").trim();
@@ -416,8 +416,8 @@ function fiscalEmpresaValores105c(pref){
   return erros.length ? { erro: erros.join("; ") } : reg;
 }
 
-/* ---------- Fase 105b: chamada da function focus-nfe ----------
-   Devolve { data } ou { erro, corpo } com a mensagem real da function (FunctionsHttpError traz o corpo em error.context). */
+
+
 async function fiscalChamarFocus(acao, corpo){
   try {
     const { data, error } = await sb.functions.invoke("focus-nfe", { body: { acao, ...(corpo || {}) } });
@@ -432,8 +432,8 @@ async function fiscalChamarFocus(acao, corpo){
   }
 }
 
-/* XML da nota baixado como arquivo (pedido do Lucas, 26/11/2026: o MDF-e e o cliente pedem o .xml; abrir numa aba só
-   mostrava o texto). Baixa pela URL assinada e salva com o nome dado; se o navegador não deixar ler, abre na aba. */
+
+
 async function fiscalBaixarXml(url, nomeArquivo){
   try {
     const r = await fetch(url);
@@ -449,10 +449,10 @@ async function fiscalBaixarXml(url, nomeArquivo){
   }
 }
 
-/* ---------- Fase 105b: certificado A1 e webhook da Focus ----------
-   O arquivo (.pfx/.p12) é lido no navegador em base64 e vai, com a senha, direto para a function focus-nfe, que repassa à
-   Focus (API de Empresas). Nada disso é gravado no banco, em log ou no console; o app guarda só a validade. Envio só pelo
-   diretor (decisão 2); consulta da validade e registro do webhook por quem emite. */
+
+
+
+
 function fiscalCertificadoHtml(pref, e, pode){
   const id = s => `${esc(pref)}-${esc(s)}`;
   const diretor = !!usuarioAtual && usuarioAtual.cargo === "diretor";
@@ -515,7 +515,7 @@ async function fiscalCertificadoEnviar(pref){
   } catch(e){
     r = { erro: e.message || "falha ao ler o arquivo" };
   } finally {
-    // arquivo e senha saem da tela em qualquer caso
+
     if(inpArq) inpArq.value = "";
     if(inpSenha) inpSenha.value = "";
   }
@@ -561,10 +561,10 @@ async function fiscalEmpresaSalvar(pref){
     const n = reg[k]; if(n != null && !(Number.isInteger(n) && n >= 1 && n <= 999999999)) erros.push(`próximo número da ${t} inteiro a partir de 1`);
   });
   if(reg.fiscal_contador_email && !fiscalEmailsValidos(reg.fiscal_contador_email)) erros.push("e-mail do contador");
-  const reg105b = fiscalEmpresaValores105b(pref);   // fase 105b: null sem a migration
+  const reg105b = fiscalEmpresaValores105b(pref);
   if(reg105b && reg105b.erro) erros.push(reg105b.erro);
   else if(reg105b) Object.assign(reg, reg105b);
-  const reg105c = fiscalEmpresaValores105c(pref);   // fase 105c: null sem a migration
+  const reg105c = fiscalEmpresaValores105c(pref);
   if(reg105c && reg105c.erro) erros.push(reg105c.erro);
   else if(reg105c) Object.assign(reg, reg105c);
   if(erros.length){ aviso("app-aviso", "Confira: " + erros.join("; ") + ".", "erro"); return; }
@@ -574,14 +574,14 @@ async function fiscalEmpresaSalvar(pref){
   const { error } = await sb.from("empresa_config").update({ ...reg, updated_at: new Date().toISOString() }).eq("id", 1);
   if(error){ aviso("app-aviso", "Não foi possível salvar os dados fiscais: " + error.message, "erro"); return; }
   aviso("app-aviso", "Dados fiscais da empresa salvos.", "ok");
-  // as duas telas que mostram o bloco ficam iguais
+
   await Promise.all(["usr-fe", "cli-fe"].map(p => $(p) && $(p).innerHTML ? fiscalEmpresaRender(p) : null));
 }
 
-/* ---------- Cliente e obra: o que falta para a nota ----------
-   Regra única (hotfix NF-e de remessa A): a MESMA lista, com os mesmos rótulos, de verificarPendencias da function
-   focus-nfe (destinatário) e de fiscal_cliente_pendencias() no banco (vw_pendencias_cliente_fiscal). Mudou uma, muda as
-   três; scripts/testar-hotfix-nfe-remessa-a.mjs confere a do front com a da function. */
+
+
+
+
 function fiscalClientePendencias(c){
   if(!c) return [];
   const vazio = v => v == null || String(v).trim() === "";
@@ -598,7 +598,7 @@ function fiscalClientePendencias(c){
     !/^\d{7}$/.test(String(c.codigo_ibge || "")) && "código IBGE do município"
   ].filter(Boolean);
 }
-/* Endereço da obra (local de entrega da remessa): igual a fiscal_obra_pendencias() do banco */
+
 function fiscalObraPendencias(o){
   if(!o) return [];
   const vazio = v => v == null || String(v).trim() === "";

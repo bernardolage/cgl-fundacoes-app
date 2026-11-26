@@ -1,19 +1,19 @@
-/* ====================================================================
-   Módulo: Fornecedores
-   Layout: padrão Serviços + Odoo. Ver memória feedback-padrao-ui.
-   ==================================================================== */
+
+
+
+
 
 let _fornecedores = [];
 let _fornView     = "lista";
 let fornEditId    = null;
 
-/* ====================================================================
-   Lote S57b (#216): CPF/CNPJ só com dígitos (o banco normaliza e confere: fornecedores_cpf_cnpj_formato),
-   duplicidade conferida ao sair do campo e ao salvar (CNPJ/CPF igual bloqueia; mesma raiz de 8 dígitos pergunta,
-   por causa das filiais) e dados do CNPJ pela BrasilAPI (fiscalBuscarCnpj em js/fiscal.js; só CNPJ, CPF nunca sai).
-   ==================================================================== */
-let _fornDocDupId      = null;   // fornecedor que já tem este documento (bloqueia o salvar)
-let _fornRaizConfirmada = "";    // CNPJ cuja raiz repetida o usuário já confirmou
+
+
+
+
+
+let _fornDocDupId      = null;
+let _fornRaizConfirmada = "";
 function fornDocDigitos(){ return ($("forn-doc")?.value || "").replace(/\D/g, ""); }
 function fornFormatarDoc(doc){
   const d = String(doc || "").replace(/\D/g, "");
@@ -33,8 +33,8 @@ function fornMostrarDup(f){
   const t = $("forn-doc-dup-txt");
   if(t) t.textContent = f ? `Já existe "${f.razao_social}" com este ${fornDocDigitos().length === 14 ? "CNPJ" : "CPF"}. Não dá para cadastrar de novo.` : "";
 }
-/* Confere no banco (o documento é gravado só com dígitos). Devolve false quando o salvar deve parar:
-   documento igual (bloqueia) ou mesma raiz de CNPJ sem confirmação. Só confere se o documento mudou. */
+
+
 async function fornConferirDuplicidade(){
   const d = fornDocDigitos();
   const el = $("forn-doc");
@@ -44,7 +44,7 @@ async function fornConferirDuplicidade(){
     .like("cpf_cnpj", (d.length === 14 ? d.slice(0, 8) : d) + "%").limit(20);
   if(fornEditId) q = q.neq("id", fornEditId);
   const { data, error } = await q;
-  if(error) return true;   // sem conferência aqui; o índice único do banco segura o documento igual
+  if(error) return true;
   const iguais = (data || []).filter(f => f.cpf_cnpj === d);
   if(iguais.length){ fornMostrarDup(iguais[0]); return false; }
   const raiz = d.length === 14 ? (data || []).filter(f => String(f.cpf_cnpj || "").length === 14) : [];
@@ -57,7 +57,7 @@ async function fornConferirDuplicidade(){
   }
   return true;
 }
-/* BrasilAPI: preenche só os campos vazios. forcar = botão (busca de novo o mesmo CNPJ). */
+
 async function fornBuscarCnpj(forcar){
   const d = fornDocDigitos();
   const el = $("forn-doc");
@@ -70,7 +70,7 @@ async function fornBuscarCnpj(forcar){
   if(typeof fiscalBuscarCnpj !== "function") return;
   fornDocStatus("Buscando o CNPJ na BrasilAPI…");
   const r = await fiscalBuscarCnpj(d);
-  // hotfix 225: depois de erro, sair do campo de novo volta a consultar
+
   if(r.erro){ if(el) delete el.dataset.ultimo; fornDocStatus(r.erro, "erro"); return; }
   const pos = (id, v) => { const c = $(id); if(!c || !v || String(c.value || "").trim()) return; c.value = v; };
   pos("forn-razao", r.razao_social);
@@ -101,7 +101,7 @@ async function fornAoSairDoDoc(){
   await fornBuscarCnpj(false);
 }
 
-/* ---------- Carga ---------- */
+
 async function carregarListaFornecedores(){
   const { data, error } = await sb.from("fornecedores")
     .select("id,razao_social,nome_fantasia,cpf_cnpj,tipo_pessoa,categoria,cidade,uf,telefone,email,ativo")
@@ -110,7 +110,7 @@ async function carregarListaFornecedores(){
   renderFornecedores();
 }
 
-/* ---------- Filtros ---------- */
+
 function fornFiltrados(){
   const termo = ($("forn-busca")?.value || "").trim().toLowerCase();
   const fAtivo = $("forn-f-ativo")?.value || "";
@@ -130,7 +130,7 @@ function fornFiltrados(){
 function preencherFiltrosForn(){
   const sel = $("forn-f-categoria");
   if(sel){
-    const atual = sel.value; // preserva a seleção (o render roda a cada tecla)
+    const atual = sel.value;
     const cats = [...new Set(_fornecedores.map(f => f.categoria).filter(Boolean))].sort();
     sel.innerHTML = `<option value="">Todas as categorias</option>` +
       cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
@@ -138,7 +138,7 @@ function preencherFiltrosForn(){
   }
 }
 
-/* ---------- Render ---------- */
+
 function renderFornecedores(){
   preencherFiltrosForn();
   const dados = fornFiltrados();
@@ -175,7 +175,7 @@ function renderFornLista(dados){
 function renderFornKanban(dados){
   const cont = $("forn-conteudo");
   if(!cont) return;
-  // Agrupa por categoria
+
   const grupos = {};
   dados.forEach(f => {
     const k = f.categoria || "Sem categoria";
@@ -204,7 +204,7 @@ function renderFornKanban(dados){
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
 }
 
-/* ---------- Painel <-> Ficha ---------- */
+
 function mostrarPainelForn(){
   $("forn-painel").style.display = "";
   $("forn-ficha").style.display = "none";
@@ -218,7 +218,7 @@ function novoFornecedor(){
    "forn-bairro","forn-cidade","forn-uf","forn-obs"].forEach(k => { const el = $(k); if(el) el.value = ""; });
   $("forn-tipo").value = "juridica";
   $("forn-ativo").checked = true;
-  $("forn-doc").dataset.original = ""; $("forn-doc").dataset.ultimo = "";   // lote S57b (#216)
+  $("forn-doc").dataset.original = ""; $("forn-doc").dataset.ultimo = "";
   _fornRaizConfirmada = ""; fornMostrarDup(null); fornDocStatus("");
   $("btn-excluir-forn").style.display = "none";
   abrirFichaFornVisual({ razao_social: "(novo)", tipo_pessoa: "juridica", ativo: true });
@@ -228,12 +228,12 @@ function novoFornecedor(){
 async function abrirFornecedor(id){
   fornEditId = id;
   const { data, error } = await sb.from("fornecedores").select("*").eq("id",id).single();
-  if(fornEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
+  if(fornEditId !== id) return;
   if(error){ aviso("app-aviso","Erro ao abrir fornecedor: "+error.message,"erro"); return; }
   $("forn-tipo").value        = data.tipo_pessoa || "juridica";
   $("forn-razao").value       = data.razao_social || "";
   $("forn-fantasia").value    = data.nome_fantasia || "";
-  $("forn-doc").value         = fornFormatarDoc(data.cpf_cnpj);   // lote S57b (#216): grava só dígitos, mostra com máscara
+  $("forn-doc").value         = fornFormatarDoc(data.cpf_cnpj);
   $("forn-doc").dataset.original = String(data.cpf_cnpj || "").replace(/\D/g, "");
   $("forn-doc").dataset.ultimo   = $("forn-doc").dataset.original;
   _fornRaizConfirmada = ""; fornMostrarDup(null); fornDocStatus("");
@@ -274,15 +274,15 @@ function abrirFichaFornVisual(f){
 
   ativarTabForn("geral");
   carregarContratosDoFornecedor(fornEditId);
-  _fornPag = { pedidos: 0, notas: 0, titulos: 0 };   // lote S46 (#106)
+  _fornPag = { pedidos: 0, notas: 0, titulos: 0 };
   carregarPedidosDoFornecedor(fornEditId);
   carregarNotasDoFornecedor(fornEditId);
-  if(typeof asoFornAplicarVisibilidade === "function") asoFornAplicarVisibilidade();   // fase 185b: aba SESMT (preço da clínica, js/sesmt_aso.js)
+  if(typeof asoFornAplicarVisibilidade === "function") asoFornAplicarVisibilidade();
 }
 
-/* ====================================================================
-   ABA CONTRATOS — contratos deste fornecedor (fase 21)
-   ==================================================================== */
+
+
+
 async function carregarContratosDoFornecedor(fornecedorId){
   const cont = $("forn-contratos-conteudo");
   if(!cont) return;
@@ -340,11 +340,11 @@ async function carregarContratosDoFornecedor(fornecedorId){
   });
 }
 
-/* ====================================================================
-   ABAS PEDIDOS DE COMPRA e NOTAS E TÍTULOS (lote S46, #106) — no molde da aba Contratos.
-   Leitura pela RLS (pedidos e notas: pode_ler_compras(); títulos: pode_ler_contas_pagar()); valores só para
-   podeVerContasPagar(). Paginação de 100 em 100; a linha abre a ficha do pedido em Compras.
-   ==================================================================== */
+
+
+
+
+
 const FORN_PAG = 100;
 let _fornPag = { pedidos: 0, notas: 0, titulos: 0 };
 function fornSmartButton(id, n){
@@ -384,7 +384,7 @@ async function carregarPedidosDoFornecedor(fornecedorId){
     .eq("fornecedor_id", fornecedorId)
     .order("data_pedido", { ascending: false, nullsFirst: false }).order("numero", { ascending: false })
     .range(ini, ini + FORN_PAG - 1);
-  if(fornEditId !== fornecedorId) return;   // trocou de fornecedor enquanto carregava
+  if(fornEditId !== fornecedorId) return;
   if(error){ cont.innerHTML = `<p class="vazio">Erro: ${esc(error.message)}</p>`; fornSmartButton("sb-forn-pedidos", 0); return; }
   fornSmartButton("sb-forn-pedidos", count || 0);
   if(!data || !data.length){ cont.innerHTML = `<p class="vazio">Nenhum pedido de compra deste fornecedor.</p>`; return; }
@@ -467,10 +467,10 @@ function ativarTabForn(nome){
   });
 }
 
-/* ---------- Salvar / excluir ---------- */
+
 async function salvarFornecedor(){
   if(!$("forn-razao").value.trim()){ aviso("app-aviso","Informe a razão social.","erro"); ativarTabForn("geral"); return; }
-  // lote S57b (#216): só dígitos, 11 (CPF) ou 14 (CNPJ); documento repetido não grava
+
   const doc = fornDocDigitos();
   if(doc && doc.length !== 11 && doc.length !== 14){
     aviso("app-aviso","CPF com 11 dígitos ou CNPJ com 14 dígitos.","erro"); ativarTabForn("geral"); return;
@@ -534,7 +534,7 @@ async function excluirFornecedor(){
   mostrarPainelForn();
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarFornecedores(){
   document.querySelectorAll("#forn-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {
@@ -557,7 +557,7 @@ function ligarFornecedores(){
   $("btn-voltar-forn")?.addEventListener("click", mostrarPainelForn);
   $("btn-salvar-forn")?.addEventListener("click", () => comBotaoTravado("btn-salvar-forn", salvarFornecedor));
   $("btn-excluir-forn")?.addEventListener("click", excluirFornecedor);
-  // lote S57b (#216): CNPJ → duplicidade + BrasilAPI
+
   $("forn-doc")?.addEventListener("blur", fornAoSairDoDoc);
   $("forn-doc")?.addEventListener("input", () => { fornMostrarDup(null); fornDocStatus(""); });
   $("btn-forn-cnpj")?.addEventListener("click", async () => {
@@ -569,7 +569,7 @@ function ligarFornecedores(){
     b.addEventListener("click", () => ativarTabForn(b.dataset.tab));
   });
   $("sb-forn-contratos")?.addEventListener("click", () => ativarTabForn("contratos"));
-  $("sb-forn-pedidos")?.addEventListener("click", () => ativarTabForn("pedidos"));     // lote S46 (#106)
+  $("sb-forn-pedidos")?.addEventListener("click", () => ativarTabForn("pedidos"));
   $("sb-forn-notas")?.addEventListener("click", () => ativarTabForn("notas"));
   $("sb-forn-titulos")?.addEventListener("click", () => ativarTabForn("notas"));
 

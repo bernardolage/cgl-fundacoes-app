@@ -1,14 +1,14 @@
-/* ====================================================================
-   js/busca.js — busca da barra superior (Ctrl K), fase 193b. Prefixo bus-.
-   Acha tela (itens visíveis do menu) e registro: obra por código, nome ou cliente; máquina por TAG ou nome; funcionário
-   por nome; pedido de compra por número. Uma consulta por tipo, até 8 resultados cada, e só nos tipos cuja tela o
-   perfil enxerga no menu (o banco ainda filtra por RLS). O desenho vem de uiBuscaResultados (js/ui.js).
-   ==================================================================== */
+
+
+
+
+
+
 const BUS_MAX = 8;
 let _busSeq = 0;
-let _busItens = [];   // itens da última lista, na ordem da tela: { tipo, id }
+let _busItens = [];
 
-/* tela visível no menu para este perfil (o mesmo critério do irParaSecao) */
+
 function busTelaVisivel(secao){
   const b = document.querySelector(`.sidebar-nav button[data-secao="${secao}"]`);
   return !!b && b.style.display !== "none";
@@ -20,7 +20,7 @@ function busTelas(termo){
   return [...document.querySelectorAll(".sidebar-nav button[data-secao]")]
     .filter(b => b.style.display !== "none")
     .map(b => {
-      // o nome completo da tela vem do h2 da seção (o mesmo da trilha): "Diário de Obra (RDO)" acha por "rdo"
+
       const h2 = document.querySelector(`#sec-${CSS.escape(b.dataset.secao)} > h2:first-child`);
       const rotulo = (b.querySelector("span")?.textContent || "").trim();
       return { texto: (h2 && h2.textContent.trim()) || rotulo, rotulo, detalhe: b.closest(".nav-grupo")?.getAttribute("aria-label") || "", tipo: "tela", id: b.dataset.secao };
@@ -29,9 +29,9 @@ function busTelas(termo){
     .slice(0, BUS_MAX);
 }
 
-/* uma consulta por tipo; erro de um tipo não derruba os outros */
+
 async function busRegistros(termo){
-  // vírgula, parênteses e curinga quebrariam o filtro "or" do PostgREST
+
   const limpo = String(termo).replace(/[,()*%\\:"']/g, " ").trim();
   if(limpo.length < 2) return [];
   const p = `%${limpo}%`;
@@ -83,7 +83,7 @@ async function busBuscar(){
   busRender([telas], { termo, carregando: termo.trim().length >= 2 });
   if(termo.trim().length < 2) return;
   const regs = await busRegistros(termo);
-  if(seq !== _busSeq) return;   // chegou resposta de uma busca antiga
+  if(seq !== _busSeq) return;
   const erros = regs.filter(r => r.erro && !r.itens.length).map(r => r.titulo).filter(Boolean);
   busRender([telas, ...regs], { termo, vazio: erros.length ? "Nada encontrado. Sem resposta de: " + erros.join(", ") + "." : "" });
 }
@@ -100,7 +100,7 @@ function abrirBusca(){
 }
 function fecharBusca(){ const d = $("bus-dialogo"); if(d?.open) d.close(); }
 
-/* abre o resultado: tela pelo menu; registro pela tela dele e pela função de abrir de cada módulo */
+
 function abrirResultadoBusca(tipo, id){
   fecharBusca();
   const ABRIR = {
@@ -120,7 +120,7 @@ function ligarBusca(){
   $("btn-busca")?.addEventListener("click", abrirBusca);
   document.addEventListener("keydown", ev => {
     if((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && String(ev.key).toLowerCase() === "k"){
-      if(!$("tela-app") || getComputedStyle($("tela-app")).display === "none") return;   // só com o app aberto (fora do login)
+      if(!$("tela-app") || getComputedStyle($("tela-app")).display === "none") return;
       ev.preventDefault();
       if(dlg.open) fecharBusca(); else abrirBusca();
     }
@@ -136,7 +136,7 @@ function ligarBusca(){
     const b = ev.target.closest(".ui-busca-item");
     if(b) abrirResultadoBusca(b.dataset.busTipo, b.dataset.busId);
   });
-  // clique fora da caixa (no fundo do diálogo) fecha
+
   dlg.addEventListener("click", ev => { if(ev.target === dlg) fecharBusca(); });
 }
 ligarBusca();

@@ -1,21 +1,21 @@
-/* ====================================================================
-   js/sesmt_treinamentos.js — fase 185a (#213, #243, #313): treinamentos do SESMT. Prefixo trn-.
-   - Visão "Treinamentos" no painel SESMT (lista, kanban pendente → agendado → realizado → vencido, turmas) e visão
-     "Custo SST" (relatório por obra e sede; fora de vw_custos, D10). As duas entram pelo #sst-views do js/sesmt.js.
-   - Ficha da turma (#trn-ficha, padrão Odoo): Concluir turma (RPC sst_turma_concluir, que gera os documentos) e Cancelar;
-     abas Dados, Participantes (presença, nota, aprovado, certificado anexado) e Anexos (sst-documentos/<turma>/anexos).
-   - Aba Segurança do funcionário: "Lançar treinamento" (RPC sst_treinamento_lancar = turma de 1 pessoa com o padrão do
-     catálogo) e a lista dos treinamentos da pessoa com o status calculado (RPC sst_treinamentos, D7).
-   Status: nenhum é digitado; pendente = matriz exige e não há turma; agendado = turma planejada; realizado = documento
-   válido; vencido = validade passou. Leitura por sst_pode_ler() (SESMT, extra, rh, auditor); gravação por
-   sst_pode_operar() (o banco confere; aqui só se escondem os botões).
-   ==================================================================== */
-let _trnSub = "lista";          // lista | kanban | turmas
-let _trnStatus = [];            // retorno de sst_treinamentos (pessoa × treinamento)
-let _trnTurmas = [];            // sst_turmas (+ participantes)
-let _trnFornecedores = [];      // fornecedores ativos (id, nome)
+
+
+
+
+
+
+
+
+
+
+
+
+let _trnSub = "lista";
+let _trnStatus = [];
+let _trnTurmas = [];
+let _trnFornecedores = [];
 let _trnCarregado = false;
-let _trnEditId = null;          // turma aberta na ficha
+let _trnEditId = null;
 let _trnTurma = null;
 let _trnParts = [];
 let _trnAnexos = [];
@@ -42,7 +42,7 @@ function trnObraRot(id){ return id ? sstObraRotulo((_sstObras || []).find(o => o
 function trnTurmaPorId(id){ return _trnTurmas.find(t => t.id === id); }
 function trnDataTurma(t){ return t ? (t.data_fim || t.data_inicio) : null; }
 
-/* ---------- carga ---------- */
+
 async function trnCarregarFornecedores(){
   if(_trnFornecedores.length) return;
   const { data } = await lerTudo(() => sb.from("fornecedores").select("id,razao_social,nome_fantasia").eq("ativo", true));
@@ -61,7 +61,7 @@ async function trnCarregar(forcar){
   return true;
 }
 
-/* ---------- visão Treinamentos (pelo renderSesmt) ---------- */
+
 function trnFiltrosHTML(){
   const reqs = trnReqs().filter(r => r.ativo);
   return `<div class="serv-filtros" id="trn-filtros">
@@ -92,7 +92,7 @@ async function renderSstTreinamentos(){
   if(!(await trnCarregar(false))) return;
   trnRenderConteudo();
 }
-/* linhas pessoa × treinamento com a turma de referência (agendada ou a que gerou o documento) */
+
 function trnLinhas(){
   const f = trnLerFiltros();
   return _trnStatus.map(s => ({ ...s, turma: trnTurmaPorId(s.turma_id), req: sstReqPorId(s.requisito_id), nome: trnFuncNome(s.funcionario_id) }))
@@ -165,7 +165,7 @@ function trnRenderTurmas(cont){
   cont.querySelectorAll("tr[data-id]").forEach(tr => tr.addEventListener("click", () => trnAbrirTurma(tr.dataset.id)));
 }
 
-/* ---------- relatório Custo SST (D10): por obra e sede, mês e treinamento ---------- */
+
 async function renderSstCustoSst(){
   const cont = $("sst-conteudo"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
@@ -181,7 +181,7 @@ async function renderSstCustoSst(){
     if(t.status === "planejada") g.planejado += Number(t.valor) || 0;
     grupos.set(k, g);
   });
-  // fase 185b: os ASO entram agregados (mês, destino, obra e tipo; sem pessoa nem exame)
+
   const asos = typeof asoCustoLinhas === "function" ? await asoCustoLinhas() : [];
   const linhas = [...grupos.values()].concat(asos).sort((a, b) => a.dest.localeCompare(b.dest) || b.mes.localeCompare(a.mes) || a.req.localeCompare(b.req));
   if($("sst-contador")) $("sst-contador").textContent = `${linhas.length} linha(s)`;
@@ -194,7 +194,7 @@ async function renderSstCustoSst(){
       : uiVazio("Nenhuma turma nem ASO com valor ainda.")}`;
 }
 
-/* ---------- ficha da turma ---------- */
+
 function trnMostrarFicha(){
   ["sst-painel", "sst-ficha-req", "sst-ficha-prog", "aso-ficha"].forEach(id => { if($(id)) $(id).style.display = "none"; });
   $("trn-ficha").style.display = "";
@@ -255,7 +255,7 @@ function trnPlaceholderValidade(){
   const r = sstReqPorId($("trn-requisito")?.value); const inp = $("trn-validade"); if(!inp) return;
   inp.placeholder = r && r.validade ? `vazio = pela matriz ou o catálogo (${sstValidadeTxt(r.validade)})` : "vazio = pela matriz ou o catálogo";
 }
-/* padrão do catálogo (D5): carga, valor, modalidade e empresa; só preenche o que está vazio, a menos que forçar */
+
 function trnAplicarPadrao(forcar){
   const r = sstReqPorId($("trn-requisito")?.value); if(!r) return;
   const set = (id, x) => { if($(id) && (forcar || !$(id).value) && x != null) $(id).value = x; };
@@ -341,7 +341,7 @@ async function trnCancelar(){
   await trnAbrirTurma(_trnEditId);
 }
 
-/* ---------- participantes ---------- */
+
 function trnRenderParticipantes(){
   const cont = $("trn-parts"); if(!cont) return;
   const opera = sstPodeOperar() && _trnTurma && _trnTurma.status === "planejada";
@@ -413,7 +413,7 @@ async function trnAnexarCertificado(p, file){
   trnRenderParticipantes();
 }
 
-/* ---------- anexos da turma (lista de presença, conteúdo, NF da empresa...) ---------- */
+
 async function trnCarregarAnexos(){
   if(!_trnEditId){ _trnAnexos = []; trnRenderAnexos(); return; }
   const { data, error } = await sb.storage.from("sst-documentos").list(`${_trnEditId}/anexos`, { limit: 200, sortBy: { column: "name", order: "asc" } });
@@ -450,7 +450,7 @@ async function trnEnviarAnexo(file){
   await trnCarregarAnexos();
 }
 
-/* ---------- aba Segurança do funcionário: Lançar treinamento + lista com status ---------- */
+
 async function trnFichaFuncCarregar(fid){
   const cont = $("func-trn-bloco"); if(!cont || !fid) return;
   if(!podeVerSesmt()){ cont.innerHTML = ""; return; }
@@ -489,7 +489,7 @@ async function trnFichaFuncCarregar(fid){
       </div>
       <div class="form-acoes"><button type="button" class="btn" id="btn-trn-l-salvar" title="Cria a turma de 1 pessoa; anexe o certificado e conclua na ficha da turma">Lançar</button><button type="button" class="btn-sec" id="btn-trn-l-cancelar">Cancelar</button></div>
     </div>` : ""}
-    ${/* html */ corpo}`, `${linhas.length}`);
+    ${  corpo}`, `${linhas.length}`);
   cont.querySelectorAll("tr[data-turma], .trn-ff-turma").forEach(el => el.addEventListener("click", e => { e.preventDefault(); trnAbrirTurma(el.dataset.turma); }));
   if(!opera) return;
   let validadeCadastro = "";
@@ -512,7 +512,7 @@ async function trnFichaFuncCarregar(fid){
       valor: $("trn-l-valor").value, modalidade: $("trn-l-modal").value, fornecedor_id: $("trn-l-forn").value,
       obra_id: $("trn-l-obra").value, motivo: $("trn-l-motivo").value
     };
-    // validade: só vai quando a pessoa mudou o que veio do cadastro (vazio = matriz ou catálogo na conclusão)
+
     const vTxt = $("trn-l-validade").value.trim();
     if(vTxt && vTxt !== validadeCadastro){
       const iv = sstValidadeParaBanco(vTxt);
@@ -527,7 +527,7 @@ async function trnFichaFuncCarregar(fid){
   }));
 }
 
-/* ---------- ligação ---------- */
+
 function ligarSesmtTreinamentos(){
   if(!$("trn-ficha")) return;
   $("btn-trn-voltar")?.addEventListener("click", trnFecharFicha);

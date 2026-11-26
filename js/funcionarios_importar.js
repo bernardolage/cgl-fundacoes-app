@@ -1,22 +1,22 @@
-/* ====================================================================
-   Hotfix 224 (30/10/2026, chamado #224 do RH): funcionários novos pela planilha
-   "Empregados em Excel" do sistema da folha (33 colunas). Spec:
-   docs/specs/hotfix-224-importar-funcionarios-planilha.md.
 
-   A planilha é lida AQUI no navegador (SheetJS de vendor/): CPF, salário, PIS, RG, CTPS e
-   endereço nunca saem deste computador a não ser para as tabelas do próprio app, pelas
-   mesmas policies do assistente de admissão (funcionarios_sensiveis e admissoes só rh e
-   diretor, com a sessão confirmada por MFA). Nada de console.log com linha da planilha.
 
-   Fluxo: botão "📥 Importar planilha" (só diretor e rh) → prévia com a situação de cada
-   linha (Novo, Já cadastrado, Nome igual, Incompleto) → "Abrir na admissão" preenche o
-   assistente de uma pessoa, ou "Cadastrar selecionados" grava em lote: funcionarios →
-   funcionarios_sensiveis → admissoes (rascunho, origem planilha). Se os sensíveis falham,
-   o cadastro recém-criado é apagado, para não sobrar funcionário sem CPF.
-   ==================================================================== */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 let _funcImp = { linhas: [], gravando: false };
 
-/* cabeçalho da planilha (sem acento, caixa nem pontuação) → chave interna */
+
 const FUNC_IMP_COLUNAS = {
   matricula: ["cod epr", "cod empregado", "codigo", "matricula"],
   nome: ["nome", "nome empregado", "nome do empregado"],
@@ -64,7 +64,7 @@ function funcImpTxt(v){
   const t = String(v).replace(/\s+/g, " ").trim();
   return t || null;
 }
-/* só dígitos; número do Excel perde o zero à esquerda, então repõe até o tamanho (CPF 11, PIS 11, CEP 8) */
+
 function funcImpDigitos(v, tam){
   if(v === null || v === undefined || v === "") return null;
   let d = typeof v === "number" ? String(Math.round(v)) : String(v).replace(/\D/g, "");
@@ -109,7 +109,7 @@ function funcImpCpfValido(c){
   return dv(9) === Number(c[9]) && dv(10) === Number(c[10]);
 }
 function funcImpCpfMascara(c){ return c && c.length === 11 ? `***.***.*${c.slice(7, 9)}-${c.slice(9)}` : "—"; }
-/* opção das listas do assistente: casa pelas 4 primeiras letras (Solteiro → Solteiro(a), PARDA → Parda) */
+
 function funcImpOpcao(v, opcoes){
   const n = funcImpNorm(v);
   if(!n) return null;
@@ -139,7 +139,7 @@ function funcImpJunta(a, b){
   return `${x}/${y}`;
 }
 
-/* ---------- leitura ---------- */
+
 function funcImpLerPlanilha(wb){
   const aba = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(aba, { header: 1, raw: true, defval: "" });
@@ -171,7 +171,7 @@ function funcImpLerPlanilha(wb){
       nascimento: funcImpData(g(r, "nascimento")),
       naturalidade: funcImpJunta(g(r, "nasc_cidade"), funcImpUf(g(r, "nasc_uf"))),
       logradouro: funcImpTxt(g(r, "logradouro")), numero: funcImpTxt(g(r, "numero")), complemento: funcImpTxt(g(r, "complemento")),
-      // hotfix 224b: o enum uf do banco é minúsculo ("mg"); maiúscula é recusada e derruba a gravação dos sensíveis inteira
+
       bairro: funcImpTxt(g(r, "bairro")), cep: funcImpDigitos(g(r, "cep"), 8), cidade: funcImpTxt(g(r, "cidade")), uf: funcImpUf(g(r, "uf"))?.toLowerCase() || null,
       telefone: funcImpTxt(g(r, "celular")),
       titulo: funcImpDigitos(g(r, "titulo")), zona: funcImpTxt(g(r, "zona")), secao: funcImpTxt(g(r, "secao")),
@@ -192,9 +192,9 @@ function funcImpLerPlanilha(wb){
   });
 }
 
-/* ---------- situação de cada linha ---------- */
+
 async function funcImpClassificar(linhas){
-  // CPF: confere pela RPC (POST), nunca por filtro de consulta: GET leva o CPF na URL, e a URL fica nos logs da API (hotfix 224b)
+
   const cpfs = [...new Set(linhas.filter(l => l.cpf && l.situacao !== "incompleto").map(l => l.cpf))];
   const porCpf = {};
   if(cpfs.length){
@@ -212,7 +212,7 @@ async function funcImpClassificar(linhas){
     if(pelaMat){ l.situacao = "existe"; l.existenteId = pelaMat.id; l.motivo = `Matrícula ${l.matricula} já é de ${pelaMat.nome}.`; continue; }
     const iguais = _funcs.filter(f => funcNormalizarNome(f.nome) === funcNormalizarNome(l.nome));
     if(iguais.length){
-      // homônimo: mesma regra da ficha; o existente precisa ter CPF (leitura auditada, só dos homônimos)
+
       let semCpf = null;
       for(const f of iguais){
         const s = await funcCarregarSensivel(f.id);
@@ -226,7 +226,7 @@ async function funcImpClassificar(linhas){
   }
 }
 
-/* ---------- abrir, render, fechar ---------- */
+
 async function funcImpAbrirArquivo(file){
   if(!funcVeSensivel() || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())){
     aviso("app-aviso", "Importar planilha: só RH e diretoria.", "erro"); return;
@@ -237,7 +237,7 @@ async function funcImpAbrirArquivo(file){
       aviso("app-aviso", "Os dados sensíveis exigem a sessão confirmada com o autenticador (MFA). Saia e entre de novo confirmando o código.", "erro");
       return;
     }
-  } catch(_){ /* sem MFA disponível: o banco recusa e a prévia mostra o erro */ }
+  } catch(_){   }
   _funcImp = { linhas: [], gravando: false };
   $("func-imp-linhas").innerHTML = "";
   $("func-imp-info").textContent = `Lendo ${file.name}… A planilha é lida aqui no navegador e não sai deste computador.`;
@@ -284,7 +284,7 @@ function funcImpRender(){
       <td>${esc(dataBR(l.admissao) || "—")}</td>
       <td>${esc(funcImpCpfMascara(l.cpf))}</td>
       <td><span class="tag ${esc(cor)}">${esc(rot)}</span>${msg ? `<br><span class="meta">${esc(msg)}</span>` : ""}</td>
-      <td>${/* html */ acoes}</td>
+      <td>${  acoes}</td>
     </tr>`;
   }).join("") || `<tr><td colspan="7" class="meta">Nenhuma linha.</td></tr>`;
   funcImpContar();
@@ -308,10 +308,10 @@ function funcImpFechar(){
   if(_funcImp.gravando) return;
   $("func-imp-modal").style.display = "none";
   $("func-imp-linhas").innerHTML = "";
-  _funcImp = { linhas: [], gravando: false };   // solta os dados da planilha da memória da tela
+  _funcImp = { linhas: [], gravando: false };
 }
 
-/* ---------- abrir uma linha no assistente de admissão ---------- */
+
 function funcImpParaAdmissao(l){
   funcImpFechar();
   funcAdmAbrir();
@@ -338,7 +338,7 @@ function funcImpParaAdmissao(l){
   aviso("adm-aviso", "Dados preenchidos pela planilha. Confira cada etapa e complete o que a folha não traz (banco, contato de emergência, benefícios).", "aviso");
 }
 
-/* ---------- cadastrar em lote ---------- */
+
 async function funcImpGravarLinha(l){
   const padrao = typeof ADM_PADROES === "object" ? ADM_PADROES : {};
   const funcionario = {
@@ -364,7 +364,7 @@ async function funcImpGravarLinha(l){
     return { ok: false, msg: base + (desfez.error ? " O cadastro ficou criado sem os dados sensíveis; confira a ficha." : " Nada foi gravado.") , id: desfez.error ? id : null };
   }
   const soma = (iso, dias) => dataLocalISO(new Date(new Date(iso + "T00:00:00").getTime() + dias * 864e5));
-  const v1 = soma(l.admissao, 44), v2 = soma(v1, 45);   // 45 + 45, o dia da admissão conta (mesma conta do assistente)
+  const v1 = soma(l.admissao, 44), v2 = soma(v1, 45);
   const adm = {
     funcionario_id: id, data_admissao: l.admissao, funcao: l.funcao, cbo: l.cbo, salario: l.salario,
     prazo_experiencia_dias: 45, prorrogacao_dias: 45, vencimento_1: v1, vencimento_2: v2,
@@ -398,7 +398,7 @@ async function funcImpGravar(){
   aviso("func-imp-aviso", `${ok} cadastrado(s)${falhas ? `, ${falhas} com erro (motivo na linha)` : ""}.`, falhas ? "erro" : "ok");
 }
 
-/* ---------- listeners ---------- */
+
 function ligarFuncImportar(){
   $("btn-func-importar")?.addEventListener("click", () => $("func-imp-arquivo")?.click());
   $("func-imp-arquivo")?.addEventListener("change", (ev) => {

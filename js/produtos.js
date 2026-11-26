@@ -1,44 +1,44 @@
-/* ====================================================================
-   Módulo: Produtos e Categorias
-   Layout: padrão Serviços + Odoo. Ver memória feedback-padrao-ui.
-   Sem statusbar (produto é ativo/inativo, sem fluxo).
-   ==================================================================== */
+
+
+
+
+
 
 let _produtos     = [];
 let _prodView     = "lista";
 let prodEditId    = null;
-let _prodCategorias = {};   // id -> nome
-// lote S42 (L1, Julio): o catálogo tem 11,7 mil produtos e a tela carregava os 2.000 primeiros por nome (tudo depois
-// do "C" sumia). A lista passou a ser uma consulta no servidor: busca por nome, código e código de barras, filtros na
-// consulta, no máximo PROD_PAGINA linhas por vez e contador "N de M" com count exato.
-let _prodTotalAtivos = null;  // M: produtos ativos
-let _prodTotalFiltro = 0;     // N: linhas que a consulta atual acha
-let _prodTodos = false;       // "mostrar todos": sem o corte de saldo, paginado
+let _prodCategorias = {};
+
+
+
+let _prodTotalAtivos = null;
+let _prodTotalFiltro = 0;
+let _prodTodos = false;
 let _prodPagina = 0;
 const PROD_PAGINA = 300;
-const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo,tipo_item";   // lote S55 (#175): tipo_item
-/* Lote S55 (#175, decisão do Bernardo de 27/10/2026): serviço consumido (frete, hospedagem, locação, serviço de terceiro) é
-   produto com tipo_item = "servico": sem estoque, sem reposição e sempre aplicação direta (o banco força pelo gatilho
-   trg_produtos_tipo_item). Não confundir com o módulo Serviços (js/servicos.js), catálogo do que a CGL executa. */
-/* Lote S56b (29/10/2026): #197 código automático no produto novo = iniciais do nome + número global (RPC produto_gerar_codigo,
-   sequência a partir de 6721, padrão da planilha do almoxarifado: MPB6692, FHD6720); a pessoa troca as letras, nunca o número;
-   códigos existentes não mudam e o banco barra código repetido. #199 NCM (8 dígitos) obrigatório no produto novo do tipo
-   produto (serviço consumido dispensa); produto antigo sem NCM salva com aviso. Importações não passam por aqui. */
-let _prodCodNum = null;        // número reservado pelo gerador para o produto novo (texto, ex.: "6721")
-let _prodCodManual = false;    // gerador indisponível (banco sem a migration do lote S56b): código digitado como antes
+const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo,tipo_item";
+
+
+
+
+
+
+
+let _prodCodNum = null;
+let _prodCodManual = false;
 function prodCodLetras(v){ return String(v || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\d+$/, "").replace(/[^A-Z]/g, "").slice(0, 6); }
 function prodCodInfo(){
   const el = $("prod-codigo-info"); if(!el) return;
   el.textContent = prodEditId ? "" : _prodCodManual ? "Gerador indisponível até a atualização do banco: digite o código."
     : _prodCodNum ? `Número ${_prodCodNum} reservado: troque só as letras, se quiser.` : "Automático: iniciais do nome + próximo número (gera ao salvar ou no Gerar).";
 }
-/* no produto novo com número reservado, o campo é sempre letras + número */
+
 function prodCodNormalizar(){
   if(prodEditId || _prodCodNum == null) return;
   const el = $("prod-codigo"); if(!el) return;
   el.value = (prodCodLetras(el.value) || "P") + _prodCodNum;
 }
-/* reserva o número (ou, com número já reservado, só refaz as letras pelo nome). novo = true descarta o número (colisão). */
+
 async function prodGerarCodigo(novo){
   if(prodEditId) return false;
   const nome = ($("prod-nome")?.value || "").trim();
@@ -68,7 +68,7 @@ async function prodGerarCodigo(novo){
   prodCodInfo();
   return true;
 }
-/* código do produto novo na hora de gravar: gera se ainda não tem número; nunca aceita número digitado */
+
 async function prodCodigoParaSalvar(){
   const el = $("prod-codigo");
   const txt = (el.value || "").trim().toUpperCase();
@@ -80,15 +80,15 @@ async function prodCodigoParaSalvar(){
     if(/\d/.test(txt)){ aviso("app-aviso", "O número do código é automático: deixe só as letras (ou apague) e salve.", "erro"); ativarTabProd("geral"); return null; }
     if(txt) el.value = prodCodLetras(txt);
     const digitadas = prodCodLetras(el.value);
-    if(!(await prodGerarCodigo(false))) return null;   // sem gerador: a pessoa digita o código e salva de novo
+    if(!(await prodGerarCodigo(false))) return null;
     if(digitadas){ el.value = digitadas + _prodCodNum; prodCodInfo(); }
   } else prodCodNormalizar();
   return el.value.trim();
 }
 function prodTagServico(p){ return p && p.tipo_item === "servico" ? ' <span class="tag azul" title="Serviço consumido: aplicação direta, sem estoque">serviço</span>' : ""; }
 
-/* ---------- Categorias ---------- */
-let _prodCatTipo = {};   // fase 108b: id da categoria -> tipo de compra padrão (reposicao | aplicacao_direta | null)
+
+let _prodCatTipo = {};
 async function carregarCategorias(){
   const { data } = await sb.from("categorias_produto").select("id,nome,tipo_compra_padrao").order("nome");
   _prodCategorias = {}; _prodCatTipo = {};
@@ -99,25 +99,25 @@ async function carregarCategorias(){
   if(sel) sel.innerHTML = opc;
 }
 
-/* Lote S51 (#150, Bernardo 26/10/2026): o SESMT (cargo sesmt ou módulo extra "produtos_sesmt", como a Iasmym) cadastra e
-   edita só produtos das categorias do SESMT; não exclui, não cria categoria e não mexe em saldo nem custo. Espelha
-   produtos_write (cadastro inteiro) e produtos_sesmt_insert/update + categoria_produto_eh_sesmt() do banco. */
+
+
+
 const PROD_CATEGORIAS_SESMT = ["EPI", "EPI / UNIFORMES", "UNIFORMES", "DOCUMENTACAO SESMT", "EXAMES SESMT"];
 const PROD_MSG_SO_SESMT = "Seu perfil edita só produtos do SESMT (EPI, uniformes, documentação e exames).";
-let _prodCatOriginal = null;   // categoria do produto aberto, como veio do banco (o SESMT só grava se ela for do SESMT)
-let _prodAprov = "aprovado";   // lote S63-b (#272): aprovacao do produto aberto (aprovado, pendente, substituido)
-let _prodAtivo = true;         // lote S58 (#237): situação do produto aberto; decide entre Arquivar e Reativar
-let _prodCustoSug = null;      // lote S70-d (#372): custo sugerido no cadastro do produto aberto
+let _prodCatOriginal = null;
+let _prodAprov = "aprovado";
+let _prodAtivo = true;
+let _prodCustoSug = null;
 function prodCategoriaEhSesmt(catId){
   return !!catId && PROD_CATEGORIAS_SESMT.includes(String(_prodCategorias[catId] || "").trim().toUpperCase());
 }
-/* Lote S55 (#173 Thayse, #182 Maria Eduarda): módulo extra "produtos" = perfil "cadastro": cadastra e edita produto de
-   qualquer categoria, sem saldo, custo nem situação (ativo) — o gatilho fn_produtos_sesmt_guarda recusa — e não exclui
-   nem cria categoria. Espelha produto_pode_cadastrar() e as policies produtos_extra_insert/update. */
+
+
+
 const PROD_MSG_SO_CADASTRO = "Seu perfil edita o cadastro do produto, não o saldo, o custo nem a situação.";
-/* "tudo" (produtos_write: admin, almoxarife, comprador, gestor de acessórios; diretor), "cadastro" (módulo extra produtos),
-   "sesmt" ou "" (só consulta) */
-/* lote S67-d: a auxiliar ("almox") edita o que existe; produto novo só com o extra Produtos (produto_pode_cadastrar) */
+
+
+
 function prodPodeCriar(){
   const perfil = prodPerfilEdicao();
   return !!perfil && (perfil !== "almox" || (typeof temModuloExtra === "function" && temModuloExtra("produtos")));
@@ -125,12 +125,12 @@ function prodPodeCriar(){
 function prodPerfilEdicao(){
   if(!usuarioAtual || (typeof ehSomenteLeitura === "function" && ehSomenteLeitura())) return "";
   if(["diretor", "admin", "almoxarife", "comprador", "gestor_acessorios", "gestor_manutencao"].includes(usuarioAtual.cargo)) return "tudo";
-  if(usuarioAtual.cargo === "auxiliar_almoxarifado") return "almox";   // lote S67-d (#332): edita, define custo, arquiva; não exclui
-  if(typeof temModuloExtra === "function" && temModuloExtra("produtos")) return "cadastro";   // lote S55
+  if(usuarioAtual.cargo === "auxiliar_almoxarifado") return "almox";
+  if(typeof temModuloExtra === "function" && temModuloExtra("produtos")) return "cadastro";
   if(usuarioAtual.cargo === "sesmt" || (typeof temModuloExtra === "function" && temModuloExtra("produtos_sesmt"))) return "sesmt";
   return "";
 }
-/* select de categoria da ficha: o SESMT vê só as categorias dele (e a do produto aberto, marcada, se for de outra) */
+
 function prodMontarSelectCategoria(atual){
   const sel = $("prod-categoria"); if(!sel) return;
   const cats = Object.entries(_prodCategorias).map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
@@ -145,38 +145,38 @@ function prodMontarSelectCategoria(atual){
   }
   sel.value = atual || "";
 }
-/* botões da ficha e do painel conforme o perfil: Salvar para quem grava, Excluir só no cadastro inteiro, "+ nova"
-   categoria só para quem grava em categorias_produto (prodPodeEditarCategoria) */
+
+
 function prodAplicarPerfil(){
   const perfil = prodPerfilEdicao();
   const novo = $("btn-novo-produto"); if(novo) novo.style.display = prodPodeCriar() ? "" : "none";
   const salvar = $("btn-salvar-prod"); if(salvar) salvar.style.display = perfil ? "" : "none";
-  const etq = $("btn-prod-etiqueta"); if(etq) etq.style.display = prodEditId ? "" : "none";   // lote S66-e (#244)
+  const etq = $("btn-prod-etiqueta"); if(etq) etq.style.display = prodEditId ? "" : "none";
   const excluir = $("btn-excluir-prod"); if(excluir) excluir.style.display = (prodPodeExcluir() && prodEditId) ? "" : "none";
-  const arq = $("btn-arquivar-prod");   // lote S58 (#237)
+  const arq = $("btn-arquivar-prod");
   if(arq){ arq.style.display = ((perfil === "tudo" || perfil === "almox") && prodEditId) ? "" : "none"; arq.textContent = _prodAtivo ? "📦 Arquivar" : "♻️ Reativar"; }
   const novaCat = $("btn-nova-cat"); if(novaCat) novaCat.style.display = prodPodeEditarCategoria() && !ehSomenteLeitura() ? "" : "none";
-  const pend = !!prodEditId && _prodAprov === "pendente" && prodPodeAprovar();   // lote S63-b
+  const pend = !!prodEditId && _prodAprov === "pendente" && prodPodeAprovar();
   ["btn-prod-aprovar", "btn-prod-ja-existe"].forEach(id => { const b = $(id); if(b) b.style.display = pend ? "" : "none"; });
-  const mescla = $("btn-prod-mesclar");   // lote S67-c (#357)
+  const mescla = $("btn-prod-mesclar");
   if(mescla) mescla.hidden = !(prodEditId && _prodAprov === "aprovado" && prodPodeMesclar());
 }
-/* ---------- Lote S63-b (#272): produto provisório ----------
-   Cadastrado fora do almoxarifado, o produto nasce "aguardando aprovação" (gatilho no banco). Almoxarife, auxiliar de
-   almoxarifado, logística e diretor decidem na ficha: Aprovar (RPC produto_aprovar, completa mínimo, local e custo) ou
-   Já existe (RPC produto_ja_existe: os itens passam para o já cadastrado e o provisório é desativado). Os dois gravam log. */
+
+
+
+
 function prodPodeAprovar(){
   return !!usuarioAtual && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura())
     && ["diretor", "almoxarife", "auxiliar_almoxarifado", "logistica"].includes(usuarioAtual.cargo);
 }
-/* lote S67-c (#357): mesclar duplicado já aprovado no produto certo (RPC produto_mesclar; banco confere cargo e saldo) */
+
 function prodPodeMesclar(){
   return !!usuarioAtual && !(typeof ehSomenteLeitura === "function" && ehSomenteLeitura())
     && ["diretor", "admin", "almoxarife"].includes(usuarioAtual.cargo);
 }
-/* lote S70-d (#372, Fabrício): no produto novo de quem não aprova e no pendente, a aba Geral traz mínimo, local e custo
-   sugerido. Mínimo e local são os mesmos campos da aba Estoque (espelhados); o custo é só sugestão (custo_sugerido): o
-   almoxarifado confirma no Aprovar, que já abre com os três preenchidos (produto_aprovar grava o custo). */
+
+
+
 function prodSugVisivel(){
   return prodEditId ? _prodAprov === "pendente" : (prodPodeCriar() && !prodPodeAprovar());
 }
@@ -218,8 +218,8 @@ function prodAprovAbrir(modo){
   $("btn-prod-aprov-salvar").textContent = mesclar ? "Mesclar" : ja ? "Trocar pelo já cadastrado" : "Aprovar";
   $("prod-aprov-min").value = $("prod-minimo")?.value || "";
   $("prod-aprov-local").value = $("prod-localizacao")?.value || "";
-  $("prod-aprov-custo").value = _prodCustoSug != null ? _prodCustoSug : "";   // lote S70-d: o custo sugerido no cadastro
-  // hotfix #372: serviço consumido não tem estoque mínimo (como no bloco "Para o almoxarifado aprovar")
+  $("prod-aprov-custo").value = _prodCustoSug != null ? _prodCustoSug : "";
+
   const servico = $("prod-tipo-item")?.value === "servico";
   $("prod-aprov-min").disabled = servico; $("prod-aprov-min").title = servico ? "Serviço consumido não tem estoque mínimo" : "";
   if(servico) $("prod-aprov-min").value = 0;
@@ -251,7 +251,7 @@ async function prodAprovBuscar(){
 async function prodAprovSalvar(){
   const id = prodEditId; if(!id) return;
   const limpa = m => String(m || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, "");
-  if(_prodAprovModo === "mesclar"){   // lote S67-c (#357)
+  if(_prodAprovModo === "mesclar"){
     if(!_prodAprovExistente){ aviso("app-aviso", "Escolha na lista o produto certo.", "erro"); $("prod-aprov-busca").focus(); return; }
     const { data, error } = await sb.rpc("produto_mesclar", { p_id: id, p_destino: _prodAprovExistente.id });
     if(error){ aviso("app-aviso", "Não mesclado: " + limpa(error.message), "erro"); return; }
@@ -283,7 +283,7 @@ async function prodAprovSalvar(){
   await abrirProduto(id);
   carregarProdutos();
 }
-/* "Para regularizar" (dashboard.js): a lista filtrada nos que aguardam aprovação */
+
 async function prodAbrirPendentes(){
   if($("prod-f-estoque")) $("prod-f-estoque").value = "pendentes";
   if($("prod-busca")) $("prod-busca").value = "";
@@ -293,23 +293,23 @@ async function prodAbrirPendentes(){
   await carregarProdutos();
 }
 
-/* ---------- Produtos ---------- */
+
 function prodTermo(){ return ($("prod-busca")?.value || "").trim().replace(/[%,()]/g, " ").trim(); }
 function prodModoPadrao(){ return !prodTermo() && !($("prod-f-categoria")?.value) && !($("prod-f-estoque")?.value) && !($("prod-f-tipo")?.value) && !_prodTodos; }
 async function carregarProdutos(){
   const termo = prodTermo(), fCat = $("prod-f-categoria")?.value || "", fEst = $("prod-f-estoque")?.value || "", fTipo = $("prod-f-tipo")?.value || "";
   const baixo = fEst === "baixo";
   let q = sb.from("produtos").select(PROD_COLS, { count: "exact" }).eq("ativo", fEst !== "inativos").order("nome");
-  if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo},aplicacao.ilike.%${termo}%`);   // lote S66-e: busca também pela aplicação
+  if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo},aplicacao.ilike.%${termo}%`);
   if(fCat) q = q.eq("categoria_id", fCat);
-  if(fTipo) q = q.eq("tipo_item", fTipo);   // lote S55 (#175): Produtos / Serviços consumidos
-  if(fEst === "pendentes") q = q.eq("aprovacao", "pendente");   // lote S63-b (#272)
+  if(fTipo) q = q.eq("tipo_item", fTipo);
+  if(fEst === "pendentes") q = q.eq("aprovacao", "pendente");
   else if(fEst === "zero") q = q.lte("estoque_atual", 0);
-  else if(fEst === "sem_custo") q = q.gt("estoque_atual", 0).lte("custo_ultimo", 0);   // hotfix saída sem custo: o saneamento
-  else if(fEst === "sem_custo_todos") q = q.lte("custo_ultimo", 0).eq("aprovacao", "aprovado");   // lote S67-a (#335): com ou sem saldo
+  else if(fEst === "sem_custo") q = q.gt("estoque_atual", 0).lte("custo_ultimo", 0);
+  else if(fEst === "sem_custo_todos") q = q.lte("custo_ultimo", 0).eq("aprovacao", "aprovado");
   else if(fEst === "positivo") q = q.gt("estoque_atual", 0);
-  else if(baixo) q = q.gt("estoque_minimo", 0);           // o banco não compara duas colunas: traz os que têm mínimo e filtra abaixo
-  else if(prodModoPadrao()) q = q.gt("estoque_atual", 0);  // sem busca nem filtro: os que giram (com saldo)
+  else if(baixo) q = q.gt("estoque_minimo", 0);
+  else if(prodModoPadrao()) q = q.gt("estoque_atual", 0);
   const paginado = _prodTodos && !termo;
   const de = paginado ? _prodPagina * PROD_PAGINA : 0;
   q = baixo ? q.limit(1000) : q.range(de, de + PROD_PAGINA - 1);
@@ -322,22 +322,22 @@ async function carregarProdutos(){
     _prodTotalFiltro = baixo ? _produtos.length : (res.count || 0);
   }
   renderProdutos();
-  prodContarSaidasSemCusto();   // hotfix saída sem custo: contador da visão "Saídas sem custo"
-  prodContarSaidasSemVinculo(); // fase 137: contador da visão "Saídas sem vínculo"
-  // o select escondido da entrada de estoque (#ent-produto) é preenchido por estSelecionarProduto (estoque.js),
-  // que já busca no servidor; não é mais alimentado daqui
+  prodContarSaidasSemCusto();
+  prodContarSaidasSemVinculo();
+
+
 }
 
-/* ---------- Filtros ---------- */
-/* lote S42: os filtros vão na consulta (carregarProdutos); aqui só o que veio do servidor */
+
+
 function prodFiltrados(){ return _produtos; }
-/* linha acima da lista: o modo (com saldo / todos paginado) e a navegação */
+
 function renderProdModo(){
   const el = $("prod-modo"); if(!el) return;
   const termo = prodTermo(), total = _prodTotalFiltro, n = _produtos.length;
   if(termo || $("prod-f-categoria")?.value || $("prod-f-estoque")?.value || $("prod-f-tipo")?.value){
     el.innerHTML = total > n ? `Mostrando ${n} de ${num(total)} resultado(s): refine a busca para ver os outros.` : "";
-    // hotfix saída sem custo: a lista do saneamento sai em .xlsx (com a coluna Custo em branco) e volta pela importação
+
     const fEstSc = $("prod-f-estoque")?.value;
     if(fEstSc === "sem_custo" || fEstSc === "sem_custo_todos"){
       el.innerHTML += `${el.innerHTML ? " " : ""}${num(total)} produto(s) ${fEstSc === "sem_custo" ? "com saldo " : ""}sem custo · <a href="#" data-prod-modo="sc-xlsx">⬇ Baixar .xlsx para preencher</a>` +
@@ -356,7 +356,7 @@ function renderProdModo(){
   }
 }
 
-/* lote S60 (#261): atalho do Estoque para todo o inventário com saldo, por categoria. Só leitura. */
+
 async function prodAbrirInventario(categoriaId){
   const sel = $("prod-f-categoria");
   if(sel && categoriaId && ![...sel.options].some(o => o.value === categoriaId)){
@@ -374,9 +374,9 @@ async function prodAbrirInventario(categoriaId){
 function preencherFiltrosProd(){
   const sel = $("prod-f-categoria");
   if(sel){
-    // Preserva o valor escolhido: este render roda a cada tecla/filtro e
-    // substituir o innerHTML zerava a seleção ANTES de prodFiltrados ler
-    // (o filtro por categoria nunca chegava a filtrar).
+
+
+
     const atual = sel.value;
     const cats = Object.entries(_prodCategorias)
       .map(([id, nome]) => ({ id, nome }))
@@ -387,15 +387,15 @@ function preencherFiltrosProd(){
   }
 }
 
-/* ---------- Render ---------- */
+
 function renderProdutos(){
   preencherFiltrosProd();
-  prodAplicarPerfil();   // lote S51: "+ Novo" só para quem grava
+  prodAplicarPerfil();
   const dados = prodFiltrados();
   const cont = $("prod-contador");
-  if(cont) cont.textContent = `${num(_prodTotalFiltro)} de ${num(_prodTotalAtivos ?? _prodTotalFiltro)}`;   // N da consulta, de M ativos
-  // hotfix saída sem custo: a visão das saídas não usa a busca nem os filtros de produto
-  const ssc = _prodView === "saidas_sem_custo", ssv = _prodView === "saidas_sem_vinculo";   // fase 137: idem "Saídas sem vínculo"
+  if(cont) cont.textContent = `${num(_prodTotalFiltro)} de ${num(_prodTotalAtivos ?? _prodTotalFiltro)}`;
+
+  const ssc = _prodView === "saidas_sem_custo", ssv = _prodView === "saidas_sem_vinculo";
   document.querySelectorAll("#prod-painel .serv-filtros, #prod-modo").forEach(el => { el.style.display = ssc || ssv ? "none" : ""; });
   if(ssc){ prodRenderSaidasSemCusto(); return; }
   if(ssv){ prodRenderSaidasSemVinculo(); return; }
@@ -413,7 +413,7 @@ function renderProdLista(dados){
     cont.innerHTML = `<p class="vazio">Nenhum produto encontrado.</p>`;
     return;
   }
-  // Limita a 500 visíveis pra performance
+
   const max = 500;
   const exibidos = dados.slice(0, max);
   const aviso_lim = dados.length > max
@@ -444,7 +444,7 @@ function renderProdLista(dados){
 function renderProdKanban(dados){
   const cont = $("prod-conteudo");
   if(!cont) return;
-  // Agrupa por categoria (top 12 maiores)
+
   const grupos = {};
   dados.forEach(p => {
     const k = _prodCategorias[p.categoria_id] || "Sem categoria";
@@ -453,7 +453,7 @@ function renderProdKanban(dados){
   });
   const nomes = Object.keys(grupos).sort((a,b) => grupos[b].length - grupos[a].length).slice(0, 12);
   const colunas = nomes.map(nome => {
-    const itens = grupos[nome].slice(0, 30); // max 30 cards por coluna
+    const itens = grupos[nome].slice(0, 30);
     const cards = itens.map(p => {
       const baixo = Number(p.estoque_atual) <= Number(p.estoque_minimo);
       return `<div class="serv-kan-card linha-clicavel" data-id="${esc(p.id)}">
@@ -479,22 +479,22 @@ function renderProdKanban(dados){
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
 }
 
-/* ---------- Hotfix saída sem custo (29/10/2026, decisões do Bernardo D-1 e D-2) ----------
-   A saída de estoque de produto sem custo gravava R$ 0,00. Quem pode (produtos_write: diretor, admin, almoxarife, comprador,
-   gestor de acessórios; espelha produto_pode_definir_custo()) define o custo do produto sem custo e o banco revalora as saídas a
-   R$ 0,00 dele. Visão "Saídas sem custo" (vw_estoque_saidas_sem_custo); filtro "Sem custo (com saldo)" com .xlsx para preencher e
-   importação da planilha (produto_definir_custo_lote). Sem a migration a visão não aparece. */
-let _prodSsc = [];          // linhas de vw_estoque_saidas_sem_custo
-let _prodSscTem = null;     // a view existe? (null = ainda não consultou)
-function prodPodeDefinirCusto(){ return ["tudo", "almox"].includes(prodPerfilEdicao()); }   // lote S67-d: auxiliar também
-/* "12,50", "R$ 1.234,56" ou 12.5 → número; vazio ou texto → NaN */
+
+
+
+
+
+let _prodSsc = [];
+let _prodSscTem = null;
+function prodPodeDefinirCusto(){ return ["tudo", "almox"].includes(prodPerfilEdicao()); }
+
 function prodNumeroBR(v){
   if(typeof v === "number") return v;
   let t = String(v ?? "").replace(/R\$|\s/g, "");
   if(t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
   return t === "" ? NaN : Number(t);
 }
-/* pede o custo unitário e grava pela RPC; true quando gravou. Usada pela ficha, pela visão e pelo balcão (estoque.js) */
+
 async function prodDefinirCusto(p){
   if(!p || !p.id) return false;
   if(!prodPodeDefinirCusto()){ aviso("app-aviso", `${prodTxt(p)} está sem custo. Peça ao almoxarife ou a Compras o custo dele.`, "erro"); return false; }
@@ -514,11 +514,11 @@ async function prodDefinirCusto(p){
 async function prodContarSaidasSemCusto(){
   const btn = $("prod-view-ssc"); if(!btn || _prodSscTem === false) return;
   const { count, error } = await sb.from("vw_estoque_saidas_sem_custo").select("id", { count: "exact", head: true });
-  if(error){ _prodSscTem = false; btn.style.display = "none"; return; }   // migration do hotfix ainda não aplicada
+  if(error){ _prodSscTem = false; btn.style.display = "none"; return; }
   _prodSscTem = true; btn.style.display = "";
   $("prod-ssc-cont").textContent = count ? `(${num(count)})` : "";
 }
-/* atalho da Sala de Comando ("Saídas de estoque sem custo"). Fase 146: o cartão da Minha fila passa o produto e a lista abre filtrada */
+
 let _prodSscFiltro = null;
 function prodAbrirSaidasSemCusto(produtoId){
   _prodSscFiltro = produtoId || null;
@@ -532,18 +532,18 @@ async function prodRenderSaidasSemCusto(){
   const cont = $("prod-conteudo"); if(!cont) return;
   cont.innerHTML = `<p class="vazio">Carregando…</p>`;
   let qSsc = sb.from("vw_estoque_saidas_sem_custo").select("*").order("data", { ascending: false }).limit(1000);
-  if(_prodSscFiltro) qSsc = qSsc.eq("produto_id", _prodSscFiltro);   // fase 146
+  if(_prodSscFiltro) qSsc = qSsc.eq("produto_id", _prodSscFiltro);
   const { data, error } = await qSsc;
   if(_prodView !== "saidas_sem_custo") return;
   if(error){ cont.innerHTML = `<p class="vazio">Não foi possível ler as saídas sem custo: ${esc(error.message)}</p>`; return; }
   _prodSsc = data || [];
-  const vinculos = await carregarVinculosSaida(_prodSsc.map(r => r.id));   // lote S59
+  const vinculos = await carregarVinculosSaida(_prodSsc.map(r => r.id));
   if(_prodView !== "saidas_sem_custo") return;
   const pode = prodPodeDefinirCusto();
   const nProd = new Set(_prodSsc.map(r => r.produto_id)).size;
   const nComCusto = new Set(_prodSsc.filter(r => r.produto_tem_custo).map(r => r.produto_id)).size;
   if(!_prodSscFiltro && $("prod-ssc-cont")) $("prod-ssc-cont").textContent = _prodSsc.length ? `(${num(_prodSsc.length)})` : "";
-  const faixaFiltro = _prodSscFiltro ? `<div class="meta" style="margin:0 0 8px;">Filtrando um produto · <a href="#" data-ssc-acao="ver-todos">ver todos</a></div>` : "";   // fase 146
+  const faixaFiltro = _prodSscFiltro ? `<div class="meta" style="margin:0 0 8px;">Filtrando um produto · <a href="#" data-ssc-acao="ver-todos">ver todos</a></div>` : "";
   const revTodos = pode && nComCusto && !_prodSscFiltro ?` · <a href="#" data-ssc-acao="revalorar-todos" title="Esses produtos ganharam custo depois da saída">Revalorar ${num(nComCusto)} produto(s) que já têm custo</a>` : "";
   const topo = faixaFiltro + `<div class="meta" style="margin:0 0 8px;">${num(_prodSsc.length)} saída(s) a R$ 0,00 · ${num(nProd)} produto(s)` +
     (_prodSsc.length ? ` · <a href="#" data-ssc-acao="xlsx">⬇ Exportar .xlsx</a>` : "") + revTodos +
@@ -561,12 +561,12 @@ async function prodRenderSaidasSemCusto(){
       <td>${esc(r.retirante || "—")}</td>
       <td>${linkDocumentoSaida(r, vinculos.get(r.id)) || "—"}</td>
       <td>${esc(r.registrado_por_nome || "—")}</td>
-      <td>${/* html */ acao}</td>
+      <td>${  acao}</td>
     </tr>`;
   }).join("");
   cont.innerHTML = topo + (_prodSsc.length >= 1000 ? `<p class="meta">Mostrando as 1.000 mais recentes.</p>` : "") +
     `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Produto</th><th class="num">Qtd</th><th>Destino</th><th>Retirou</th><th>Documento</th><th>Registrado por</th><th></th></tr></thead>
-    <tbody>${/* html */ linhasSsc}</tbody></table></div>`;
+    <tbody>${  linhasSsc}</tbody></table></div>`;
 }
 async function prodSscDefinir(id){
   const r = _prodSsc.find(x => x.produto_id === id); if(!r) return;
@@ -585,8 +585,8 @@ function prodSscExportar(){
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "SAIDAS SEM CUSTO");
   XLSX.writeFile(wb, `saidas-sem-custo-${hojeISO()}.xlsx`);
 }
-/* produtos ativos sem custo, com a coluna Custo em branco para a importação. Lote S67-a (#335): "Sem custo (todos)"
-   também traz os sem saldo (só os aprovados); "Sem custo (com saldo)" continua como era. */
+
+
 async function prodSemCustoExportar(){
   const todos = $("prod-f-estoque")?.value === "sem_custo_todos";
   const { data: lista, error } = await lerTudo(() => {
@@ -600,7 +600,7 @@ async function prodSemCustoExportar(){
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "SEM CUSTO");
   XLSX.writeFile(wb, `produtos-sem-custo${todos ? "-todos" : ""}-${hojeISO()}.xlsx`);
 }
-/* planilha com as colunas Código e Custo (a do "Baixar .xlsx" serve); só produto sem custo recebe, o resto volta no resumo */
+
 async function prodImportarCustos(file){
   if(!file) return;
   if(!prodPodeDefinirCusto()){ aviso("app-aviso", "Seu perfil não define o custo do produto.", "erro"); return; }
@@ -630,16 +630,16 @@ async function prodImportarCustos(file){
   await carregarProdutos();
 }
 
-/* ---------- Painel <-> Ficha ---------- */
+
 function mostrarPainelProd(){
   $("prod-painel").style.display = "";
   $("prod-ficha").style.display = "none";
   prodEditId = null;
 }
 
-/* Fase 100 (#100): categoria de custo do produto (EPI e Uniforme entram na ficha de EPI do colaborador), CA e troca
-   do EPI. As colunas ca / epi_validade_dias só existem depois da migration 20261021_fase100b: até lá os dois campos
-   ficam escondidos e não vão no salvar (_prodTemEpi vem do select("*") da ficha aberta). */
+
+
+
 let _prodTemEpi = false;
 function prodPreencherCatCusto(valor){
   const sel = $("prod-cat-custo"); if(!sel) return;
@@ -650,9 +650,9 @@ function prodPreencherCatCusto(valor){
 function prodAplicarCamposEpi(){
   document.querySelectorAll("#prod-ficha .prod-epi").forEach(el => { el.style.display = _prodTemEpi ? "" : "none"; });
 }
-/* Fase 108b: tipo de compra padrão (Reposição de estoque / Aplicação direta). O do produto vence o da categoria; sem
-   nenhum, o item nasce como aplicação direta (produto_tipo_compra_padrao no banco). O da categoria grava na hora, com
-   confirmação, e só para quem escreve em categorias_produto (admin, almoxarife, comprador; diretor). */
+
+
+
 const PROD_TIPO_COMPRA_LBL = { reposicao: "Reposição de estoque", aplicacao_direta: "Aplicação direta" };
 function prodPodeEditarCategoria(){ return !!usuarioAtual && ["diretor", "admin", "almoxarife", "comprador"].includes(usuarioAtual.cargo); }
 function prodAtualizarTipoCompra(){
@@ -685,50 +685,50 @@ function novoProduto(){
   ["prod-codigo","prod-nome","prod-codbarras","prod-refext","prod-localizacao","prod-descricao","prod-aplicacao"
   ].forEach(k => { const el = $(k); if(el) el.value = ""; });
   _prodCatOriginal = null;
-  _prodCodNum = null; _prodCodManual = false;   // lote S56b (#197)
+  _prodCodNum = null; _prodCodManual = false;
   if($("prod-codigo")) $("prod-codigo").placeholder = "automático";
   if($("btn-prod-gerar-cod")) $("btn-prod-gerar-cod").style.display = "";
-  prodMontarSelectCategoria("");   // lote S51: o SESMT escolhe entre as categorias dele
-  if($("prod-tipo-compra")) $("prod-tipo-compra").value = "";   // fase 108b
+  prodMontarSelectCategoria("");
+  if($("prod-tipo-compra")) $("prod-tipo-compra").value = "";
   prodAtualizarTipoCompra();
   $("prod-unidade").value = "un";
   $("prod-minimo").value = 0;
   $("prod-ideal").value = "";
   $("prod-reposicao").checked = false;
   $("prod-conferido").checked = true;
-  if($("prod-tipo-item")) $("prod-tipo-item").value = "produto";   // lote S55 (#175)
+  if($("prod-tipo-item")) $("prod-tipo-item").value = "produto";
   prodAplicarTipoItem();
   _prodAtivo = true;
   _prodCustoSug = null;
-  prodAplicarPerfil();   // lote S51 (produto novo: sem Excluir)
-  prodRenderSugestao();   // lote S70-d
-  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });   // fase 105a
+  prodAplicarPerfil();
+  prodRenderSugestao();
+  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", { unidade: "un" });
   abrirFichaProdVisual({ codigo: "(novo)", nome: "Novo produto", estoque_atual: 0, custo_ultimo: 0 });
   prodCodInfo();
-  _prodMov = null;   // lote S61 (#268)
+  _prodMov = null;
   if($("prod-movimentos")) $("prod-movimentos").innerHTML = '<p class="vazio">Salve o produto para ver os movimentos.</p>';
-  if($("prod-historico")) $("prod-historico").innerHTML = '<p class="vazio">Salve o produto para ver o histórico.</p>';   // lote S67-c
-  if($("epi-obr-onde")) $("epi-obr-onde").hidden = true;   // fase 202b: produto novo não tem "Onde está"
+  if($("prod-historico")) $("prod-historico").innerHTML = '<p class="vazio">Salve o produto para ver o histórico.</p>';
+  if($("epi-obr-onde")) $("epi-obr-onde").hidden = true;
   if($("prod-mov-badge")) $("prod-mov-badge").textContent = "";
 }
 
 async function abrirProduto(id){
   prodEditId = id;
   const { data, error } = await sb.from("produtos").select("*").eq("id",id).single();
-  if(prodEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
+  if(prodEditId !== id) return;
   if(error){ aviso("app-aviso","Erro ao abrir produto: "+error.message,"erro"); return; }
-  _prodAtivo = data.ativo !== false;   // lote S58 (#237)
-  _prodAprov = data.aprovacao || "aprovado";   // lote S63-b (#272)
-  _prodCustoSug = data.custo_sugerido ?? null;   // lote S70-d (#372)
+  _prodAtivo = data.ativo !== false;
+  _prodAprov = data.aprovacao || "aprovado";
+  _prodCustoSug = data.custo_sugerido ?? null;
   $("prod-codigo").value      = data.codigo || "";
-  _prodCodNum = null; _prodCodManual = false;   // lote S56b (#197): código existente não muda pelo gerador
+  _prodCodNum = null; _prodCodManual = false;
   $("prod-codigo").placeholder = "";
   if($("btn-prod-gerar-cod")) $("btn-prod-gerar-cod").style.display = "none";
   prodCodInfo();
   $("prod-nome").value        = data.nome || "";
   _prodCatOriginal = data.categoria_id || null;
-  prodMontarSelectCategoria(data.categoria_id || "");   // lote S51 (SESMT: só as categorias dele + a do produto)
-  if($("prod-tipo-compra")) $("prod-tipo-compra").value = data.tipo_compra_padrao || "";   // fase 108b
+  prodMontarSelectCategoria(data.categoria_id || "");
+  if($("prod-tipo-compra")) $("prod-tipo-compra").value = data.tipo_compra_padrao || "";
   prodAtualizarTipoCompra();
   $("prod-unidade").value     = data.unidade || "un";
   $("prod-minimo").value      = data.estoque_minimo || 0;
@@ -738,27 +738,27 @@ async function abrirProduto(id){
   $("prod-refext").value      = data.ref_externa || "";
   $("prod-localizacao").value = data.localizacao || "";
   $("prod-descricao").value   = data.descricao || "";
-  if($("prod-aplicacao")) $("prod-aplicacao").value = data.aplicacao || "";   // lote S66-e (#244)
+  if($("prod-aplicacao")) $("prod-aplicacao").value = data.aplicacao || "";
   $("prod-conferido").checked = data.inventario_conferido === true;
-  if($("prod-tipo-item")) $("prod-tipo-item").value = data.tipo_item === "servico" ? "servico" : "produto";   // lote S55 (#175)
+  if($("prod-tipo-item")) $("prod-tipo-item").value = data.tipo_item === "servico" ? "servico" : "produto";
   prodAplicarTipoItem();
-  // fase 100: categoria de custo, CA e troca do EPI
+
   _prodTemEpi = Object.prototype.hasOwnProperty.call(data, "ca");
   prodPreencherCatCusto(data.categoria_custo);
   if($("prod-ca")) $("prod-ca").value = data.ca || "";
   if($("prod-epi-validade")) $("prod-epi-validade").value = data.epi_validade_dias ?? "";
   prodAplicarCamposEpi();
-  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", data);   // fase 105a: aba Fiscal (NCM)
-  prodAplicarPerfil();   // lote S51: Excluir só no cadastro inteiro
-  prodRenderSugestao();   // lote S70-d
+  if(typeof fiscalItemPreencher === "function") fiscalItemPreencher("prod", "produto", data);
+  prodAplicarPerfil();
+  prodRenderSugestao();
   abrirFichaProdVisual(data);
   prodCarregarFabricacoes(id);
-  prodCarregarMovimentos(id, data);   // lote S61 (#268)
-  if(typeof epiObrOndeEsta === "function") epiObrOndeEsta(id);   // fase 202b: "Onde está" do EPI (base e obras)
-  if(typeof montarHistorico === "function") montarHistorico("produtos", id, "prod-historico");   // lote S67-c (#357)
+  prodCarregarMovimentos(id, data);
+  if(typeof epiObrOndeEsta === "function") epiObrOndeEsta(id);
+  if(typeof montarHistorico === "function") montarHistorico("produtos", id, "prod-historico");
 }
 
-/* fase 84: aba "Fabricações" do produto: ordens em que ele é o produzido e ordens em que entra como componente */
+
 async function prodCarregarFabricacoes(id){
   const c = $("prod-fabricacoes"); if(!c) return;
   c.innerHTML = `<p class="vazio">Carregando…</p>`;
@@ -767,7 +767,7 @@ async function prodCarregarFabricacoes(id){
     sb.from("ordens_fabricacao").select(sel).eq("produto_id", id).order("data_abertura", { ascending: false }).limit(200),
     sb.from("fabricacao_itens").select("id,quantidade_prevista,quantidade_consumida,unidade,custo_unitario,ordem:ordens_fabricacao(" + sel + ")").eq("produto_id", id).limit(300)
   ]);
-  await anexarCustoMO("of", prod.data);   // lote S67-h
+  await anexarCustoMO("of", prod.data);
   if(prodEditId !== id) return;
   const st = s => (typeof fabTag === "function") ? fabTag(s) : esc(s);
   const lnk = (o) => (typeof linkFabricacao === "function") ? linkFabricacao(o.id, o.numero) : esc(o.numero);
@@ -784,19 +784,19 @@ async function prodCarregarFabricacoes(id){
       : `<p class="vazio">Não entra como componente em nenhuma ordem.</p>`);
 }
 
-/* ---------- Lote S61 (#268): movimentos do produto ----------
-   Todos os movimentos de movimentacoes_estoque (lerTudo, sem o corte de 1.000), da mais nova para a mais antiga. O efeito de cada um é o do
-   gatilho aplicar_movimentacao_estoque: entrada e devolução +abs, saída −abs, transferência 0, ajuste com o sinal. D-268a: o saldo de cada
-   linha é calculado de trás para frente a partir do saldo atual (em boa parte dos produtos a soma dos movimentos não bate com o saldo, por
-   carga ou inventário gravado direto); o topo mostra a diferença. D-268b: só quantidade, sem custo. */
+
+
+
+
+
 const PROD_MOV_LBL = { entrada: "Entrada", saida: "Saída", ajuste: "Ajuste", devolucao: "Devolução", transferencia: "Transferência" };
 const PROD_MOV_COR = { entrada: "verde", saida: "ambar", ajuste: "azul", devolucao: "verde", transferencia: "cinza" };
-let _prodMov = null;   // { id, produto, linhas, soma, saldo, vinc, tipo, termo }
+let _prodMov = null;
 function prodMovDelta(m){
   const q = Number(m.quantidade || 0);
   return m.tipo === "saida" ? -Math.abs(q) : m.tipo === "transferencia" ? 0 : m.tipo === "ajuste" ? q : Math.abs(q);
 }
-/* texto (busca e planilha) e html (célula, com links já escapados) de "De onde / para onde" */
+
 function prodMovOrigem(m){
   if(m.tipo === "entrada" && m.fornecedor) return { txt: m.fornecedor.razao_social || "Fornecedor", html: esc(m.fornecedor.razao_social || "Fornecedor") };
   const partes = [], txt = [];
@@ -817,12 +817,12 @@ async function prodCarregarMovimentos(id, produto){
     + "centro:centros_custo!movimentacoes_estoque_centro_custo_id_fkey(nome),acessorio:acessorios!movimentacoes_estoque_destino_acessorio_id_fkey(numero_serie,tipo),"
     + "funcionario:funcionarios!movimentacoes_estoque_funcionario_id_fkey(nome),registrador:profiles!movimentacoes_estoque_registrado_por_fkey(nome)";
   const r = await lerTudo(() => sb.from("movimentacoes_estoque").select(sel).eq("produto_id", id).order("data_movimentacao").order("created_at"), "id");
-  if(prodEditId !== id) return;   // abriu outra ficha enquanto esta carregava
+  if(prodEditId !== id) return;
   if(r.error){ c.innerHTML = `<p class="vazio">Não foi possível carregar os movimentos: ${esc(r.error.message)}</p>`; return; }
   const asc = r.data || [];
   const saldo = Number(produto?.estoque_atual || 0);
   const soma = asc.reduce((t, m) => t + prodMovDelta(m), 0);
-  // de trás para frente: a mais nova termina no saldo atual
+
   let depois = saldo;
   const linhas = asc.slice().reverse().map(m => { const l = { m, delta: prodMovDelta(m), depois }; depois -= l.delta; return l; });
   const vinc = await carregarVinculosSaida(asc.filter(m => m.tipo === "saida").map(m => m.id));
@@ -849,8 +849,8 @@ function prodMovTabelaHTML(){
         <td><span class="tag ${esc(PROD_MOV_COR[m.tipo] || "cinza")}">${esc(PROD_MOV_LBL[m.tipo] || m.tipo)}</span>${m.estorno_de ? ' <span class="meta">estorno</span>' : ""}</td>
         <td class="num">${m.tipo === "transferencia" ? "0 (transferência)" : esc(prodMovSinal(l.delta))} <span class="meta">${esc(un)}</span></td>
         <td class="num">${esc(num(l.depois))}</td>
-        <td>${/* html */ prodMovOrigem(m).html}</td>
-        <td>${/* html */ linkDocumentoSaida(m, x.vinc.get(m.id)) || "—"}</td>
+        <td>${  prodMovOrigem(m).html}</td>
+        <td>${  linkDocumentoSaida(m, x.vinc.get(m.id)) || "—"}</td>
         <td>${esc(m.registrador?.nome || "")}</td>
         <td class="meta">${esc(m.observacoes || "")}</td></tr>`; }).join("") + `</tbody></table></div>`;
 }
@@ -866,10 +866,10 @@ function prodRenderMovimentos(){
     </div>
     ${Math.abs(dif) >= 0.001 ? `<div class="dist-aviso neutro">Diferença <strong>${esc(prodMovSinal(dif))} ${esc(un)}</strong>: saldo gravado sem movimento (carga, inventário ou acerto direto). O saldo de cada linha é contado de trás para frente a partir do saldo atual.</div>` : ""}
     <div class="serv-filtros"><input id="prod-mov-busca" placeholder="Buscar por obra, TAG, pessoa, documento ou observação…" value="${esc(x.termo)}" /></div>
-    <div id="prod-mov-tabela">${/* html */ prodMovTabelaHTML()}</div>`;
+    <div id="prod-mov-tabela">${  prodMovTabelaHTML()}</div>`;
   c.querySelectorAll("#prod-mov-tipos .serv-view-btn").forEach(b => b.addEventListener("click", () => { x.tipo = b.dataset.tipo; prodRenderMovimentos(); }));
   const busca = $("prod-mov-busca");
-  // só a tabela muda na busca, para o campo não perder o foco
+
   busca?.addEventListener("input", debounce(() => { x.termo = busca.value; const t = $("prod-mov-tabela"); if(t) t.innerHTML = prodMovTabelaHTML(); }));
   $("btn-prod-mov-exportar")?.addEventListener("click", prodExportarMovimentos);
 }
@@ -893,9 +893,9 @@ function abrirFichaProdVisual(p){
   $("prod-ficha-categoria-chip").textContent = _prodCategorias[p.categoria_id] || "—";
   $("prod-ficha-estoque-chip").textContent = `${num(p.estoque_atual||0)} ${p.unidade||"un"}`;
   $("prod-ficha-custo-chip").textContent = brl(p.custo_ultimo||0);
-  const bdc = $("btn-prod-definir-custo");   // hotfix saída sem custo: só produto salvo, sem custo, e quem pode
+  const bdc = $("btn-prod-definir-custo");
   if(bdc) bdc.style.display = prodEditId && !(Number(p.custo_ultimo) > 0) && p.tipo_item !== "servico" && prodPodeDefinirCusto() ? "" : "none";
-  const apBox = $("prod-ficha-aprov-box");   // lote S63-b (#272)
+  const apBox = $("prod-ficha-aprov-box");
   if(apBox){
     const ap = prodEditId ? (p.aprovacao || "aprovado") : "aprovado";
     apBox.style.display = ap === "aprovado" ? "none" : "";
@@ -906,19 +906,19 @@ function abrirFichaProdVisual(p){
   $("prod-ficha-conf-chip").innerHTML = conf
     ? '<span class="tag verde">Conferido</span>'
     : '<span class="tag ambar">⚠ A conferir</span>';
-  $("prod-ficha-titulo").textContent = (prodEditId ? `${prodTxt(p)}` : "Novo produto") + (p.tipo_item === "servico" ? " · serviço consumido" : "") + (p.ativo === false ? " · arquivado" : "");   // lote S55 (#175); lote S58 (#237)
+  $("prod-ficha-titulo").textContent = (prodEditId ? `${prodTxt(p)}` : "Novo produto") + (p.tipo_item === "servico" ? " · serviço consumido" : "") + (p.ativo === false ? " · arquivado" : "");
 
   ativarTabProd("geral");
 }
 
-/* Lote S55 (#175): escolher "Serviço consumido" trava o tipo de compra em Aplicação direta, desmarca e desabilita a
-   reposição, o mínimo e o ideal (o banco força o mesmo pelo gatilho) e sugere a unidade vb quando ainda é "un". */
+
+
 function prodAplicarTipoItem(){
   const sel = $("prod-tipo-item"); if(!sel) return;
   const servico = sel.value === "servico";
   const tc = $("prod-tipo-compra");
   if(tc){
-    if(!tc.dataset.titulo) tc.dataset.titulo = tc.title;   // guarda a dica original do campo
+    if(!tc.dataset.titulo) tc.dataset.titulo = tc.title;
     if(servico) tc.value = "aplicacao_direta";
     tc.disabled = servico;
     tc.title = servico ? "Serviço consumido é sempre aplicação direta (obra, TAG ou setor): não entra no estoque" : tc.dataset.titulo;
@@ -944,9 +944,9 @@ function ativarTabProd(nome){
   });
 }
 
-/* ---------- Salvar / excluir ---------- */
+
 async function salvarProduto(){
-  // lote S56b (#197): no produto novo o código sai do gerador (só o nome é obrigatório aqui)
+
   if(!$("prod-nome").value.trim() || (prodEditId && !$("prod-codigo").value.trim())){
     aviso("app-aviso", prodEditId ? "Informe código e nome." : "Informe o nome (o código sai das iniciais dele).", "erro");
     ativarTabProd("geral");
@@ -964,15 +964,15 @@ async function salvarProduto(){
     ref_externa:   $("prod-refext").value.trim() || null,
     localizacao:   $("prod-localizacao").value.trim() || null,
     descricao:     $("prod-descricao").value.trim() || null,
-    aplicacao:     ($("prod-aplicacao")?.value || "").trim() || null,   // lote S66-e (#244)
+    aplicacao:     ($("prod-aplicacao")?.value || "").trim() || null,
     inventario_conferido: $("prod-conferido").checked
   };
-  // fase 100: categoria de custo sempre (coluna da fase 53); CA e troca só com a migration da fase 100 aplicada
+
   if($("prod-cat-custo")) reg.categoria_custo = $("prod-cat-custo").value || null;
-  if($("prod-tipo-compra")) reg.tipo_compra_padrao = $("prod-tipo-compra").value || null;   // fase 108b (nulo = pela categoria)
-  if($("prod-tipo-item")) reg.tipo_item = $("prod-tipo-item").value === "servico" ? "servico" : "produto";   // lote S55 (#175)
+  if($("prod-tipo-compra")) reg.tipo_compra_padrao = $("prod-tipo-compra").value || null;
+  if($("prod-tipo-item")) reg.tipo_item = $("prod-tipo-item").value === "servico" ? "servico" : "produto";
   if(reg.tipo_item === "servico"){ reg.tipo_compra_padrao = "aplicacao_direta"; reg.controle_reposicao = false; reg.estoque_minimo = 0; reg.estoque_ideal = null; }
-  // lote S70-d (#372): custo sugerido só sai com o bloco "Para o almoxarifado aprovar" à vista (produto novo ou pendente)
+
   if(prodSugVisivel() && $("prod-custo-sugerido")){
     const cs = $("prod-custo-sugerido").value;
     reg.custo_sugerido = cs === "" ? null : Number(String(cs).replace(",", "."));
@@ -986,20 +986,20 @@ async function salvarProduto(){
       aviso("app-aviso", "Troca do EPI: entre 1 e 3650 dias (ou vazio).", "erro"); ativarTabProd("geral"); return;
     }
   }
-  // fase 105a: NCM, unidade comercial e valor da remessa (só com as colunas no banco)
+
   const fis = typeof fiscalItemValores === "function" ? fiscalItemValores("prod") : null;
   if(fis && fis.erro){ aviso("app-aviso", fis.erro, "erro"); ativarTabProd("fiscal"); return; }
-  // lote S58 (#238): NCM opcional no cadastro, com aviso ao salvar; a cobrança é na emissão. Serviço consumido dispensa
+
   const semNcm = !!fis && reg.tipo_item !== "servico" && !fis.ncm;
   if(fis) Object.assign(reg, fis);
-  // lote S51 (#150): o SESMT grava só produto que era e continua numa categoria do SESMT (o banco confere igual)
+
   const perfil = prodPerfilEdicao();
   if(!perfil){ aviso("app-aviso", "Seu perfil só consulta o cadastro de produtos.", "erro"); return; }
   if(!prodEditId && !prodPodeCriar()){ aviso("app-aviso", "Seu perfil edita os produtos existentes; produto novo pede o módulo extra Produtos.", "erro"); return; }
   if(perfil === "sesmt" && (!prodCategoriaEhSesmt(reg.categoria_id) || (prodEditId && !prodCategoriaEhSesmt(_prodCatOriginal)))){
     aviso("app-aviso", PROD_MSG_SO_SESMT, "erro"); ativarTabProd("geral"); return;
   }
-  if(!prodEditId){   // lote S56b (#197): reserva o número só depois de tudo validado
+  if(!prodEditId){
     const cod = await prodCodigoParaSalvar();
     if(!cod) return;
     reg.codigo = cod;
@@ -1011,15 +1011,15 @@ async function salvarProduto(){
     result = await sb.from("produtos").insert(reg).select().single();
   }
   if(result.error && !prodEditId && !_prodCodManual && result.error.code === "23505" && /codigo/i.test(result.error.message || "")){
-    // lote S56b (#197): número tomado entre a reserva e o insert — gera outro e pede para salvar de novo
+
     _prodCodNum = null;
     if(await prodGerarCodigo(true)) aviso("app-aviso", `Código já existe: gerei outro (${$("prod-codigo").value}). Confira e salve de novo.`, "aviso");
     return;
   }
   if(result.error){
-    // recusa da policy do SESMT: no insert vem 42501; no update de produto fora do SESMT nenhuma linha volta (PGRST116).
-    // lote S55: para o perfil "cadastro" a recusa é da guarda de saldo/custo/ativo (a ficha não manda esses campos; se
-    // vier 42501 é o banco dizendo que o módulo expirou ou que algo mudou saldo/custo)
+
+
+
     const recusa = result.error.code === "42501" || result.error.code === "PGRST116" || /row-level security/i.test(result.error.message || "");
     const msgBanco = /^Seu perfil/.test(result.error.message || "");
     aviso("app-aviso", perfil === "sesmt" && recusa && !msgBanco ? PROD_MSG_SO_SESMT
@@ -1030,38 +1030,38 @@ async function salvarProduto(){
   prodEditId = result.data.id;
   _prodCatOriginal = result.data.categoria_id || null;
   prodAplicarPerfil();
-  aviso("app-aviso", semNcm ? "Produto salvo sem NCM: a nota fiscal só sai com o código (aba Fiscal ou na linha da movimentação)." : "Produto salvo.", semNcm ? "aviso" : "ok");   // lote S56b (#199)
+  aviso("app-aviso", semNcm ? "Produto salvo sem NCM: a nota fiscal só sai com o código (aba Fiscal ou na linha da movimentação)." : "Produto salvo.", semNcm ? "aviso" : "ok");
   await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
   await abrirProduto(prodEditId);
 }
 
-/* lote S70-b (#371): exclui o perfil "tudo", o mesmo da policy produtos_write (conferida em 24/11: admin, almoxarife,
-   comprador, gestor de acessórios e de manutenção; diretor pelo has_role). Produto com histórico nunca sai (FKs restrict):
-   a mensagem aponta Mesclar ou Arquivar. Se o RLS filtrar o delete sem erro, a tela não diz mais "Produto excluído.". */
+
+
+
 const PROD_MSG_NAO_EXCLUI = "Seu perfil não exclui produtos: peça ao almoxarifado.";
 const PROD_MSG_TEM_HISTORICO = "Este produto tem histórico (movimentação, pedido ou requisição) e não pode ser excluído. Se é duplicado, use Mesclar; se saiu de uso, Arquivar.";
 function prodPodeExcluir(){ return prodPerfilEdicao() === "tudo"; }
 
 async function excluirProduto(){
   if(!prodEditId) return;
-  if(!prodPodeExcluir()){ aviso("app-aviso", PROD_MSG_NAO_EXCLUI, "erro"); return; }   // lote S51, S70-b
+  if(!prodPodeExcluir()){ aviso("app-aviso", PROD_MSG_NAO_EXCLUI, "erro"); return; }
   if(!(await uiConfirmar({ titulo: "Excluir produto", texto: "Excluir este produto? A ação não pode ser desfeita.", confirmar: "Excluir", perigo: true }))) return;
   const { data, error } = await sb.from("produtos").delete().eq("id", prodEditId).select("id");
   if(error){
-    // 23503 = chave estrangeira: o produto tem histórico (movimentação, pedido, requisição, OF...)
+
     aviso("app-aviso", error.code === "23503" ? PROD_MSG_TEM_HISTORICO : "Não foi possível excluir: " + error.message, "erro");
     return;
   }
-  if(!data || !data.length){ aviso("app-aviso", PROD_MSG_NAO_EXCLUI, "erro"); return; }   // o RLS filtrou: nada foi apagado
+  if(!data || !data.length){ aviso("app-aviso", PROD_MSG_NAO_EXCLUI, "erro"); return; }
   aviso("app-aviso","Produto excluído.","ok");
   await carregarProdutos();
   if(typeof carregarDashboard === "function") await carregarDashboard();
   mostrarPainelProd();
 }
 
-/* lote S58 (#237): arquivar tira o produto das buscas e mantém o histórico; pedido antigo continua mostrando o nome.
-   Com saldo não arquiva (o saldo sumiria das listas de estoque). O saldo é relido do banco na hora. */
+
+
 async function arquivarProduto(){
   if(!prodEditId) return;
   if(!["tudo", "almox"].includes(prodPerfilEdicao())){ aviso("app-aviso", "Seu perfil não arquiva produtos: peça ao almoxarifado.", "erro"); return; }
@@ -1093,7 +1093,7 @@ async function arquivarProduto(){
 }
 
 async function criarNovaCategoria(){
-  if(!prodPodeEditarCategoria()){ aviso("app-aviso", "Categoria nova é pedida ao almoxarifado ou à diretoria.", "erro"); return; }   // lote S51
+  if(!prodPodeEditarCategoria()){ aviso("app-aviso", "Categoria nova é pedida ao almoxarifado ou à diretoria.", "erro"); return; }
   const v = await uiPedirValores({ titulo: "Nova categoria", confirmar: "Criar", campos: [{ id: "nome", rotulo: "Nome da categoria", obrigatorio: true }] });
   const nome = v && v.nome.trim();
   if(!nome) return;
@@ -1103,16 +1103,16 @@ async function criarNovaCategoria(){
   aviso("app-aviso","Categoria criada.","ok");
 }
 
-/* ---------- Fase 137 (D10): Saídas sem vínculo ----------
-   Saídas de estoque com destino, sem EPI, não desfeitas e sem OS, reparo, fabricação nem separação (vw_estoque_saidas_sem_vinculo).
-   "Vincular" liga a saída de TAG ou acessório a uma OS ou reparo (estoque_saida_vincular), com a OS do período como sugestão e
-   confirmação. Nada automático. Sem a migration o botão da visão não aparece. */
-let _prodSsv = [];            // linhas de vw_estoque_saidas_sem_vinculo do período
-let _prodSsvTem = null;       // a view existe? (null = ainda não consultou)
-let _prodSsvPeriodo = "90";   // "30" | "90" | "tudo"
-let _prodSsvDestino = "";     // "" ou um destino_tipo
+
+
+
+
+let _prodSsv = [];
+let _prodSsvTem = null;
+let _prodSsvPeriodo = "90";
+let _prodSsvDestino = "";
 const PROD_SSV_DESTINOS = { equipamento: "TAG", acessorio: "Acessório", obra: "Obra", centro_custo: "Setor" };
-/* espelha estoque_saida_vincular: almoxarifado_baixa_pecas() ou manutencao_pode_operar(), nunca o auditor */
+
 function prodPodeVincularSaida(){
   return !!usuarioAtual && !ehSomenteLeitura() &&
     ["diretor", "admin", "almoxarife", "auxiliar_almoxarifado", "engenheiro", "mecanico", "gestor_frota", "logistica", "gestor_manutencao"].includes(usuarioAtual.cargo);
@@ -1120,7 +1120,7 @@ function prodPodeVincularSaida(){
 async function prodContarSaidasSemVinculo(){
   const btn = $("prod-view-ssv"); if(!btn || _prodSsvTem === false) return;
   const { count, error } = await sb.from("vw_estoque_saidas_sem_vinculo").select("id", { count: "exact", head: true });
-  if(error){ _prodSsvTem = false; btn.style.display = "none"; return; }   // migration da fase 137 ainda não aplicada
+  if(error){ _prodSsvTem = false; btn.style.display = "none"; return; }
   _prodSsvTem = true; btn.style.display = "";
   $("prod-ssv-cont").textContent = count ? `(${num(count)})` : "";
 }
@@ -1153,11 +1153,11 @@ async function prodRenderSaidasSemVinculo(){
   const resumo = Object.entries(PROD_SSV_DESTINOS).filter(([k]) => porDest[k])
     .map(([k, t]) => `${esc(t)} ${num(porDest[k].n)} · <span data-val-sens>${brl(porDest[k].v)}</span>`).join(" · ");
   const topo = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px;">
-      <select id="prod-ssv-periodo" aria-label="Período das saídas">${/* html */ optPer}</select>
-      <select id="prod-ssv-destino" aria-label="Destino das saídas">${/* html */ optDest}</select>
+      <select id="prod-ssv-periodo" aria-label="Período das saídas">${  optPer}</select>
+      <select id="prod-ssv-destino" aria-label="Destino das saídas">${  optDest}</select>
     </div>
     <div class="meta" style="margin:0 0 8px;">${num(_prodSsv.length)} saída(s) sem OS, reparo, fabricação nem separação · <span data-val-sens>${brl(total)}</span>` +
-    (resumo ? ` · ${/* html */ resumo}` : "") +
+    (resumo ? ` · ${  resumo}` : "") +
     (pode ? " · a sugestão é a OS ou o reparo do mesmo destino no período; confira antes de vincular" : " · quem vincula é o almoxarifado ou a manutenção") + `</div>`;
   if(!lista.length){ cont.innerHTML = topo + `<p class="vazio">✅ Nenhuma saída sem vínculo ${_prodSsvDestino ? "neste destino e " : ""}neste período.</p>`; return; }
   const linhasSsv = lista.map(r => {
@@ -1174,15 +1174,15 @@ async function prodRenderSaidasSemVinculo(){
       <td>${esc(r.destino || "—")}</td>
       <td>${esc(r.retirante || "—")}</td>
       <td>${esc(r.documento || "—")}</td>
-      <td>${/* html */ sug}</td>
-      <td>${/* html */ acao}</td>
+      <td>${  sug}</td>
+      <td>${  acao}</td>
     </tr>`;
   }).join("");
   cont.innerHTML = topo +
     `<div class="tabela-rola"><table><thead><tr><th>Data</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor</th><th>Destino</th><th>Retirou</th><th>Documento</th><th>Sugestão</th><th></th></tr></thead>
-    <tbody>${/* html */ linhasSsv}</tbody></table></div>`;
+    <tbody>${  linhasSsv}</tbody></table></div>`;
 }
-/* "Vincular": linha embutida logo abaixo da saída, com as OS e os reparos do destino que cobrem a data (sugestão já marcada) */
+
 async function prodSsvAbrirVincular(id){
   const r = _prodSsv.find(x => x.id === id); if(!r) return;
   document.querySelectorAll("#prod-conteudo tr.ssv-vinc").forEach(t => t.remove());
@@ -1195,15 +1195,15 @@ async function prodSsvAbrirVincular(id){
     { p_equipamento: r.equipamento_id || null, p_acessorio: r.destino_acessorio_id || null, p_data: dataLocalISO(r.data) });
   if(!nova.isConnected) return;
   const fechar = `<button type="button" class="btn-sec btn-sm" data-ssv-cancelar>Fechar</button>`;
-  if(error){ nova.innerHTML = `<td colspan="9"><span class="meta">Não foi possível ler as OS e os reparos: ${esc(error.message)}</span> ${/* html */ fechar}</td>`; return; }
+  if(error){ nova.innerHTML = `<td colspan="9"><span class="meta">Não foi possível ler as OS e os reparos: ${esc(error.message)}</span> ${  fechar}</td>`; return; }
   const ops = data || [];
-  if(!ops.length){ nova.innerHTML = `<td colspan="9"><span class="meta">Nenhuma OS nem reparo de ${esc(r.destino)} cobre a data desta saída.</span> ${/* html */ fechar}</td>`; return; }
+  if(!ops.length){ nova.innerHTML = `<td colspan="9"><span class="meta">Nenhuma OS nem reparo de ${esc(r.destino)} cobre a data desta saída.</span> ${  fechar}</td>`; return; }
   const marcado = ops.some(v => v.id === r.candidato_id) ? r.candidato_id : null;
   const opts = (marcado ? "" : `<option value="">— escolha —</option>`) + ops.map(v =>
     `<option value="${esc(v.tipo)}:${esc(v.id)}"${v.id === marcado ? " selected" : ""}>${esc(prodSsvRotulo(v))}</option>`).join("");
   nova.innerHTML = `<td colspan="9">
       <label for="prod-ssv-sel" class="meta">Vincular a</label>
-      <select id="prod-ssv-sel">${/* html */ opts}</select>
+      <select id="prod-ssv-sel">${  opts}</select>
       <button type="button" class="btn btn-sm" id="prod-ssv-ok" data-ssv-confirmar="${esc(id)}">Vincular</button>
       <button type="button" class="btn-sec btn-sm" data-ssv-cancelar>Cancelar</button>
     </td>`;
@@ -1229,9 +1229,9 @@ async function prodSsvConfirmar(id){
   });
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarProdutos(){
-  // lote S70-d: a aba Estoque e o bloco "Para o almoxarifado aprovar" mostram o mesmo mínimo e local
+
   $("prod-minimo")?.addEventListener("input", e => { const s = $("prod-sug-minimo"); if(s) s.value = e.target.value; });
   $("prod-localizacao")?.addEventListener("input", e => { const s = $("prod-sug-local"); if(s) s.value = e.target.value; });
   document.querySelectorAll("#prod-painel .serv-view-btn").forEach(b => {
@@ -1239,15 +1239,15 @@ function ligarProdutos(){
       document.querySelectorAll("#prod-painel .serv-view-btn").forEach(x => x.classList.remove("ativo"));
       b.classList.add("ativo");
       _prodView = b.dataset.view;
-      _prodSscFiltro = null;   // fase 146: clicar na aba sempre mostra a lista inteira
+      _prodSscFiltro = null;
       renderProdutos();
     });
   });
-  // lote S42: busca e filtros consultam o servidor
+
   const recarregar = () => { _prodPagina = 0; carregarProdutos(); };
   $("prod-busca")?.addEventListener("input", debounce(recarregar, 250));
-  ["prod-f-categoria","prod-f-estoque","prod-f-tipo"].forEach(id => $(id)?.addEventListener("change", recarregar));   // lote S55: filtro Tipo
-  $("prod-tipo-item")?.addEventListener("change", prodAplicarTipoItem);   // lote S55 (#175)
+  ["prod-f-categoria","prod-f-estoque","prod-f-tipo"].forEach(id => $(id)?.addEventListener("change", recarregar));
+  $("prod-tipo-item")?.addEventListener("change", prodAplicarTipoItem);
   $("prod-modo")?.addEventListener("click", e => {
     const a = e.target.closest("[data-prod-modo]"); if(!a) return;
     e.preventDefault();
@@ -1256,7 +1256,7 @@ function ligarProdutos(){
     else if(m === "saldo"){ _prodTodos = false; _prodPagina = 0; }
     else if(m === "ant"){ if(_prodPagina > 0) _prodPagina--; }
     else if(m === "prox"){ if((_prodPagina + 1) * PROD_PAGINA < _prodTotalFiltro) _prodPagina++; }
-    else if(m === "sc-xlsx"){ prodSemCustoExportar(); return; }          // hotfix saída sem custo
+    else if(m === "sc-xlsx"){ prodSemCustoExportar(); return; }
     else if(m === "sc-importar"){ $("prod-custo-arq")?.click(); return; }
     carregarProdutos();
   });
@@ -1265,24 +1265,24 @@ function ligarProdutos(){
     const p = { id: prodEditId, codigo: $("prod-codigo").value, nome: $("prod-nome").value, unidade: $("prod-unidade").value };
     if(await prodDefinirCusto(p)) await abrirProduto(prodEditId);
   }));
-  // fase 137: filtros de período e destino da visão "Saídas sem vínculo"
+
   $("prod-conteudo")?.addEventListener("change", (e) => {
     if(e.target.id === "prod-ssv-periodo"){ _prodSsvPeriodo = e.target.value; prodRenderSaidasSemVinculo(); }
     else if(e.target.id === "prod-ssv-destino"){ _prodSsvDestino = e.target.value; prodRenderSaidasSemVinculo(); }
   });
   $("prod-conteudo")?.addEventListener("click", (e) => {
-    // fase 137: ações da visão "Saídas sem vínculo"
+
     const sv = e.target.closest("[data-ssv-vincular]"); if(sv){ prodSsvAbrirVincular(sv.dataset.ssvVincular); return; }
     const sk = e.target.closest("[data-ssv-confirmar]"); if(sk){ prodSsvConfirmar(sk.dataset.ssvConfirmar); return; }
     if(e.target.closest("[data-ssv-cancelar]")){ e.target.closest("tr.ssv-vinc")?.remove(); return; }
-    // hotfix saída sem custo: ações da visão "Saídas sem custo"
+
     const sd = e.target.closest("[data-ssc-definir]"); if(sd){ prodSscDefinir(sd.dataset.sscDefinir); return; }
     const sr = e.target.closest("[data-ssc-revalorar]"); if(sr){ prodSscRevalorar(sr.dataset.sscRevalorar); return; }
     const sa = e.target.closest("[data-ssc-acao]");
     if(sa){
       e.preventDefault();
       if(sa.dataset.sscAcao === "xlsx") prodSscExportar();
-      else if(sa.dataset.sscAcao === "ver-todos"){ _prodSscFiltro = null; prodRenderSaidasSemCusto(); prodContarSaidasSemCusto(); }   // fase 146
+      else if(sa.dataset.sscAcao === "ver-todos"){ _prodSscFiltro = null; prodRenderSaidasSemCusto(); prodContarSaidasSemCusto(); }
       else if(sa.dataset.sscAcao === "revalorar-todos")
         uiConfirmar({ titulo: "Revalorar saídas", confirmar: "Revalorar", texto: "Gravar o custo atual nas saídas a R$ 0,00 de todos os produtos que já têm custo?" })
           .then(ok => { if(ok) prodSscRevalorar(null); });
@@ -1296,19 +1296,19 @@ function ligarProdutos(){
   $("btn-voltar-prod")?.addEventListener("click", mostrarPainelProd);
   $("btn-salvar-prod")?.addEventListener("click", () => comBotaoTravado("btn-salvar-prod", salvarProduto));
   $("btn-excluir-prod")?.addEventListener("click", excluirProduto);
-  $("btn-prod-etiqueta")?.addEventListener("click", prodImprimirEtiqueta);   // lote S66-e (#244)
-  $("btn-arquivar-prod")?.addEventListener("click", () => comBotaoTravado("btn-arquivar-prod", arquivarProduto));   // lote S58 (#237)
-  // lote S63-b (#272): Aprovar / Já existe
+  $("btn-prod-etiqueta")?.addEventListener("click", prodImprimirEtiqueta);
+  $("btn-arquivar-prod")?.addEventListener("click", () => comBotaoTravado("btn-arquivar-prod", arquivarProduto));
+
   $("btn-prod-aprovar")?.addEventListener("click", () => prodAprovAbrir("aprovar"));
   $("btn-prod-ja-existe")?.addEventListener("click", () => prodAprovAbrir("ja_existe"));
-  $("btn-prod-mesclar")?.addEventListener("click", () => { const d = $("btn-prod-mesclar").closest("details"); if(d) d.open = false; prodAprovAbrir("mesclar"); });   // lote S67-c
+  $("btn-prod-mesclar")?.addEventListener("click", () => { const d = $("btn-prod-mesclar").closest("details"); if(d) d.open = false; prodAprovAbrir("mesclar"); });
   $("btn-prod-aprov-fechar")?.addEventListener("click", prodAprovFechar);
   $("prod-aprov-busca")?.addEventListener("input", debounce(prodAprovBuscar, 250));
   $("btn-prod-aprov-salvar")?.addEventListener("click", () => comBotaoTravado("btn-prod-aprov-salvar", prodAprovSalvar));
   $("btn-nova-cat")?.addEventListener("click", criarNovaCategoria);
-  $("btn-prod-gerar-cod")?.addEventListener("click", () => comBotaoTravado("btn-prod-gerar-cod", () => prodGerarCodigo(false)));   // lote S56b (#197)
+  $("btn-prod-gerar-cod")?.addEventListener("click", () => comBotaoTravado("btn-prod-gerar-cod", () => prodGerarCodigo(false)));
   $("prod-codigo")?.addEventListener("blur", prodCodNormalizar);
-  $("prod-categoria")?.addEventListener("change", prodAtualizarTipoCompra);   // fase 108b
+  $("prod-categoria")?.addEventListener("change", prodAtualizarTipoCompra);
   $("prod-cat-tipo-compra")?.addEventListener("change", () => prodSalvarTipoCategoria());
 
   document.querySelectorAll("#prod-notebook button").forEach(b => {
@@ -1325,34 +1325,34 @@ if(document.readyState === "loading"){
   ligarProdutos();
 }
 
-/* ====================================================================
-   LOTE S66-e (#244, Júlio) — etiqueta do produto
-   Folha A4 com 2 × 7 etiquetas (o modelo "2 x 7" do Odoo que o Júlio mandou; ele pediu no mínimo 10 por folha).
-   Cada etiqueta: nome e código no topo, código de barras Code 128 (desenhado em SVG aqui, sem biblioteca) com o número
-   embaixo e a aplicação do produto. Sem código de barras no cadastro, o código interno vai no código de barras.
-   Sem preço (o custo não sai do sistema numa etiqueta).
-   ==================================================================== */
+
+
+
+
+
+
+
 const PROD_ETQ_POR_FOLHA = 14, PROD_ETQ_MAX = 500;
-/* larguras de barra/espaço dos 107 símbolos do Code 128 (103 = Start A, 104 = Start B, 105 = Start C, 106 = Stop) */
+
 const CODE128_PADROES = ("212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 "
   + "123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 "
   + "131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 "
   + "213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 "
   + "112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 "
   + "421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112").split(" ");
-/* Code 128 B (ASCII 32 a 126); caractere fora disso vira "?". Devolve as larguras em módulos, sem a zona quieta. */
+
 function code128Larguras(txt){
   const vals = [...String(txt)].map(ch => { const c = ch.charCodeAt(0); return c >= 32 && c <= 126 ? c - 32 : 31; });
   const soma = vals.reduce((s, v, i) => s + v * (i + 1), 104);
   return [104, ...vals, soma % 103, 106].map(v => CODE128_PADROES[v]).join("");
 }
-/* SVG do código de barras; as barras herdam a cor do texto (fill="currentColor") */
+
 function code128Svg(txt, alturaMm){
   const larg = code128Larguras(txt), quieta = 10;
   let x = quieta, barras = "";
   [...larg].forEach((w, i) => { const n = Number(w); if(i % 2 === 0) barras += `<rect x="${esc(x)}" y="0" width="${esc(n)}" height="100"/>`; x += n; });
   const total = x + quieta;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${esc(total)} 100" preserveAspectRatio="none" style="width:100%;height:${esc(alturaMm)}mm;display:block;" fill="currentColor" role="img" aria-label="${esc(txt)}">${/* html */ barras}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${esc(total)} 100" preserveAspectRatio="none" style="width:100%;height:${esc(alturaMm)}mm;display:block;" fill="currentColor" role="img" aria-label="${esc(txt)}">${  barras}</svg>`;
 }
 function prodEtiquetaHtml(p){
   const cod = (p.codigo_barras || p.codigo || "").trim();
@@ -1374,14 +1374,14 @@ async function prodImprimirEtiqueta(){
   const qtd = Math.round(Number(String(v.qtd).replace(",", ".")));
   if(!(qtd >= 1 && qtd <= PROD_ETQ_MAX)){ aviso("app-aviso", `Informe de 1 a ${PROD_ETQ_MAX} etiquetas.`, "erro"); return; }
   const pos = Math.min(PROD_ETQ_POR_FOLHA, Math.max(1, Math.round(Number(v.pos)) || 1));
-  const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }   // logo depois do clique em Imprimir
+  const w = window.open("", "_blank"); if(!w){ aviso("app-aviso", "Permita pop-ups para imprimir.", "erro"); return; }
   const { data: p, error } = await sb.from("produtos").select("codigo,nome,codigo_barras,aplicacao").eq("id", prodEditId).single();
   if(error){ w.close(); aviso("app-aviso", "Erro ao ler o produto: " + error.message, "erro"); return; }
   if(!(p.codigo_barras || p.codigo)){ w.close(); aviso("app-aviso", "O produto não tem código nem código de barras.", "erro"); return; }
   const um = prodEtiquetaHtml(p);
   const celulas = Array(pos - 1).fill('<div class="etq vazia"></div>').concat(Array(qtd).fill(um));
   const folhas = [];
-  for(let i = 0; i < celulas.length; i += PROD_ETQ_POR_FOLHA) folhas.push(`<div class="folha">${/* html */ celulas.slice(i, i + PROD_ETQ_POR_FOLHA).join("")}</div>`);
+  for(let i = 0; i < celulas.length; i += PROD_ETQ_POR_FOLHA) folhas.push(`<div class="folha">${  celulas.slice(i, i + PROD_ETQ_POR_FOLHA).join("")}</div>`);
   w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Etiquetas ${esc(p.codigo || "")}</title><style>
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
@@ -1395,6 +1395,6 @@ async function prodImprimirEtiqueta(){
     .etq-apl { font-size: 8.5pt; line-height: 1.2; max-height: 6.2em; overflow: hidden; text-transform: uppercase; }
     .etq-rot { font-size: 10pt; }
     @media screen { body { background: lightgray; } .folha { background: white; margin: 6mm auto; } .etq:not(.vazia) { outline: 1px dashed gray; } }
-  </style></head><body>${/* html */ folhas.join("")}</body></html>`);
+  </style></head><body>${  folhas.join("")}</body></html>`);
   w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
 }

@@ -1,10 +1,10 @@
-/* ====================================================================
-   App do operador (fase 129b) — op_equipe.js
-   Telas: Equipe do dia (4) e Abastecimento e horímetro (5).
-   O app nunca manda horas: o gatilho do banco calcula pela mesma regra da ficha (fase 129a).
-   ==================================================================== */
 
-/* espelho local da regra do banco ("Chegamos"/"Saída" pela tolerância do ponto), só para mostrar até sincronizar */
+
+
+
+
+
+
 function entradaPelaTolerancia(real){
   const j = minutos(OP.snap?.jornada?.entrada), r = minutos(real), tol = Number(OP.snap?.config?.tolerancia_ponto_min) || 15;
   return j != null && r != null && r < j && j - r <= tol ? hhmm(OP.snap.jornada.entrada) : real;
@@ -14,7 +14,7 @@ function saidaPelaTolerancia(real){
   return j != null && r != null && r > j && r - j <= tol ? hhmm(OP.snap.jornada.saida) : real;
 }
 
-/* aplica no snapshot o que vai para a fila (a tela mostra na hora, com o selo "no aparelho") */
+
 async function equipeGravar(linha, campos){
   const eq = OP.snap.equipe || (OP.snap.equipe = []);
   let l = linha ? eq.find(x => x.id === linha.id) : null;
@@ -101,7 +101,7 @@ async function confirmarChegada(){
   if(!semEntrada.length){ avisar("Todos já têm entrada. Adicione as pessoas antes de marcar a chegada.", "aviso"); return; }
   for(const e of semEntrada) await equipeGravar(e, { hora_chegada_real: hora });
   const cab = {};
-  if(_chegadaTempo) cab.tempo_manha = climaGravar(_chegadaTempo, OP.snap.rdo.tempo_manha);   // fase 179: opção → valor (a mesma opção mantém o gravado)
+  if(_chegadaTempo) cab.tempo_manha = climaGravar(_chegadaTempo, OP.snap.rdo.tempo_manha);
   if($("op-chegada-dds").checked) cab.dds_feito = true;
   if(Object.keys(cab).length) await gravarCabecalho(cab);
   $("op-folha-chegada").hidden = true;
@@ -119,7 +119,7 @@ async function saidaDaEquipe(){
 async function copiarEquipeDeOntem(){
   if(!navigator.onLine){ avisar("Copiar a equipe de ontem precisa de sinal.", "aviso"); return; }
   const r = OP.snap.rdo;
-  // fase 159a: o dia anterior da máquina e a equipe dele vêm da RPC campo_equipe_dia_anterior. Sem a migration, a leitura antiga.
+
   let linhas = null, dataAnt = null;
   const ra = await sb.rpc("campo_equipe_dia_anterior", { p_rdo: r.id });
   if(!ra.error){
@@ -147,7 +147,7 @@ async function copiarEquipeDeOntem(){
   renderTelaAtual();
 }
 
-/* ---------- 5. Abastecimento e horímetro ---------- */
+
 OP.telas.abast = async function(){
   const s = OP.snap, box = $("op-abast-conteudo");
   const ed = diaEditavel();
@@ -196,7 +196,7 @@ async function abastSalvar(){
   renderTelaAtual();
 }
 
-/* ---------- Eventos ---------- */
+
 document.addEventListener("click", async (ev) => {
   const el = ev.target.closest("button");
   if(!el || el.disabled) return;

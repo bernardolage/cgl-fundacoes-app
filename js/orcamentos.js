@@ -1,9 +1,9 @@
-/* ====================================================================
-   Módulo: Orçamentos
-   Layout: padrão Serviços + Odoo. Ver memória feedback-padrao-ui.
-   Fluxo: rascunho → enviado → em_negociacao → aprovado / rejeitado/cancelado.
-   Mantida lógica de itens via catálogo de serviços + cálculo de total.
-   ==================================================================== */
+
+
+
+
+
+
 
 let _orcamentos = [];
 let _orcView    = "lista";
@@ -11,10 +11,10 @@ let orcEditId   = null;
 
 const ORC_STAGES = ["rascunho","enviado","em_negociacao","aprovado"];
 
-/* Lote S57b (#211): quem grava orçamento. Espelha orcamentos_write do banco (has_role comercial, diretor pelo
-   has_role, ou o módulo extra "orcamentos"); o auditor nunca. Quem só tem o extra "orcamentos_leitura" (Pedro e
-   Sergio) abre a tela para ler: botões de gravação escondidos, campos travados, statusbar e kanban sem ação.
-   Hotfix admin fora do comercial (11/11/2026, decisão da diretoria): o admin saiu daqui e da policy. */
+
+
+
+
 function orcPodeEditar(){
   if(!usuarioAtual || ehSomenteLeitura()) return false;
   return ["diretor", "comercial"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
@@ -22,7 +22,7 @@ function orcPodeEditar(){
 const ORC_BOTOES_ESCRITA = ["btn-novo-orcamento", "btn-salvar-orc", "btn-excluir-orc", "btn-orc-nova-revisao",
   "btn-orc-criar-obra", "btn-orc-itens-padrao", "btn-add-item", "btn-orc-novo-cliente", "btn-orc-sim-usar", "btn-orc-enviar",
   "btn-orc-whatsapp"];
-/* Só trava quando não pode editar; para quem edita os botões seguem as regras de exibição de cada um. */
+
 function orcAplicarModoLeitura(){
   const pode = orcPodeEditar();
   const faixa = $("orc-aviso-leitura");
@@ -33,8 +33,8 @@ function orcAplicarModoLeitura(){
     .forEach(el => { el.disabled = true; });
   document.querySelectorAll("#orc-itens .btn-rem, #orc-itens .it-cat-all, #orc-itens .btn-ordem").forEach(b => { b.style.display = "none"; });
 }
-/* lote S65-e (#317): as setas de ordem só aparecem para quem edita e com o orçamento em rascunho (aprovado não reordena).
-   A ordem é a posição da linha: salvarOrcamento grava orcamento_itens.ordem 1..n e a proposta lê .order("ordem"). */
+
+
 function orcAtualizarSetasOrdem(st){
   const ok = orcPodeEditar() && (st || $("orc-status")?.value || "rascunho") === "rascunho";
   document.querySelectorAll("#orc-itens .btn-ordem").forEach(b => { b.hidden = !ok; });
@@ -47,33 +47,33 @@ function orcMoverItem(tr, passo){
   recalcularOrc();
 }
 
-/* ---------- Cache do catálogo ---------- */
+
 let _orcCatOptions  = '<option value="">— item livre (digitar) —</option>';
 let _orcVarById     = {};
 let _orcServUnidade = {};
-let _orcServObs     = {};   // servico_id -> observação padrão do item (fase 40: vira "Obs: Item N - …")
-let _orcServNota    = {};   // servico_id -> nota interna do catálogo (só dica na tela; nunca vai para a observação)
-let _orcServByCod   = {};   // codigo do serviço -> serviço
-let _orcVarByCod    = {};   // codigo da variante -> variante
+let _orcServObs     = {};
+let _orcServNota    = {};
+let _orcServByCod   = {};
+let _orcVarByCod    = {};
 let _orcPrecos      = {};
-let _orcServAgrupado = {};  // chamado #2: servico_id -> true quando as variantes ativas têm o mesmo preço (1 opção só)
+let _orcServAgrupado = {};
 
-let _orcServicos  = [];   // serviços ativos com o "eixo" (helice/raiz/trado/secante/null=comum)
-let _orcServById  = {};   // servico_id -> serviço (lote S44)
-let _orcVariantes = [];   // variantes ativas com tipo_obra, porte, faixa_prof, unidade própria e eixo pelo nome (lote S44)
-let _orcMetodos   = {};   // lote S44 (L3, #63): orcamento_id -> Set de eixos dos itens (orçamento misto filtra por cada método)
+let _orcServicos  = [];
+let _orcServById  = {};
+let _orcVariantes = [];
+let _orcMetodos   = {};
 let _orcCatFiltro = { tipoProp: "helice", tipoObra: "convencional", porte: "", faixa: "" };
 
 const ORC_PORTE_LBL = { pequeno: "Pequeno porte", medio: "Médio porte", grande: "Grande porte" };
 const ORC_FAIXA_LBL = { ate18: "até 18 m", "18a24": "18 a 24 m", "24a30": "24 a 30 m", mais30: "> 30 m" };
 const ORC_TIPO_LBL  = { helice: "Hélice", trado: "Trado", raiz: "Raiz", secante: "Secante", outro: "Outro" };
-// lote S44 (L3, #63): filtro "Método" do painel (terminologia da UI: Hélice contínua, Hélice secante, Estaca raiz, Trado)
+
 const ORC_METODO_LBL = { helice: "Hélice contínua", secante: "Hélice secante", raiz: "Estaca raiz", trado: "Trado" };
 
-/* lote S44 (L4, #66): o número do orçamento é "NNNN/AAAA". O ano é reconhecido no que foi digitado
-   ("8832/2026", "6114-2025", "7526-2025-E2", "4599-2023-A") e só entra quando não está lá; a proposta
-   e o nome do PDF mostram "NNNN / AAAA" uma vez só (antes "8827/2026" virava "88272026 / 2026"); a
-   busca do painel casa com e sem o ano. Um token "20xx" sozinho é número, não ano. */
+
+
+
+
 function orcNumeroPartes(numero, dataOrcamento){
   const bruto  = String(numero || "").trim().toUpperCase().replace(/^ORC[-\s_]*/, "");
   const tokens = bruto.split(/[\/\-\s_]+/).filter(Boolean);
@@ -85,21 +85,21 @@ function orcNumeroPartes(numero, dataOrcamento){
   const anoData = dataOrcamento ? String(dataOrcamento).slice(0, 4) : String(new Date().getFullYear());
   return { num: tokens.join("-"), ano: ano || anoData, temAno: !!ano, bruto };
 }
-// "8832 / 2026" (proposta); número vazio vira "0000 / AAAA" como antes
+
 function orcNumeroExibicao(numero, dataOrcamento){
   const p = orcNumeroPartes(numero, dataOrcamento);
   return `${p.num || "0000"} / ${p.ano}`;
 }
-// gravação: acrescenta "/AAAA" (ano da data do orçamento) só quando o número digitado não tem ano
+
 function orcNumeroNormalizado(numero, dataOrcamento){
   const p = orcNumeroPartes(numero, dataOrcamento);
   if(!p.bruto) return "";
   return p.temAno ? String(numero).trim() : `${p.num}/${p.ano}`;
 }
-/* lote S44 (L8, #65, decisão do Bernardo em 19/10): o ISS "por dentro" é calculado num ponto só, usado pela
-   ficha, pela lista, pelo kanban e pela proposta (js/propostas.js): iss = subtotal × p/(100−p), como na RG 11.8;
-   `iss_por_dentro` desmarcado = ISS não compõe o total (chamado #18). `valor_total` no banco continua sem ISS
-   (é o que vai para obras_financeiro e para a medição); o que muda é o valor exibido. */
+
+
+
+
 function orcIssSobre(subtotal, o){
   const p  = Number((o && o.iss_percentual) ?? 0);
   const pd = !o || o.iss_por_dentro !== false;
@@ -110,7 +110,7 @@ function orcTotalComIss(o){
   return sub + orcIssSobre(sub, o);
 }
 
-// busca do painel: "8832", "8832/2026", "8832 2026" e "2026" acham "8832/2026"
+
 function orcNumeroCasa(numero, termo){
   const t = String(termo || "").trim().toLowerCase();
   if(!t) return true;
@@ -122,20 +122,20 @@ function orcNumeroCasa(numero, termo){
   return pn.num.toLowerCase().includes(pt.num.toLowerCase());
 }
 
-/* Fase 40: itens que não podem faltar em cada modelo de proposta (pedido do comercial).
-   qtd 0 sai como "-" na proposta (igual à RG 11.8). `var` fixa a variante; sem `var`,
-   entra a primeira variante que passa no filtro do Modelo (tipo de obra, porte, faixa). */
-// lote S45 (L10, decisão do Bernardo em 19/10): alimentação no canteiro (VRB.ALC.SERV, variante ALC-MES, migration
-// 20261020_loteS45_alimentacao_canteiro) entra como item de preço quando o adicional "CGL fornece alimentação" está
-// marcado, como diesel e hospedagem; a linha de encargos da proposta (S44, L7) continua.
-// lote S50 (#157, Frederico): a hélice traz o jogo adicional de trado (qtd 0: o comercial preenche quando passar de 3
-// jogos) e a secante passa a ter lista própria (a da hélice + gabarito); antes `secante` era o mesmo objeto da hélice.
-// lote S50 (#158): a raiz traz compressor e gerador, mobilização (qtd 1) e mensal (qtd 0). `fim` escolhe, entre as
-// variantes que passam no filtro do Modelo (tipo de obra), a de código terminado assim: convencional → LOC-CO-EXT-MOB
-// e LOC-CO-EXT-MES, industrial → as IND (sem variante do tipo de obra, a primeira, como na mobilização de raiz).
-// fase 157b (decisão 2, confirmada em 11/11): a linha única "Mob./Desmob." dá lugar a duas, Mobilização (`perna: "ida"`) e
-// Desmobilização (`perna: "volta"`), nos quatro modelos; `perna` casa com servico_variantes.perna. A variante antiga
-// continua no catálogo por um mês, fora do padrão (sem `perna`, não casa com estas linhas).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const ITENS_PADRAO_ORC = {
   helice: [
     { serv: "MOB.HC.SERV", perna: "ida", qtd: 1 },
@@ -174,41 +174,41 @@ const ITENS_PADRAO_ORC = {
   ],
   outro: []
 };
-// secante usa mobilização/fat. mínimo/bomba de hélice; lote S50 (#157): lista própria, com o gabarito só nela
+
 ITENS_PADRAO_ORC.secante = ITENS_PADRAO_ORC.helice.concat([{ serv: "INS.GAB.SERV", var: "GAB-SEC" }]);
-// variante do item padrão: fixa (`var`) ou, com `fim`, a de código terminado assim; com `perna` (fase 157b), só a
-// variante daquela perna
+
+
 function _orcPadraoCasaVar(d, v){
   const cod = String(v?.codigo || "");
   return (!d.var || d.var === cod) && (!d.fim || cod.endsWith(d.fim)) && (!d.perna || v?.perna === d.perna);
 }
-// lote S50 (#157): variante fixa de um item padrão do modelo nunca some do select por eixo ("Mobilização de jogo
-// adicional de trado" tem "trado" no nome e o filtro de eixo da variante a escondia na hélice e na secante)
+
+
 function _orcVarPadraoFixa(tipoProp, v){
   return !!(tipoProp && v && v.codigo) && (ITENS_PADRAO_ORC[tipoProp] || []).some(d => d.var && d.var === v.codigo);
 }
 
-// Chamado #3 (Thales, 15/09/2026): eixo do serviço de execução pelo servicos.tipo_estaca
-// (helice → helice_continua/hsa; trado → escavada/strauss; raiz → raiz; secante → secante).
-// Serviços auxiliares (tipo_estaca nulo: mobilizações, locações, diesel, verbas…) seguem a
-// classificação por caminho da categoria + nome que já existia (fase 40) — assim
-// "Mobilização Raiz" continua fora de uma proposta de hélice; o que não tem eixo nenhum
-// (diárias, verbas, insumos comuns) fica sempre visível. Quando a planilha do Thales
-// classificar os auxiliares por tipo de proposta, esse mapeamento entra aqui.
+
+
+
+
+
+
+
 const EIXO_POR_TIPO_ESTACA = { helice_continua: "helice", hsa: "helice", escavada: "trado", strauss: "trado", raiz: "raiz", secante: "secante" };
 function _eixoServicoOrc(texto, tipoEstaca){
   const t = (texto || "").toLowerCase();
-  if(t.includes("secante")) return "secante"; // "Estaca Hélice Secante" tem tipo_estaca helice_continua
+  if(t.includes("secante")) return "secante";
   if(tipoEstaca && EIXO_POR_TIPO_ESTACA[tipoEstaca]) return EIXO_POR_TIPO_ESTACA[tipoEstaca];
   if(t.includes("hélice") || t.includes("helice")) return "helice";
   if(t.includes("raiz") || t.includes("raíz")) return "raiz";
   if(t.includes("trado") || t.includes("escavad")) return "trado";
-  return null; // comum: diárias, insumos, verbas, bomba/compressor/gerador…
+  return null;
 }
 
 async function prepararCatalogoOrc(){
   const [srv, vrt, prc, cat] = await Promise.all([
-    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao,nota_interna,tipo_estaca,ordem_exibicao").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),   // lote S65-e: ordem padrão do catálogo
+    sb.from("servicos").select("id,codigo,nome,unidade,categoria_id,ativo,observacoes_padrao,nota_interna,tipo_estaca,ordem_exibicao").order("ordem_exibicao", { nullsFirst: false }).order("codigo"),
     sb.from("servico_variantes").select("id,servico_id,codigo,nome,descricao,ativo,tipo_obra,unidade,porte,faixa_prof,faixa_prof_min,faixa_prof_max,perna").order("codigo"),
     sb.from("servico_precos").select("variante_id,preco_referencia,vigente_desde")
       .order("vigente_desde",{ ascending:false }),
@@ -223,8 +223,8 @@ async function prepararCatalogoOrc(){
   };
   _orcServicos  = (srv.data || []).filter(s => s.ativo !== false)
                     .map(s => ({ ...s, eixo: _eixoServicoOrc(caminho(s.categoria_id) + " " + s.nome, s.tipo_estaca) }));
-  // lote S44 (L2, #61): a variante também ganha eixo pelo nome ("Diária Equipe Raiz", "Diesel para
-  // equipamento Raiz"): serviço genérico com variantes por método só mostra as do método da proposta
+
+
   _orcVariantes = (vrt.data || []).filter(v => v.ativo !== false).map(v => ({ ...v, eixo: _eixoServicoOrc(v.nome, null) }));
   _orcServById  = {};
   _orcServicos.forEach(s => { _orcServById[s.id] = s; });
@@ -246,11 +246,11 @@ async function prepararCatalogoOrc(){
   (prc.data || []).forEach(p => {
     if(!(p.variante_id in _orcPrecos)) _orcPrecos[p.variante_id] = p.preco_referencia;
   });
-  // Chamado #2 (Thales, 15/09/2026): serviço com 2+ variantes ativas, todas com preço e o MESMO
-  // preço (ex.: Óleo Diesel S10 — "Diesel p/ Hélice" e "Diesel p/ Raiz", R$ 10,01/L), vira UMA
-  // opção com o nome do serviço. As variantes continuam no banco (22 itens de orçamentos
-  // apontam para elas); ao escolher, grava-se o variante_id da primeira variante que passa
-  // no filtro. Se os preços divergirem no futuro, o seletor volta a separar sozinho.
+
+
+
+
+
   _orcServAgrupado = {};
   _orcServicos.forEach(s => {
     const vars = _orcVariantes.filter(v => v.servico_id === s.id);
@@ -259,10 +259,10 @@ async function prepararCatalogoOrc(){
     if(precos.some(p => p == null)) return;
     if(precos.every(p => Number(p) === Number(precos[0]))) _orcServAgrupado[s.id] = true;
   });
-  _orcCatOptions = montarOpcoesCatalogoOrc(null); // catálogo completo
+  _orcCatOptions = montarOpcoesCatalogoOrc(null);
 }
 
-// Rótulo da variante no seletor: nome do serviço quando as variantes estão agrupadas, senão o nome da variante
+
 function _rotuloVarianteOrc(v){
   if(!v) return "";
   if(_orcServAgrupado[v.servico_id]){
@@ -272,7 +272,7 @@ function _rotuloVarianteOrc(v){
   return v.nome || "";
 }
 
-// Faixa de profundidade da variante em texto curto: "até 18 m", "18 a 24 m", "acima de 30 m"
+
 function _faixaProfTextoOrc(v){
   const num = (x) => (x == null || x === "") ? null : Number(x);
   const min = num(v.faixa_prof_min), max = num(v.faixa_prof_max);
@@ -283,9 +283,9 @@ function _faixaProfTextoOrc(v){
   return `${fmt(min)} a ${fmt(max)} m`;
 }
 
-// Descrição que vai para o item (lote S68-b, #367): a descrição da variante quando preenchida, senão o nome.
-// Quando outra variante ativa do mesmo serviço tem a mesma descrição e esta tem faixa de profundidade, a faixa
-// entra no fim entre parênteses ("Estaca hélice contínua Ø 500mm (24 a 30 m)"). Variantes agrupadas: nome do serviço.
+
+
+
 function _nomeItemCatalogoOrc(v){
   if(!v) return "";
   if(_orcServAgrupado[v.servico_id]) return _rotuloVarianteOrc(v);
@@ -296,8 +296,8 @@ function _nomeItemCatalogoOrc(v){
   return faixa ? `${desc} (${faixa})` : desc;
 }
 
-// Seleciona a variante no select: opção exata; senão a opção agrupada que a contém (o value
-// passa a ser o id guardado no item, preservando o variante_id existente); senão "fora do filtro".
+
+
 function _selecionarVarianteSelect(sel, vid){
   if(!vid){ sel.value = ""; return; }
   if([...sel.options].some(o => o.value === vid)){ sel.value = vid; return; }
@@ -309,30 +309,30 @@ function _selecionarVarianteSelect(sel, vid){
 }
 
 function _servicoVisivelOrc(s, tipoProp, f){
-  // Chamado #11 (Thales, 16/09/2026): diesel e hospedagem só aparecem na aba Itens quando a CGL fornece (aba Adicionais CGL)
+
   const cod = String(s.codigo || "");
   if(f && cod.startsWith("INS.DI") && f.cglDiesel === false) return false;
   if(f && cod.startsWith("VRB.ALH") && f.cglHosp === false) return false;
-  if(f && cod.startsWith("VRB.ALC") && f.cglAlim === false) return false;   // lote S45 (L10): alimentação no canteiro
+  if(f && cod.startsWith("VRB.ALC") && f.cglAlim === false) return false;
   if(!tipoProp || tipoProp === "outro" || !s.eixo) return true;
   if(s.eixo === tipoProp) return true;
-  if(tipoProp === "secante" && s.eixo === "helice") return true; // secante usa mobilização/locação/fat. mínimo de hélice
+  if(tipoProp === "secante" && s.eixo === "helice") return true;
   return false;
 }
 
-// Variantes de um serviço que passam no filtro (tipo de obra, porte, faixa de profundidade).
-// Cada critério só é aplicado se sobrar alguma variante — serviço sem variante do tipo/porte/faixa
-// escolhido mostra todas (ex.: Mão de Obra Extra só tem industrial). Variante sem porte/faixa
-// (nulo) vale para qualquer.
-// lote S44 (L2, #61): eixos de variante aceitos por tipo de proposta. Secante e trado usam a variante de
-// hélice quando não têm a própria (mesma família de equipamento: "Diária Equipe Hélice", "Diesel p/ Hélice").
+
+
+
+
+
+
 const ORC_EIXOS_VARIANTE = { helice: ["helice"], secante: ["secante", "helice"], trado: ["trado", "helice"], raiz: ["raiz"] };
-// lote S49 (#136): a faixa de profundidade nunca esconde um diâmetro. Ø 900 e 1000 só têm preço de 24 a 30 m e acima
-// de 30 m, e Ø 1100 e 1200 só de 24 a 30 m: com o Modelo em "até 18 m" ou "18 a 24 m" o filtro por serviço deixava o
-// select da hélice parar no Ø 800. Agora a faixa vale por diâmetro ("Ø 900mm" no nome; sem Ø, o serviço inteiro é um
-// grupo, como antes): o diâmetro sem a faixa escolhida mostra a faixa mais próxima, marcada "faixa mais próxima" no
-// select, e escolher essa variante avisa para conferir o valor. O porte só existe na mobilização de hélice (conferido em
-// 22/10) e não esconde execução.
+
+
+
+
+
+
 const ORC_FAIXAS = ["ate18", "18a24", "24a30", "mais30"];
 function _orcGrupoFaixa(v){ const m = String(v.nome || "").match(/Ø\s*(\d+)/); return m ? "Ø" + m[1] : "_"; }
 function _orcFaixaAproximada(v, f){ return !!(f && f.faixa && v && v.faixa_prof && v.faixa_prof !== f.faixa); }
@@ -340,9 +340,9 @@ function _variantesFiltradasOrc(s, f){
   let vars = _orcVariantes.filter(v => v.servico_id === s.id);
   if(!vars.length || !f) return vars;
   if(f.tipoProp && f.tipoProp !== "outro"){
-    // variante de outro método nunca aparece (estrito): "Diária Equipe Raiz" some do orçamento de hélice
+
     const ok = ORC_EIXOS_VARIANTE[f.tipoProp] || [f.tipoProp];
-    vars = vars.filter(v => !v.eixo || ok.includes(v.eixo) || _orcVarPadraoFixa(f.tipoProp, v));   // lote S50 (#157)
+    vars = vars.filter(v => !v.eixo || ok.includes(v.eixo) || _orcVarPadraoFixa(f.tipoProp, v));
   }
   if(f.tipoObra){
     const d = vars.filter(v => v.tipo_obra === f.tipoObra || v.tipo_obra === "especial");
@@ -353,7 +353,7 @@ function _variantesFiltradasOrc(s, f){
     if(d.length) vars = d;
   }
   if(f.faixa){
-    // lote S49 (#136): por grupo de diâmetro; variante sem faixa vale para qualquer
+
     const alvo = ORC_FAIXAS.indexOf(f.faixa);
     const dist = (v) => { const i = ORC_FAIXAS.indexOf(v.faixa_prof); return i < 0 || alvo < 0 ? 99 : Math.abs(i - alvo); };
     const grupos = {};
@@ -368,7 +368,7 @@ function _variantesFiltradasOrc(s, f){
   return vars;
 }
 
-// f nulo = catálogo completo; senão { tipoProp, tipoObra, porte, faixa }
+
 function montarOpcoesCatalogoOrc(f){
   let html = '<option value="">— item livre (digitar) —</option>';
   _orcServicos.forEach(s => {
@@ -376,7 +376,7 @@ function montarOpcoesCatalogoOrc(f){
     const vars = _variantesFiltradasOrc(s, f);
     if(!vars.length) return;
     if(_orcServAgrupado[s.id]){
-      // chamado #2: 1 opção com o nome do serviço; value = 1ª variante do filtro; data-grupo = todas as ativas
+
       const todas = _orcVariantes.filter(v => v.servico_id === s.id).map(v => v.id).join(",");
       html += `<optgroup label="${esc(s.nome)}"><option value="${esc(vars[0].id)}" data-grupo="${esc(todas)}">${esc(s.nome)}</option></optgroup>`;
       return;
@@ -385,27 +385,27 @@ function montarOpcoesCatalogoOrc(f){
           + vars.map(v => `<option value="${esc(v.id)}">${esc(v.nome)}${_orcFaixaAproximada(v, f) ? " · faixa mais próxima" : ""}</option>`).join("")
           + `</optgroup>`;
   });
-  return /* html */ html;
+  return   html;
 }
 function _opcoesFiltradasOrc(){ return montarOpcoesCatalogoOrc(_orcCatFiltro); }
 
-// Troca as opções do select preservando o item escolhido (mesmo fora do filtro)
+
 function _trocarOpcoesSelect(sel, html){
   const atual = sel.value;
   sel.innerHTML = html;
   _selecionarVarianteSelect(sel, atual);
 }
 
-// Muda tipo de proposta / tipo de obra / porte / faixa → refaz o select de cada linha (exceto as
-// em "todo o catálogo"). Fase 40: linha cujo item ficou fora do filtro troca sozinha para a variante
-// equivalente do mesmo serviço quando ela é única (ex.: Fat. mínimo 24-30m → até 18m) ou quando
-// só muda o porte e a distância é a mesma (Mob. Grande (até 100km) → Mob. Médio (até 100km)).
+
+
+
+
 function atualizarFiltroCatalogoOrc(){
   _orcCatFiltro = {
     tipoProp: $("orc-tipo-proposta")?.value || "helice",
-    cglDiesel: !!$("orc-cgl-diesel")?.checked,      // chamado #11
-    cglHosp:   !!$("orc-cgl-hospedagem")?.checked,  // chamado #11
-    cglAlim:   !!$("orc-cgl-alimentacao")?.checked, // lote S45 (L10)
+    cglDiesel: !!$("orc-cgl-diesel")?.checked,
+    cglHosp:   !!$("orc-cgl-hospedagem")?.checked,
+    cglAlim:   !!$("orc-cgl-alimentacao")?.checked,
     tipoObra: $("orc-tipo-obra")?.value || "convencional",
     porte:    $("orc-porte")?.value || "",
     faixa:    $("orc-faixa")?.value || ""
@@ -421,20 +421,20 @@ function atualizarFiltroCatalogoOrc(){
     const opt = sel.selectedOptions && sel.selectedOptions[0];
     if(!v || !opt || !opt.textContent.endsWith("· fora do filtro")) return;
     const s = _orcServicos.find(x => x.id === v.servico_id);
-    if(!s || !_servicoVisivelOrc(s, _orcCatFiltro.tipoProp)) return; // mudou o eixo: não troca sozinho
-    // fase 157b: a troca fica na mesma perna (Mobilização não vira Desmobilização nem a linha única)
+    if(!s || !_servicoVisivelOrc(s, _orcCatFiltro.tipoProp)) return;
+
     let cand = _variantesFiltradasOrc(s, _orcCatFiltro).filter(c => c.id !== v.id && (c.perna || null) === (v.perna || null));
-    // lote S50 (#158): compressor/gerador padrão da raiz troca de tipo de obra mantendo mobilização ou mensal
+
     const dP = (ITENS_PADRAO_ORC[_orcCatFiltro.tipoProp] || [])[_orcPadraoIdx(_orcCatFiltro.tipoProp, v)];
     if(dP && dP.fim) cand = cand.filter(c => _orcPadraoCasaVar(dP, c));
     if(cand.length > 1){
-      // mesma distância "(até 100km)" (mobilização por porte) …
+
       const suf = (v.nome.match(/\(([^)]*)\)\s*$/) || [])[1];
       if(suf) cand = cand.filter(c => c.nome.endsWith(`(${suf})`));
     }
     if(cand.length > 1){
-      // … ou mesmo diâmetro em outra faixa ("Hélice Ø 600mm 24 a 30m" → "Hélice Ø 600mm até 18m"; lote S49, #136:
-      // pelo Ø do nome, que também pega "acima de 30m" e a faixa mais próxima do Ø 900+)
+
+
       const g = _orcGrupoFaixa(v);
       let c2 = g !== "_" ? cand.filter(c => c.faixa_prof && _orcGrupoFaixa(c) === g) : [];
       if(!c2.length){
@@ -463,11 +463,11 @@ function atualizarFiltroCatalogoOrc(){
   }
 }
 
-/* Fase 40: adiciona os itens padrão do modelo que ainda não estão no orçamento.
-   Não duplica: compara pela variante e (sem `var`) pelo serviço. */
+
+
 function carregarItensPadraoOrc(silencioso){
   const tipo  = $("orc-tipo-proposta")?.value || "helice";
-  // Chamado #11: diesel e hospedagem só entram como padrão quando a CGL fornece (aba Adicionais CGL); S45 (L10): alimentação idem
+
   const cglDiesel = !!$("orc-cgl-diesel")?.checked, cglHosp = !!$("orc-cgl-hospedagem")?.checked, cglAlim = !!$("orc-cgl-alimentacao")?.checked;
   const lista = (ITENS_PADRAO_ORC[tipo] || []).filter(d => !(d.serv.startsWith("INS.DI") && !cglDiesel) && !(d.serv.startsWith("VRB.ALH") && !cglHosp) && !(d.serv.startsWith("VRB.ALC") && !cglAlim));
   if(!lista.length || !_orcServicos.length) return 0;
@@ -478,12 +478,12 @@ function carregarItensPadraoOrc(silencioso){
     const s = _orcServByCod[d.serv];
     if(!s) return;
     let v = d.var ? _orcVarByCod[d.var] : null;
-    if(!v) v = _variantesFiltradasOrc(s, _orcCatFiltro).find(x => _orcPadraoCasaVar(d, x));   // lote S50 (#158): `fim`
+    if(!v) v = _variantesFiltradasOrc(s, _orcCatFiltro).find(x => _orcPadraoCasaVar(d, x));
     if(!v || presentes.has(v.id)) return;
-    if(d.fim || d.perna){   // lote S50 (#158) e fase 157b: já tem variante do serviço com o mesmo fim ou a mesma perna
-      // (outro tipo de obra, porte ou distância)? não duplica
+    if(d.fim || d.perna){
+
       if([...presentes].some(id => _orcVarById[id]?.servico_id === s.id && _orcPadraoCasaVar({ fim: d.fim, perna: d.perna }, _orcVarById[id]))) return;
-      // orçamento antigo com a linha única "Mob./Desmob." (a que tem as variantes -IDA/-VOLTA): não cobra a perna duas vezes
+
       if(d.perna && [...presentes].some(id => { const x = _orcVarById[id]; return x?.servico_id === s.id && !x.perna && _orcVarByCod[x.codigo + "-IDA"]; })) return;
     } else if(!d.var && servPresentes.has(s.id)) return;
     adicionarItemPreenchido({
@@ -505,17 +505,17 @@ function carregarItensPadraoOrc(silencioso){
   return n;
 }
 
-/* Lote S49 (#134, Frederico): "ao fazer proposta raiz, mobilização e desmobilização não aparecem". A proposta nova nasce
-   como Hélice e já com os itens padrão de hélice; trocar o Tipo de proposta só refiltrava o catálogo, então a
-   Mob./Desmob. Hélice ficava na lista "fora do filtro" e a de raiz (MOB.RZ.SERV), o fat. mínimo e a injeção raiz só
-   entravam pelo botão "Itens padrão". Agora trocar o tipo troca os itens padrão: as linhas padrão do modelo anterior
-   que ninguém mexeu (mesma variante, quantidade padrão, preço de referência e descrição do catálogo) saem, as do modelo
-   novo entram com a variante do tipo de obra escolhido (a distância se escolhe no item: até 100 km, 100-500 km, > 500 km)
-   e os itens padrão sobem para o topo na ordem do modelo. Linha editada fica. "Outro" não tira nada. */
+
+
+
+
+
+
+
 function _orcPadraoIdx(tipo, v){
   const s = v && _orcServById[v.servico_id];
   if(!s) return -1;
-  return (ITENS_PADRAO_ORC[tipo] || []).findIndex(d => d.serv === s.codigo && _orcPadraoCasaVar(d, v));   // lote S50: + `fim`
+  return (ITENS_PADRAO_ORC[tipo] || []).findIndex(d => d.serv === s.codigo && _orcPadraoCasaVar(d, v));
 }
 function orcTrocarModelo(){
   const sel = $("orc-tipo-proposta");
@@ -530,18 +530,18 @@ function orcTrocarModelo(){
   [...corpo.querySelectorAll("tr")].forEach(tr => {
     const v = _orcVarById[tr.querySelector(".it-cat")?.value];
     const iAnt = _orcPadraoIdx(ant, v);
-    if(iAnt < 0 || _orcPadraoIdx(novo, v) >= 0) return;   // não é padrão do anterior, ou é dos dois (platô, hospedagem…)
+    if(iAnt < 0 || _orcPadraoIdx(novo, v) >= 0) return;
     const d = ITENS_PADRAO_ORC[ant][iAnt];
     const qtd = Number(tr.querySelector(".it-qtd")?.value || 0);
     const vu = Number(tr.querySelector(".it-vu")?.value || 0);
     const ref = _orcPrecos[v.id] != null ? Number(_orcPrecos[v.id]) : 0;
     const desc = (tr.querySelector(".it-desc")?.value || "").trim();
-    if(qtd === Number(d.qtd || 0) && Math.abs(vu - ref) < 0.005 && (desc === _nomeItemCatalogoOrc(v) || desc === (v.nome || ""))){ tr.remove(); removidos++; }   // lote S68-b: o nome também vale (item padrão gravado antes da troca)
+    if(qtd === Number(d.qtd || 0) && Math.abs(vu - ref) < 0.005 && (desc === _nomeItemCatalogoOrc(v) || desc === (v.nome || ""))){ tr.remove(); removidos++; }
     else mantidos++;
   });
   const n = carregarItensPadraoOrc(true);
   if(removidos || n){
-    // itens padrão do modelo novo no topo, na ordem do modelo; o resto na ordem em que estava
+
     const linhas = [...corpo.querySelectorAll("tr")].map((tr, i) => {
       const k = _orcPadraoIdx(novo, _orcVarById[tr.querySelector(".it-cat")?.value]);
       return { tr, i, k: k < 0 ? Infinity : k };
@@ -564,7 +564,7 @@ function definirTipoObraOrc(valor){
   atualizarFiltroCatalogoOrc();
 }
 
-// Validade (data) = data do orçamento + validade em dias (aba Modelo). Continua editável.
+
 function recalcularValidadeOrc(){
   const d = $("orc-data")?.value;
   const dias = Number($("orc-validade-dias")?.value || 0);
@@ -574,22 +574,22 @@ function recalcularValidadeOrc(){
   alvo.value = dataLocalISO(new Date(y, m - 1, dd + dias));
 }
 
-/* ---------- Carga ---------- */
+
 async function carregarOrcamentos(){
   if(Object.keys(_orcVarById).length === 0){
-    try { await prepararCatalogoOrc(); } catch(_){ /* segue */ }
+    try { await prepararCatalogoOrc(); } catch(_){   }
   }
   const COLS = "id,numero,numero_revisao,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade,iss_percentual,iss_por_dentro";
   const ler = (cols) => sb.from("orcamentos").select(cols).order("data_orcamento",{ ascending:false });
-  const pRetornos = orcCarregarRetornos();   // fase 187c: retorno em aberto de cada orçamento (filtro "Retornos da semana")
+  const pRetornos = orcCarregarRetornos();
   let [{ data, error }, itensEixo] = await Promise.all([ler(COLS + ",concorrencia"), orcBuscarItensEixo()]);
-  // lote S47 (#111): antes da migration 20261022_loteS47 a coluna não existe; lê sem ela e o campo fica escondido
+
   if(error && /concorrencia/i.test(error.message || "")) ({ data, error } = await ler(COLS));
   else if(!error) _orcTemConcorrencia = true;
-  _orcamentos = orcSoVigentes(error ? [] : (data || []));   // lote S64-b: uma linha por número; as outras revisões ficam na aba Revisões
+  _orcamentos = orcSoVigentes(error ? [] : (data || []));
   orcAtualizarConcorrencias();
-  // lote S44 (L3, #63): métodos de cada orçamento = tipo da proposta + eixo dos serviços dos itens
-  // (orçamento misto aparece em cada método que tiver)
+
+
   _orcMetodos = {};
   itensEixo.forEach(it => {
     const eixo = _orcEixoVariante(it.variante_id);
@@ -598,9 +598,9 @@ async function carregarOrcamentos(){
   });
   _orcRetornos = await pRetornos;
   renderOrcamentos();
-  if(typeof psiAtualizarBadge === "function") psiAtualizarBadge();   // fase 195c: contador da aba "Pedidos do site"
+  if(typeof psiAtualizarBadge === "function") psiAtualizarBadge();
 
-  // Select de orçamento de origem na aba Contrato da obra (fase 21)
+
   const aprov = _orcamentos.filter(o => ["aprovado","enviado","em_negociacao"].includes(o.status));
   const selectObrOrc = $("obr-con-orcamento");
   if(selectObrOrc){
@@ -611,8 +611,8 @@ async function carregarOrcamentos(){
   }
 }
 
-/* lote S64-b (#289): várias revisões do mesmo número. O painel, o kanban e as contagens mostram só a vigente de cada
-   número: a aprovada, se houver; senão a maior revisão. As demais abrem pela aba Revisões da ficha. */
+
+
 const orcRevNum = (o) => parseInt(o && o.numero_revisao, 10) || 0;
 function orcSoVigentes(lista){
   const porNum = new Map();
@@ -624,11 +624,11 @@ function orcSoVigentes(lista){
     if(aprovO !== aprovA ? aprovO : orcRevNum(o) > orcRevNum(atual)) porNum.set(k, o);
   });
   const vig = new Set(porNum.values());
-  return lista.filter(o => vig.has(o));   // mantém a ordem da consulta
+  return lista.filter(o => vig.has(o));
 }
 const orcRevTxt = (o) => orcRevNum(o) > 0 ? ` · Rev ${String(o.numero_revisao).trim()}` : "";
 
-/* lote S44 (L3): itens com variante de todos os orçamentos, em páginas de 1000 (limite do PostgREST) */
+
 async function orcBuscarItensEixo(){
   const out = [], passo = 1000;
   for(let de = 0; ; de += passo){
@@ -640,7 +640,7 @@ async function orcBuscarItensEixo(){
   }
   return out;
 }
-// eixo de uma variante: o dela (pelo nome) ou o do serviço
+
 function _orcEixoVariante(vid){
   const v = _orcVarById[vid];
   if(!v) return null;
@@ -648,7 +648,7 @@ function _orcEixoVariante(vid){
   const s = _orcServById[v.servico_id];
   return s ? (s.eixo || null) : null;
 }
-// o orçamento "tem" o método quando é o tipo da proposta ou algum item é daquele eixo
+
 function orcTemMetodo(o, metodo){
   if(!metodo) return true;
   if(o.tipo_proposta === metodo) return true;
@@ -656,13 +656,13 @@ function orcTemMetodo(o, metodo){
   return !!(m && m.has(metodo));
 }
 
-/* ---------- Lote S47 (#111): concorrência ----------
-   orcamentos.concorrencia = empreendimento do cliente final (ex.: "Vale – Ramal João Paulo – Itabira/MG"). Várias
-   construtoras pedem proposta para a mesma obra: cada uma tem a sua proposta e o seu número; a concorrência só junta.
-   Campo na aba Modelo com as já usadas (datalist); ao escolher uma existente, os campos comuns vazios do Modelo vêm
-   da proposta mais recente dela. Filtro e agrupamento no painel ("3 propostas · 1 aprovada"). */
+
+
+
+
+
 let _orcTemConcorrencia = false;
-let _orcConcorrencias = [];   // [{ nome, propostas, aprovadas }] por nome (sem diferença de maiúsculas)
+let _orcConcorrencias = [];
 const ORC_CONC_AGRUPAR = "__agrupar";
 const orcConcChave = (s) => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
 function orcAtualizarConcorrencias(){
@@ -671,7 +671,7 @@ function orcAtualizarConcorrencias(){
     const k = orcConcChave(o.concorrencia);
     if(!k) return;
     const g = mapa[k] || (mapa[k] = { nome: String(o.concorrencia).trim(), numeros: new Set(), aprov: new Set() });
-    g.numeros.add(o.numero || o.id);   // revisões do mesmo número contam como uma proposta
+    g.numeros.add(o.numero || o.id);
     if(o.status === "aprovado") g.aprov.add(o.numero || o.id);
   });
   _orcConcorrencias = Object.values(mapa).map(g => ({ nome: g.nome, propostas: g.numeros.size, aprovadas: g.aprov.size }))
@@ -684,7 +684,7 @@ function orcAtualizarConcorrencias(){
   if(fc) fc.style.display = _orcTemConcorrencia ? "" : "none";
 }
 const orcConcResumo = (g) => `${g.propostas} proposta${g.propostas === 1 ? "" : "s"} · ${g.aprovadas} aprovada${g.aprovadas === 1 ? "" : "s"}`;
-// escolheu uma concorrência já usada: grafia dela e campos comuns vazios da proposta mais recente
+
 async function orcAoEscolherConcorrencia(){
   const el = $("orc-concorrencia");
   if(!el || !_orcTemConcorrencia) return;
@@ -706,7 +706,7 @@ async function orcAoEscolherConcorrencia(){
   preencher("orc-local", o.local_execucao);
 }
 
-/* ---------- Lote S47 (#112): ordenação pelo cabeçalho (ordenarTabela, core.js) ---------- */
+
 const _orcOrdem = ordenarTabela({
   numero:   { tipo: "num",   valor: o => { const p = orcNumeroPartes(o.numero, o.data_orcamento); const n = parseInt(p.num, 10); return Number.isFinite(n) ? Number(p.ano) * 1e6 + n : null; } },
   cliente:  { tipo: "texto", valor: o => mapaClientes[o.cliente_id] || "" },
@@ -718,15 +718,15 @@ const _orcOrdem = ordenarTabela({
   concorrencia: { tipo: "texto", valor: o => o.concorrencia || "" }
 }, { chave: "orc-ordem" });
 
-/* ---------- Filtros ---------- */
+
 function orcFiltrados(){
   const termo = ($("orc-busca")?.value || "").trim().toLowerCase();
   const fStat  = $("orc-f-status")?.value || "";
   const fCli   = $("orc-f-cliente")?.value || "";
   const fPorte = $("orc-f-porte")?.value || "";
   const fMet   = $("orc-f-metodo")?.value || "";
-  const fConc  = $("orc-f-conc")?.value || "";   // lote S47 (#111)
-  const fRet   = $("orc-f-retorno")?.value || "";   // fase 187c: "semana" = retorno em aberto até domingo, vencidos inclusive
+  const fConc  = $("orc-f-conc")?.value || "";
+  const fRet   = $("orc-f-retorno")?.value || "";
   const fimSem = fRet === "semana" ? orcFimDaSemanaISO() : "";
   return _orcamentos.filter(o => {
     if(fRet === "semana" && !(_orcRetornos[o.id] && _orcRetornos[o.id] <= fimSem)) return false;
@@ -737,7 +737,7 @@ function orcFiltrados(){
     if(fConc && fConc !== ORC_CONC_AGRUPAR && orcConcChave(o.concorrencia) !== fConc) return false;
     if(termo){
       const cli = (mapaClientes[o.cliente_id] || "").toLowerCase();
-      // lote S44 (L4): com e sem o ano; lote S47: a busca também acha pela concorrência
+
       if(!(orcNumeroCasa(o.numero, termo) || cli.includes(termo) || orcConcChave(o.concorrencia).includes(termo))) return false;
     }
     return true;
@@ -754,12 +754,12 @@ function preencherFiltrosOrc(){
     selPorte.innerHTML = `<option value="">Todos os portes</option>` +
       Object.entries(ORC_PORTE_LBL).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
   }
-  const selMet = $("orc-f-metodo");   // lote S44 (L3, #63)
+  const selMet = $("orc-f-metodo");
   if(selMet && !selMet.options.length){
     selMet.innerHTML = `<option value="">Todos os métodos</option>` +
       Object.entries(ORC_METODO_LBL).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
   }
-  const selConc = $("orc-f-conc");   // lote S47 (#111): agrupar ou escolher uma concorrência
+  const selConc = $("orc-f-conc");
   if(selConc){
     const atual = selConc.value;
     selConc.innerHTML = `<option value="">Todas as concorrências</option><option value="${ORC_CONC_AGRUPAR}">Agrupar por concorrência</option>` +
@@ -768,7 +768,7 @@ function preencherFiltrosOrc(){
   }
   const selCli = $("orc-f-cliente");
   if(selCli){
-    const atual = selCli.value; // preserva a seleção (o render roda a cada tecla)
+    const atual = selCli.value;
     const lista = Object.entries(mapaClientes).map(([id, nome]) => ({ id, nome }));
     selCli.innerHTML = `<option value="">Todos os clientes</option>` +
       lista.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
@@ -776,11 +776,11 @@ function preencherFiltrosOrc(){
   }
 }
 
-/* ---------- Render ---------- */
-// "Hélice · Grande porte · 24 a 30 m" (o que estiver preenchido)
+
+
 function _orcTipoPorteTxt(o){
-  // lote S44 (L3): orçamento misto mostra os outros métodos dos itens ("Hélice · … · + Raiz");
-  // o apoio de hélice em secante e trado não conta como outro método
+
+
   const apoio = ORC_EIXOS_VARIANTE[o.tipo_proposta] || [o.tipo_proposta];
   const extras = [...(_orcMetodos[o.id] || [])].filter(m => !apoio.includes(m)).map(m => "+ " + (ORC_TIPO_LBL[m] || m));
   return [ORC_TIPO_LBL[o.tipo_proposta] || "", ORC_PORTE_LBL[o.porte_equipamento], ORC_FAIXA_LBL[o.faixa_profundidade], ...extras]
@@ -788,7 +788,7 @@ function _orcTipoPorteTxt(o){
 }
 
 function renderOrcamentos(){
-  // fase 195c: aba "Pedidos do site" (js/pedidos-site.js) no lugar da lista; sem pode_ler_comercial a aba some
+
   const podePsi = typeof psiPodeLer === "function" && psiPodeLer();
   if(_orcView === "pedidos_site" && !podePsi) _orcView = "lista";
   if(typeof psiMostrarAba === "function") psiMostrarAba(_orcView === "pedidos_site");
@@ -797,7 +797,7 @@ function renderOrcamentos(){
   const dados = orcFiltrados();
   const cont = $("orc-contador");
   if(cont) cont.textContent = `${dados.length} de ${_orcamentos.length}`;
-  const btnNovo = $("btn-novo-orcamento");   // lote S57b (#211)
+  const btnNovo = $("btn-novo-orcamento");
   if(btnNovo) btnNovo.style.display = orcPodeEditar() ? "" : "none";
   if(_orcView === "kanban") renderOrcKanban(dados);
   else                       renderOrcLista(dados);
@@ -812,7 +812,7 @@ function renderOrcLista(dados){
     cont.innerHTML = `<p class="vazio">Nenhum orçamento encontrado.</p>`;
     return;
   }
-  const comConc = _orcTemConcorrencia;   // lote S47 (#111): coluna Concorrência depois da migration
+  const comConc = _orcTemConcorrencia;
   const nCols = comConc ? 8 : 7;
   const linha = (o) => `<tr class="linha-clicavel" data-id="${esc(o.id)}">
     <td>${esc(o.numero)}${esc(orcRevTxt(o))}${_orcRetornos[o.id] ? ` <span class="meta" title="Próximo retorno ao cliente (aba Negociação)">· retorno ${dataBR(_orcRetornos[o.id])}</span>` : ""}</td>
@@ -824,7 +824,7 @@ function renderOrcLista(dados){
     <td>${tagStatus("orcamento", o.status)}</td>
     <td class="num" title="Total da proposta, com ISS por dentro (sem ISS: ${brl(o.valor_total)})">${brl(orcTotalComIss(o))}</td>
   </tr>`;
-  // lote S47 (#112): ordenação pelo cabeçalho; (#111) agrupada quando o filtro pede uma concorrência ou o agrupamento
+
   const ordenados = _orcOrdem.aplicar(dados);
   const fConc = $("orc-f-conc")?.value || "";
   let corpo;
@@ -842,12 +842,12 @@ function renderOrcLista(dados){
       return `<tr class="orc-grupo-conc"><td colspan="${nCols}">${esc(rot)}</td></tr>` + grupos.get(k).map(linha).join("");
     }).join("");
   } else corpo = ordenados.map(linha).join("");
-  const th = (col, rot, extra) => /* html */ _orcOrdem.th(col, rot, extra);
+  const th = (col, rot, extra) =>   _orcOrdem.th(col, rot, extra);
   cont.innerHTML = `<div class="tabela-rola"><table>
     <thead><tr>
       ${th("numero", "Número")}${th("cliente", "Cliente")}${comConc ? th("concorrencia", "Concorrência") : ""}${th("tipo", "Tipo · Porte")}${th("data", "Data")}${th("validade", "Validade")}${th("status", "Status")}${th("valor", "Valor c/ ISS", { cls: "num", title: "Total da proposta com ISS por dentro (lote S44, #65)" })}
     </tr></thead>
-    <tbody>${/* html */ corpo}</tbody></table></div>`;
+    <tbody>${  corpo}</tbody></table></div>`;
 }
 
 function renderOrcKanban(dados){
@@ -875,7 +875,7 @@ function renderOrcKanban(dados){
     </div>`;
   }).join("");
   cont.innerHTML = `<div class="serv-kanban">${colunas}</div>`;
-  if(!orcPodeEditar()) return;   // lote S57b (#211): só leitura não arrasta
+  if(!orcPodeEditar()) return;
   habilitarDragKanban({
     container: "#orc-conteudo .serv-kanban",
     tabela: "orcamentos",
@@ -883,35 +883,35 @@ function renderOrcKanban(dados){
   });
 }
 
-/* ---------- Painel <-> Ficha ---------- */
+
 function mostrarPainelOrc(){
   $("orc-painel").style.display = "";
   $("orc-ficha").style.display = "none";
   orcEditId = null;
 }
 
-/* ====================================================================
-   Fase 174b: orçamento montado pelo assistente (D7, D10, D12)
-   preencherOrcamentoDoAssistente abre um orçamento NOVO com os dados, flags e itens do resumo do assistente (texto da
-   proposta fica o padrão: D7a). Nada é gravado até Salvar; ao salvar grava assistente_conversa_id e liga os arquivos da
-   conversa ao orçamento (copia de <uid>/pendente/<conversa>/ para <orcamento_id>/ e registra em orcamento_arquivos).
-   ==================================================================== */
+
+
+
+
+
+
 const ORC_BUCKET_ARQ = "orcamentos-arquivos";
 const ORC_TIPO_ARQ_LBL = { projeto: "Projeto", sondagem: "Sondagem", planilha: "Planilha", pedido: "Pedido/e-mail" };
-let _orcAssistente = null;   // { conversa_id, arquivos } até salvar o orçamento montado pelo assistente
+let _orcAssistente = null;
 function orcLimparAssistente(){
   _orcAssistente = null;
-  if(typeof psiLimparPendente === "function") psiLimparPendente();   // fase 195c: pedido do site do "Criar orçamento"
+  if(typeof psiLimparPendente === "function") psiLimparPendente();
   const f = $("orc-aviso-assistente"); if(f) f.style.display = "none";
 }
-/* cabeçalho da ficha: o chip do cliente segue o select (antes só mudava ao abrir um orçamento salvo ou pelo cadastro rápido) */
+
 function orcAtualizarChipCliente(){
   const chip = $("orc-ficha-cliente-chip"), sel = $("orc-cliente");
   if(chip && sel) chip.textContent = (sel.value && (mapaClientes[sel.value] || sel.options[sel.selectedIndex]?.text)) || "—";
 }
 async function preencherOrcamentoDoAssistente(r, origem){
   if(!r || !irParaSecao("orcamentos")) return;
-  await carregarOrcamentos();   // catálogo e número sugerido
+  await carregarOrcamentos();
   novoOrcamento();
   _orcAssistente = { conversa_id: origem?.conversa_id || null, arquivos: Array.isArray(origem?.arquivos) ? origem.arquivos : [] };
   const set = (id, v) => { const el = $(id); if(el && v != null && v !== "") el.value = v; };
@@ -941,7 +941,7 @@ async function preencherOrcamentoDoAssistente(r, origem){
   if((r.pagamento_forma || r.prazo_pagamento_dias) && typeof textoPagamentoPadrao === "function"){
     $("orc-pagamento").value = textoPagamentoPadrao(Number($("orc-prazo-pagamento")?.value) || 15, $("orc-pagamento-forma")?.value || "deposito");
   }
-  // método: troca o modelo (filtro do catálogo) e depois põe só os itens do resumo
+
   setSel("orc-tipo-proposta", r.tipo_proposta);
   orcTrocarModelo();
   atualizarFiltroCatalogoOrc();
@@ -950,17 +950,17 @@ async function preencherOrcamentoDoAssistente(r, origem){
     const v = x.variante_id ? _orcVarById[x.variante_id] : null;
     adicionarItemPreenchido({
       variante_id: v ? v.id : null,
-      descricao: (x.descricao || "").trim() || (v ? _nomeItemCatalogoOrc(v) : ""),   // lote S68-b: a descrição do resumo fica; catálogo só quando vazia
+      descricao: (x.descricao || "").trim() || (v ? _nomeItemCatalogoOrc(v) : ""),
       quantidade: Number(x.quantidade) || 0,
       unidade: x.unidade || (v && (v.unidade || _orcServUnidade[v.servico_id])) || "un",
       valor_unitario: x.valor_unitario != null ? Number(x.valor_unitario) : 0,
-      observacao: (v && _orcServObs[v.servico_id]) || ""   // observação padrão do catálogo, como no item escolhido à mão
+      observacao: (v && _orcServObs[v.servico_id]) || ""
     });
   });
   recalcularOrc();
   const faixa = $("orc-aviso-assistente"); if(faixa) faixa.style.display = "";
   ativarTabOrc("itens");
-  // cliente fora do cadastro: o cadastro rápido (BrasilAPI) abre com o nome e o CNPJ do pedido
+
   if(!r.cliente?.id && orcPodeCadastrarCliente()){
     orcAbrirNovoCliente();
     set("orc-cli-nome", r.cliente?.nome);
@@ -968,7 +968,7 @@ async function preencherOrcamentoDoAssistente(r, origem){
   }
   aviso("app-aviso", "Orçamento montado pelo assistente: confira e clique em Salvar. Nada foi gravado.", "aviso");
 }
-/* arquivos da conversa → orçamento salvo; devolve quantos falharam */
+
 async function orcLigarArquivosAssistente(orcId, arquivos){
   let falhas = 0;
   for(const a of arquivos || []){
@@ -982,7 +982,7 @@ async function orcLigarArquivosAssistente(orcId, arquivos){
   }
   return falhas;
 }
-/* aba Arquivos da ficha (D10) */
+
 async function carregarArquivosOrc(orcId){
   const cont = $("orc-arquivos-conteudo");
   if(!cont) return;
@@ -1003,7 +1003,7 @@ async function orcAbrirArquivo(caminho){
   if(error || !data?.signedUrl){ aviso("app-aviso", "Não foi possível abrir o arquivo: " + (error?.message || ""), "erro"); return; }
   window.open(data.signedUrl, "_blank", "noopener");
 }
-/* D12: obra criada do orçamento leva os arquivos para os documentos da obra (bucket obras-documentos) */
+
 async function orcCopiarArquivosParaObra(orc, obraId){
   const { data: arqs, error } = await sb.from("orcamento_arquivos").select("tipo,caminho,nome,tamanho_bytes").eq("orcamento_id", orc.id);
   if(error || !arqs?.length) return "";
@@ -1029,9 +1029,9 @@ async function orcCopiarArquivosParaObra(orc, obraId){
 
 function novoOrcamento(){
   orcEditId = null;
-  orcLimparAssistente();   // fase 174b
+  orcLimparAssistente();
   carregarArquivosOrc(null);
-  // limpa form
+
   ["orc-numero","orc-cliente","orc-descricao","orc-validade","orc-responsavel","orc-obs",
    "orc-ref-obra","orc-escopo","orc-equipamento","orc-pagamento","orc-prazo","orc-local",
    "orc-hosp-valor","orc-porte","orc-faixa","orc-contato-nome","orc-contato-tel","orc-contato-email","orc-concorrencia"]
@@ -1039,16 +1039,16 @@ function novoOrcamento(){
   $("orc-itens").innerHTML = "";
   $("orc-status").value = "rascunho";
   $("orc-data").value = hojeISO();
-  // lote S44 (L4): sugestão = maior número da sequência da CGL + 1, com o ano atual ("8833/2026"); continua editável
+
   const maxN = _orcamentos.reduce((m, o) => { const n = parseInt(orcNumeroPartes(o.numero, o.data_orcamento).num, 10); return Number.isFinite(n) ? Math.max(m, n) : m; }, 0);
   $("orc-numero").value = maxN ? `${maxN + 1}/${new Date().getFullYear()}` : "";
-  // Fase 40: responsável = quem está logado (continua editável)
+
   const selResp = $("orc-responsavel");
   if(selResp && typeof usuarioAtual !== "undefined" && usuarioAtual && [...selResp.options].some(o => o.value === usuarioAtual.id)){
     selResp.value = usuarioAtual.id;
   }
   $("orc-tipo-proposta").value  = "helice";
-  $("orc-tipo-proposta").dataset.anterior = "helice";   // lote S49 (#134): base da troca de itens padrão
+  $("orc-tipo-proposta").dataset.anterior = "helice";
   $("orc-revisao").value        = "00";
   $("orc-validade-dias").value  = 30;
   definirTipoObraOrc("convencional");
@@ -1060,21 +1060,21 @@ function novoOrcamento(){
   $("orc-cgl-diesel").checked   = false;
   $("orc-diesel-preco").value   = 8.34;
   $("orc-cgl-hospedagem").checked = false;
-  if($("orc-cgl-alimentacao")) $("orc-cgl-alimentacao").checked = false;   // lote S44 (L7, #62)
-  // Fase 40: condição de pagamento já vem com o texto padrão do modelo (edita-se na negociação)
+  if($("orc-cgl-alimentacao")) $("orc-cgl-alimentacao").checked = false;
+
   if($("orc-prazo-pagamento")) $("orc-prazo-pagamento").value = "15";
   if($("orc-pagamento-forma")) $("orc-pagamento-forma").value = "deposito";
-  if(typeof textoPagamentoPadrao === "function") $("orc-pagamento").value = textoPagamentoPadrao(15, "deposito"); // chamado #12
+  if(typeof textoPagamentoPadrao === "function") $("orc-pagamento").value = textoPagamentoPadrao(15, "deposito");
   $("btn-excluir-orc").style.display = "none";
   abrirFichaOrcVisual({ numero: "(novo)", status: "rascunho", valor_total: 0 });
-  carregarItensPadraoOrc(true); // itens que não podem faltar no modelo
+  carregarItensPadraoOrc(true);
 }
 
 async function abrirOrcamento(id){
   orcEditId = id;
-  orcLimparAssistente();   // fase 174b
+  orcLimparAssistente();
   const { data:o, error } = await sb.from("orcamentos").select("*").eq("id",id).single();
-  if(orcEditId !== id) return;   // fase 142: abriu outra ficha enquanto esta carregava
+  if(orcEditId !== id) return;
   if(error){ aviso("app-aviso","Erro ao abrir o orçamento: "+error.message,"erro"); return; }
   $("orc-numero").value         = o.numero || "";
   $("orc-cliente").value        = o.cliente_id || "";
@@ -1085,12 +1085,12 @@ async function abrirOrcamento(id){
   $("orc-descricao").value      = o.descricao || "";
   $("orc-obs").value             = o.observacoes || "";
   $("orc-tipo-proposta").value   = o.tipo_proposta || "helice";
-  $("orc-tipo-proposta").dataset.anterior = o.tipo_proposta || "helice";   // lote S49 (#134)
+  $("orc-tipo-proposta").dataset.anterior = o.tipo_proposta || "helice";
   $("orc-revisao").value         = o.numero_revisao || "00";
   $("orc-validade-dias").value   = o.validade_dias != null ? o.validade_dias : 30;
   $("orc-porte").value           = o.porte_equipamento || "";
   $("orc-faixa").value           = o.faixa_profundidade || "";
-  definirTipoObraOrc(o.tipo_obra || "convencional"); // antes dos itens: define o filtro do catálogo
+  definirTipoObraOrc(o.tipo_obra || "convencional");
   if(!o.validade) recalcularValidadeOrc();
   $("orc-iss-perc").value        = o.iss_percentual != null ? o.iss_percentual : 5.00;
   $("orc-iss-pdentro").checked   = o.iss_por_dentro !== false;
@@ -1099,7 +1099,7 @@ async function abrirOrcamento(id){
   $("orc-contato-nome").value    = o.contato_nome || "";
   $("orc-contato-tel").value     = o.contato_telefone || "";
   $("orc-contato-email").value   = o.contato_email || "";
-  if(typeof cctOrcCarregar === "function") cctOrcCarregar(o.cliente_id || "");   // fase 183a: contatos Comercial do cliente
+  if(typeof cctOrcCarregar === "function") cctOrcCarregar(o.cliente_id || "");
   $("orc-ref-obra").value        = o.referencia_obra || "";
   $("orc-escopo").value          = o.escopo_servicos || "";
   $("orc-equipamento").value     = o.equipamento_considerado || "";
@@ -1108,17 +1108,17 @@ async function abrirOrcamento(id){
   $("orc-pagamento").value       = o.condicoes_pagamento || (typeof textoPagamentoPadrao === "function" ? textoPagamentoPadrao(o.prazo_pagamento_dias, o.pagamento_forma) : "");
   $("orc-prazo").value           = o.prazo_execucao || "";
   $("orc-local").value           = o.local_execucao || "";
-  if($("orc-concorrencia")) $("orc-concorrencia").value = o.concorrencia || "";   // lote S47 (#111)
+  if($("orc-concorrencia")) $("orc-concorrencia").value = o.concorrencia || "";
   $("orc-cgl-diesel").checked      = o.cgl_fornece_diesel === true;
   $("orc-diesel-preco").value      = o.diesel_preco_litro != null ? o.diesel_preco_litro : 8.34;
   $("orc-cgl-hospedagem").checked  = o.cgl_fornece_hospedagem === true;
   $("orc-hosp-valor").value        = o.hospedagem_valor_mensal != null ? o.hospedagem_valor_mensal : "";
-  if($("orc-cgl-alimentacao")) $("orc-cgl-alimentacao").checked = o.cgl_fornece_alimentacao === true;   // lote S44 (L7, #62)
+  if($("orc-cgl-alimentacao")) $("orc-cgl-alimentacao").checked = o.cgl_fornece_alimentacao === true;
 
   $("orc-itens").innerHTML = "";
   const { data:itens, error: errItens } = await sb.from("orcamento_itens")
     .select("*").eq("orcamento_id",id).order("ordem");
-  // Itens não carregaram → não abrir: salvar faria delete+insert com lista vazia.
+
   if(errItens){
     orcEditId = null;
     aviso("app-aviso","Não foi possível carregar os itens do orçamento ("+errItens.message+"). Tente abrir de novo.","erro");
@@ -1131,7 +1131,7 @@ async function abrirOrcamento(id){
   abrirFichaOrcVisual(o);
 }
 
-// Orçamento novo: zera smart-buttons e abas (senão ficam os valores do último aberto)
+
 function zerarAbasOrc(){
   ["sb-orc-contratos","sb-orc-obras","sb-orc-medicoes","sb-orc-revisoes"].forEach(id => {
     const el = $(id); if(!el) return;
@@ -1147,43 +1147,43 @@ function abrirFichaOrcVisual(o){
   $("orc-painel").style.display = "none";
   $("orc-ficha").style.display = "";
 
-  orcSimPreparar(o);   // fase 140c
+  orcSimPreparar(o);
   $("orc-ficha-numero").textContent = o.numero || "(novo)";
   if($("orc-ficha-revisao-chip")) $("orc-ficha-revisao-chip").textContent = `Rev ${o.numero_revisao || "00"}`;
   $("orc-ficha-cliente-chip").textContent = mapaClientes[o.cliente_id] || "—";
-  $("orc-ficha-valor-chip").textContent = brl(orcTotalComIss(o));   // lote S44 (L8): total com ISS, igual ao da proposta
+  $("orc-ficha-valor-chip").textContent = brl(orcTotalComIss(o));
   if($("orc-ficha-validade-chip")) $("orc-ficha-validade-chip").textContent = dataBR(o.validade);
   $("orc-ficha-titulo").textContent = orcEditId ? `Orçamento ${o.numero} · Rev ${o.numero_revisao||"00"}` : "Novo orçamento";
-  const btnNovoCli = $("btn-orc-novo-cliente");   // lote S49 (#140)
+  const btnNovoCli = $("btn-orc-novo-cliente");
   if(btnNovoCli) btnNovoCli.style.display = orcPodeCadastrarCliente() ? "" : "none";
 
   atualizarStatusbarOrc(o.status);
   atualizarAcoesOrc(o);
-  if(typeof psiAtualizarBotaoWhatsapp === "function") psiAtualizarBotaoWhatsapp();   // fase 195c
-  orcAplicarModoLeitura();   // lote S57b (#211)
-  // Carrega smart-buttons + revisões + vínculos em paralelo
+  if(typeof psiAtualizarBotaoWhatsapp === "function") psiAtualizarBotaoWhatsapp();
+  orcAplicarModoLeitura();
+
   if(orcEditId) carregarAbasOrc(o);
   else zerarAbasOrc();
-  orcCarregarNegociacao(orcEditId);   // fase 187c: aba Negociação e chip do próximo retorno
+  orcCarregarNegociacao(orcEditId);
   ativarTabOrc("geral");
 }
 
-/* Mostra/oculta botão "Criar obra" baseado no status + se já gerou obra.
-   Fase 21: o orçamento aprovado gera a OBRA; os dados contratuais ficam
-   na aba Contrato dessa obra. */
+
+
+
 async function atualizarAcoesOrc(o){
   const btnObra = $("btn-orc-criar-obra");
   const hint    = $("orc-acao-hint");
   if(!btnObra) return;
   btnObra.style.display = "none";
   if(hint) hint.textContent = "";
-  if(!orcEditId || !orcPodeEditar()) return;   // lote S57b (#211): só leitura não cria obra
+  if(!orcEditId || !orcPodeEditar()) return;
 
   if(o.status !== "aprovado"){
     if(hint) hint.textContent = `Botão "Criar obra" aparece quando status = aprovado (atual: ${o.status}).`;
     return;
   }
-  // Já existe obra vinculada (direto ou via contrato deste orçamento)?
+
   const { data: contrs } = await sb.from("contratos")
     .select("id").eq("orcamento_id", orcEditId);
   const idsContr = (contrs || []).map(c => c.id);
@@ -1200,12 +1200,12 @@ async function atualizarAcoesOrc(o){
   }
 }
 
-/* ============================================================
-   SMART-BUTTONS + ABA REVISÕES + ABA VÍNCULOS
-   ============================================================ */
+
+
+
 async function carregarAbasOrc(o){
   if(!orcEditId || !o) return;
-  // Em paralelo: revisões (mesmo número) + contratos + obras + medições que usam preços daqui
+
   const [revRes, contrRes, medRes] = await Promise.all([
     sb.from("orcamentos")
       .select("id,numero_revisao,status,valor_total,iss_percentual,iss_por_dentro,data_orcamento,updated_at")
@@ -1214,8 +1214,8 @@ async function carregarAbasOrc(o){
     sb.from("contratos")
       .select("id,numero,status,data_assinatura,valor_total,obras:obras!contrato_id(id,codigo,nome,status)")
       .eq("orcamento_id", orcEditId),
-    // Filtra pelo item embutido (!inner) em vez de um await aninhado que
-    // serializava as 3 consultas do Promise.all (1 round-trip a menos)
+
+
     sb.from("medicao_itens")
       .select("medicao_id, valor_total, orcamento_item:orcamento_item_id!inner(orcamento_id), medicao:medicao_id(id,numero,status,data_medicao,obra:obra_id(codigo,nome))")
       .eq("orcamento_item.orcamento_id", orcEditId)
@@ -1224,7 +1224,7 @@ async function carregarAbasOrc(o){
   const revisoes  = revRes.data || [];
   const contratos = contrRes.data || [];
   const obras     = contratos.flatMap(c => c.obras || []);
-  // Medições únicas (por medicao_id)
+
   const medMap = {};
   (medRes.data || []).forEach(mi => {
     if(!mi.medicao) return;
@@ -1235,7 +1235,7 @@ async function carregarAbasOrc(o){
   const medicoes = Object.values(medMap);
   _orcVinculos = { contratos, obras, medicoes };
 
-  // Atualiza smart-buttons
+
   const setSB = (id, n) => {
     const el = $(id);
     if(!el) return;
@@ -1245,16 +1245,16 @@ async function carregarAbasOrc(o){
   setSB("sb-orc-contratos", contratos.length);
   setSB("sb-orc-obras",     obras.length);
   setSB("sb-orc-medicoes",  medicoes.length);
-  setSB("sb-orc-revisoes",  Math.max(0, revisoes.length - 1)); // revisões ALÉM da original (Rev 00 não conta)
+  setSB("sb-orc-revisoes",  Math.max(0, revisoes.length - 1));
 
-  // Badge na aba Revisões
+
   if($("orc-rev-badge")) $("orc-rev-badge").textContent = revisoes.length > 1 ? revisoes.length - 1 : "";
 
-  carregarArquivosOrc(orcEditId);   // fase 174b: aba Arquivos
-  carregarEnviosOrc(orcEditId);     // fase 192b: propostas enviadas pela orcamento@
-  // Renderiza aba Revisões
+  carregarArquivosOrc(orcEditId);
+  carregarEnviosOrc(orcEditId);
+
   renderizarRevisoesOrc(revisoes, o);
-  // Renderiza aba Vínculos
+
   renderizarVinculosOrc(contratos, obras, medicoes);
 }
 
@@ -1265,7 +1265,7 @@ function renderizarRevisoesOrc(revs, atual){
     cont.innerHTML = `<p class="vazio">Apenas a revisão atual.</p>`;
     return;
   }
-  // Ordena por numero_revisao (numeric desc)
+
   revs.sort((a,b) => {
     const av = parseInt(a.numero_revisao,10) || 0;
     const bv = parseInt(b.numero_revisao,10) || 0;
@@ -1339,20 +1339,20 @@ function renderizarVinculosOrc(contratos, obras, medicoes){
   cont.innerHTML = blocoContrat + blocoObras + blocoMed;
 }
 
-/* ============================================================
-   AÇÕES: NOVA REVISÃO + CRIAR CONTRATO
-   ============================================================ */
+
+
+
 async function criarNovaRevisaoOrc(){
   if(!orcEditId){ aviso("app-aviso","Salve o orçamento atual primeiro.","erro"); return; }
   const { data: atual, error: e1 } = await sb.from("orcamentos").select("*").eq("id", orcEditId).single();
   if(e1){ aviso("app-aviso","Erro: "+e1.message,"erro"); return; }
-  // hotfix 289: a nova revisão é a maior do mesmo número + 1 (a ficha aberta pode ser uma revisão antiga)
+
   const { data: irmas } = await sb.from("orcamentos").select("numero_revisao").eq("numero", atual.numero);
   const revAtual = Math.max(parseInt(atual.numero_revisao, 10) || 0, ...(irmas || []).map(r => parseInt(r.numero_revisao, 10) || 0));
   const novaRev  = String(revAtual + 1).padStart(2, "0");
   if(!confirm(`Criar nova revisão ${novaRev} a partir da atual (Rev ${atual.numero_revisao || "00"})?\n\nVai copiar todos os itens. Status inicial: rascunho.`)) return;
 
-  // Insere novo orçamento com mesmo número, revisão incrementada, status rascunho
+
   const novo = { ...atual };
   delete novo.id; delete novo.created_at; delete novo.updated_at;
   novo.numero_revisao = novaRev;
@@ -1362,8 +1362,8 @@ async function criarNovaRevisaoOrc(){
   const { data: novoOrc, error: e2 } = await sb.from("orcamentos").insert(novo).select("id").single();
   if(e2){ aviso("app-aviso","Erro ao criar revisão: "+e2.message,"erro"); return; }
 
-  // Copia itens — se a leitura ou a cópia falhar, desfaz a revisão recém-criada
-  // (antes ficava uma revisão vazia com "✅ criada").
+
+
   const { data: itensAtuais, error: errLer } = await sb.from("orcamento_itens")
     .select("ordem,secao,descricao,variante_id,quantidade,unidade,valor_unitario,observacao")
     .eq("orcamento_id", orcEditId).order("ordem");
@@ -1384,15 +1384,15 @@ async function criarNovaRevisaoOrc(){
   await abrirOrcamento(novoOrc.id);
 }
 
-/* Orçamento aprovado → cria a obra (com o contrato do cliente junto) e
-   abre a ficha da obra pra completar endereço, prazos e metas. */
+
+
 async function criarObraDoOrcamento(){
   if(!orcEditId){ aviso("app-aviso","Salve o orçamento primeiro.","erro"); return; }
   const { data: orc, error } = await sb.from("orcamentos").select("*").eq("id", orcEditId).single();
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   if(orc.status !== "aprovado"){ aviso("app-aviso","Status precisa ser 'aprovado' pra criar a obra.","erro"); return; }
 
-  // lote S44 (L4): código da obra no padrão da CGL ("8832-2026"), a partir do número do orçamento
+
   const pNum = orcNumeroPartes(orc.numero, orc.data_orcamento);
   const sugCodigo = pNum.num ? `${pNum.num}-${pNum.ano}` : orc.numero.replace(/^ORC-/i, "OB-");
   const codigo = prompt(`Código da obra (sugestão: ${sugCodigo}):`, sugCodigo);
@@ -1400,16 +1400,16 @@ async function criarObraDoOrcamento(){
   const sugNome = `${mapaClientes[orc.cliente_id] || "Obra"} — ${orc.numero}`;
   const nome = prompt("Nome da obra:", sugNome);
   if(!nome) return;
-  // fase 182a: a concorrência (empreendimento do cliente final) sugere o nome do projeto; opcional, vazio = sem nome
+
   const nomeProjeto = prompt("Nome do projeto (como o cliente chama o empreendimento; deixe em branco se não houver):", String(orc.concorrencia || "").trim());
 
   const origem = `orçamento ${orc.numero} Rev${orc.numero_revisao || "00"}`;
-  // lote S45 (L9, decisão do Bernardo em 19/10): o valor contratado é o total COM ISS (o ISS por dentro está somado no
-  // quadro de preços da proposta); orcamentos.valor_total continua sem ISS. Vai para obras_financeiro e para o contrato
-  // do cliente (obras.js espelha o valor da obra no contrato a cada Salvar). Obras antigas: migration loteS45_valor_contratado_iss.
+
+
+
   const valorContratado = Math.round(orcTotalComIss(orc) * 100) / 100;
 
-  // 1) Contrato do cliente (fica sob a aba Contrato da obra)
+
   const { data: contr, error: eContr } = await sb.from("contratos").insert({
     numero: codigo.trim(),
     orcamento_id: orcEditId,
@@ -1430,7 +1430,7 @@ async function criarObraDoOrcamento(){
     return;
   }
 
-  // 2) Obra
+
   const { data: novaObraReg, error: eObra } = await sb.from("obras").insert({
     codigo: codigo.trim(),
     nome: nome.trim(),
@@ -1441,7 +1441,7 @@ async function criarObraDoOrcamento(){
     descricao: `Obra gerada a partir do ${origem}`
   }).select("id").single();
   if(eObra){
-    // desfaz o contrato pra não deixar registro solto
+
     await sb.from("contratos").delete().eq("id", contr.id);
     const m = (eObra.message||"").toLowerCase();
     aviso("app-aviso", (m.includes("duplicate") || m.includes("unique"))
@@ -1450,17 +1450,17 @@ async function criarObraDoOrcamento(){
     return;
   }
 
-  // 2b) Valor da obra (fase 90): vive em obras_financeiro; a linha nasce zerada pelo gatilho e recebe aqui o total com ISS (S45, L9)
+
   const { error: eFin } = await sb.from("obras_financeiro").upsert({ obra_id: novaObraReg.id, valor_contratado: valorContratado });
 
-  // 2c) Fase 157a (decisão 5): orçamento com item de mobilização (variante MOB.*) já cria a mobilização prevista, com a TAG
-  // e o início previstos do orçamento, para a Logística planejar desde a aprovação. Se falhar, a obra fica e a pendência
-  // "Obra com diário e sem mobilização" pega o caso.
+
+
+
   const { data: mobId, error: eMob } = await sb.rpc("mobilizacao_prevista_do_orcamento", { p_obra: novaObraReg.id });
   const txtMob = eMob ? ` A mobilização prevista não pôde ser criada (${eMob.message}); crie pela aba Máquinas da obra.`
     : mobId ? " Mobilização prevista criada no quadro de Mobilizações." : "";
-  // 2d) Fase 174b (D12): arquivos do pedido (projeto, sondagem…) vão para os documentos da obra; a leitura do projeto
-  // fica no cache e a aba Estacas da obra oferece usá-la sem nova chamada paga
+
+
   const txtArq = await orcCopiarArquivosParaObra(orc, novaObraReg.id);
 
   aviso("app-aviso", eFin
@@ -1471,7 +1471,7 @@ async function criarObraDoOrcamento(){
   await carregarAbasOrc(orc);
   await atualizarAcoesOrc(orc);
 
-  // Abre a ficha da nova obra pra completar endereço, prazos e metas
+
   const navObras = document.querySelector('nav button[data-secao="obras"]');
   if(navObras) navObras.click();
   setTimeout(() => {
@@ -1481,7 +1481,7 @@ async function criarObraDoOrcamento(){
 
 function atualizarStatusbarOrc(st){
   const bar = $("orc-statusbar");
-  orcAtualizarSetasOrdem(st);   // lote S65-e: aprovado não reordena
+  orcAtualizarSetasOrdem(st);
   if(!bar) return;
   const idxAtual = ORC_STAGES.indexOf(st);
   bar.querySelectorAll(".stage").forEach(el => {
@@ -1497,10 +1497,10 @@ function atualizarStatusbarOrc(st){
   });
 }
 
-/* ---------- Fase 140c: simulador "Prazo estimado" ----------
-   Entradas pré-preenchidas pelos itens (o que o usuário editou não é sobrescrito) e cálculo só no banco (orcamento_simular_prazo).
-   A máquina fica em dataset.id: quem salva antes da lista carregar não apaga a FK. O PDF não muda: "Usar no prazo" só preenche
-   o campo Prazo de execução, gravado no Salvar da ficha. */
+
+
+
+
 const ORC_SIM_TIPOS = { helice: "helice_continua", trado: "trado_mecanizado", raiz: "estaca_raiz", secante: "helice_secante" };
 const ORC_SIM_CAMPOS = ["orc-sim-estacas", "orc-sim-metros", "orc-sim-diametro", "orc-sim-prof"];
 let _orcSimMaquinas = null;
@@ -1529,7 +1529,7 @@ async function orcSimPreparar(o){
   const m = lista.find(x => x.id === id);
   if(m && inp.dataset.id === id) inp.value = orcSimRotulo(m);
 }
-/* Soma dos itens: estacas = itens em un que são estaca (descrição com "estaca" ou Ø), metros = itens em m; Ø = o mais frequente nas descrições */
+
 function orcSimDoItens(){
   const linhas = [...document.querySelectorAll("#orc-itens tr")].map(tr => ({
     desc: tr.querySelector(".it-desc")?.value || "",
@@ -1552,7 +1552,7 @@ function orcSimMaquinaEscolhida(){
   const id = $("orc-sim-maquina")?.dataset.id || "";
   return id && _orcSimMaquinas ? _orcSimMaquinas.find(m => m.id === id) : null;
 }
-/* Campo do PDF vazio recebe a máquina escolhida ao salvar; quem escreveu à mão mantém o texto */
+
 function orcSimEquipamentoConsiderado(){
   const m = orcSimMaquinaEscolhida();
   const texto = m ? (m.nome || m.codigo || "") : "";
@@ -1579,7 +1579,7 @@ function orcSimRender(r, diametro){
   const fila = r.obra_atual_codigo && r.obra_atual_termino
     ? `A máquina está na obra ${esc(r.obra_atual_codigo)} com término previsto em ${dataBR(r.obra_atual_termino)} + ${esc(r.mobilizacao_dias)} dias de mobilização → pode começar em <strong>${dataBR(r.inicio_possivel)}</strong> e terminar em <strong>${dataBR(r.termino_estimado)}</strong>.`
     : `${r.obra_atual_codigo ? `A máquina está na obra ${esc(r.obra_atual_codigo)}. ` : ""}Pode começar em <strong>${dataBR(r.inicio_possivel)}</strong> e terminar em <strong>${dataBR(r.termino_estimado)}</strong>.`;
-  alvo.innerHTML = `<p>${/* html */ ritmo}</p><p>${/* html */ fila}</p>${/* html */ avisos}`;
+  alvo.innerHTML = `<p>${  ritmo}</p><p>${  fila}</p>${  avisos}`;
   if(usar && orcPodeEditar()){
     usar.dataset.prazo = orcSimPrazoTexto(dias);
     usar.style.display = "";
@@ -1619,22 +1619,22 @@ function ligarOrcSimulador(){
   });
 }
 
-/* ====================================================================
-   Fase 187c (#324): aba Negociação. Cada contato com o cliente vira uma interação (orcamento_interacoes) com canal,
-   resumo, contato e o próximo retorno (data e quem). O último registro de cada orçamento manda: com data e sem
-   "Sem retorno", é o retorno em aberto, que aparece na Minha fila de quem retorna no dia (vw_sc_minha_fila_retornos),
-   no chip da ficha e no filtro "Retornos da semana" do painel. Leitura como pode_ler_comercial() do banco.
-   ==================================================================== */
+
+
+
+
+
+
 const ORC_NEG_CANAL = { ligacao: "Ligação", email: "E-mail", whatsapp: "WhatsApp", reuniao: "Reunião", visita: "Visita" };
-let _orcRetornos = {};   // orcamento_id → data do retorno em aberto (AAAA-MM-DD)
-let _orcNegLista = [];   // interações do orçamento aberto, da mais nova para a mais antiga
+let _orcRetornos = {};
+let _orcNegLista = [];
 
 function orcPodeLerNegociacao(){
   if(!usuarioAtual) return false;
   return ["diretor", "comercial", "financeiro", "auditor"].includes(usuarioAtual.cargo) || temModuloExtra("orcamentos");
 }
 const _orcNegMaisNova = (a, b) => String(b.data_hora).localeCompare(String(a.data_hora)) || String(b.created_at).localeCompare(String(a.created_at));
-/* Retorno em aberto de uma lista de interações do mesmo orçamento: o da mais nova, se tiver data e não for "Sem retorno" */
+
 function orcNegRetornoAberto(lista){
   const ult = (lista || []).slice().sort(_orcNegMaisNova)[0];
   return ult && ult.proximo_em && !ult.sem_retorno ? ult : null;
@@ -1649,7 +1649,7 @@ async function orcCarregarRetornos(){
   Object.entries(porOrc).forEach(([id, l]) => { const ab = orcNegRetornoAberto(l); if(ab) out[id] = ab.proximo_em; });
   return out;
 }
-/* Domingo da semana corrente (a semana vai de segunda a domingo); "Retornos da semana" inclui os vencidos */
+
 function orcFimDaSemanaISO(){
   const [a, m, d] = hojeISO().split("-").map(Number);
   const dt = new Date(a, m - 1, d);
@@ -1707,7 +1707,7 @@ function renderOrcNegociacao(){
     const sub = [i.resumo, ret, por ? "por " + por : ""].filter(Boolean).join(" · ");
     return uiLinhaItem(titulo, sub, dataHoraBR(i.data_hora));
   }).join("");
-  cont.innerHTML = `<h4 class="rotulo-caps">Histórico de negociação</h4>${/* html */ linhas}`;
+  cont.innerHTML = `<h4 class="rotulo-caps">Histórico de negociação</h4>${  linhas}`;
 }
 async function orcCarregarNegociacao(id){
   _orcNegLista = [];
@@ -1720,7 +1720,7 @@ async function orcCarregarNegociacao(id){
   if($("orc-neg-lista")) $("orc-neg-lista").innerHTML = uiVazio("Carregando...");
   const { data, error } = await sb.from("orcamento_interacoes").select("*").eq("orcamento_id", id)
     .order("data_hora", { ascending: false }).order("created_at", { ascending: false });
-  if(orcEditId !== id) return;   // abriu outra ficha enquanto carregava
+  if(orcEditId !== id) return;
   if(error){ $("orc-neg-lista").innerHTML = uiVazio("Não foi possível carregar a negociação: " + error.message); return; }
   _orcNegLista = data || [];
   const ab = orcNegRetornoAberto(_orcNegLista);
@@ -1756,7 +1756,7 @@ async function orcMarcarSemRetorno(){
 }
 
 function ativarTabOrc(nome){
-  if(nome === "proposta") orcSimDoItens();   // fase 140c
+  if(nome === "proposta") orcSimDoItens();
   document.querySelectorAll("#orc-notebook button").forEach(b => {
     b.classList.toggle("ativo", b.dataset.tab === nome);
   });
@@ -1765,7 +1765,7 @@ function ativarTabOrc(nome){
   });
 }
 
-/* ---------- Editor de itens ---------- */
+
 function linhaItemHTML(){
   const uns = UNIDADES.map(u=>`<option value="${esc(u)}"${u==="un"?" selected":""}>${esc(u)}</option>`).join("");
   return `<tr>
@@ -1807,8 +1807,8 @@ function adicionarItemPreenchido(item){
   orcMostrarNotaItem(tr);
 }
 
-/* Nota interna do catálogo (16/11/2026): a nota de quem orça aparece abaixo da observação do item como dica; não vai
-   para a observação e não sai no PDF. */
+
+
 function orcMostrarNotaItem(tr){
   const box = tr && tr.querySelector(".it-nota");
   if(!box) return;
@@ -1825,13 +1825,13 @@ function aplicarItemCatalogo(select, semAviso){
   if(!vid){ recalcularOrc(); return; }
   const v = _orcVarById[vid];
   if(!v) return;
-  // lote S49 (#136): diâmetro sem preço na faixa do Modelo entra com a faixa mais próxima; avisa para conferir
+
   const todoCatalogo = tr.querySelector(".it-cat-all")?.classList.contains("ativo");
   if(!semAviso && !todoCatalogo && _orcFaixaAproximada(v, _orcCatFiltro)){
     aviso("app-aviso", `${v.nome}: este diâmetro não tem preço para ${ORC_FAIXA_LBL[_orcCatFiltro.faixa] || _orcCatFiltro.faixa}; entrou a faixa mais próxima. Confira o valor.`, "aviso");
   }
   tr.querySelector(".it-desc").value = _nomeItemCatalogoOrc(v);
-  const un = v.unidade || _orcServUnidade[v.servico_id]; // fase 40: variante pode ter unidade própria
+  const un = v.unidade || _orcServUnidade[v.servico_id];
   if(un){
     const selUn = tr.querySelector(".it-un");
     if(![...selUn.options].some(o=>o.value===un)){
@@ -1841,8 +1841,8 @@ function aplicarItemCatalogo(select, semAviso){
   }
   const preco = _orcPrecos[vid];
   if(preco != null) tr.querySelector(".it-vu").value = Number(preco);
-  // fase 40: observação padrão do serviço entra na Obs do item (sai como "Obs: Item N - …"). Só observacoes_padrao: a
-  // nota interna do catálogo fica na dica da linha (orcMostrarNotaItem), nunca na Obs.
+
+
   const obs = tr.querySelector(".it-obs");
   if(obs && !obs.value.trim() && _orcServObs[v.servico_id]) obs.value = _orcServObs[v.servico_id];
   recalcularOrc();
@@ -1861,11 +1861,11 @@ function recalcularOrc(){
   });
   const totalEl = $("orc-total");
   if(totalEl) totalEl.textContent = brl(soma);
-  orcAtualizarSetasOrdem();   // lote S65-e
-  // Fase 40: ISS da proposta (por dentro = soma × p/(100-p), como na RG 11.8)
-  // Chamado #18 (Thales, 21/09/2026): checkbox desmarcado = ISS NÃO compõe o somatório
-  // (antes desmarcado virava "por fora" e continuava somando).
-  // lote S44 (L8): conta única em orcIssSobre; o chip da ficha mostra o total com ISS, igual ao da proposta
+  orcAtualizarSetasOrdem();
+
+
+
+
   const p  = Number($("orc-iss-perc")?.value || 0);
   const pd = !!$("orc-iss-pdentro")?.checked;
   const iss = orcIssSobre(soma, { iss_percentual: p, iss_por_dentro: pd });
@@ -1877,10 +1877,10 @@ function recalcularOrc(){
   return soma;
 }
 
-/* ---------- Lote S49 (#140): cliente novo sem sair do orçamento ----------
-   O Frederico (engenheiro com o módulo extra de Orçamentos) não conseguia cadastrar cliente: a policy de clientes não
-   tinha o extra (migration 20261022_loteS49_clientes_modulo_extra). O botão "+ Novo cliente" ao lado do Cliente abre um
-   cadastro rápido; quem grava é quem cliPodeEditar() (clientes.js) deixa. Endereço e dados fiscais: ficha do cliente. */
+
+
+
+
 function orcPodeCadastrarCliente(){ return typeof cliPodeEditar === "function" && cliPodeEditar(); }
 function orcAbrirNovoCliente(){
   ["orc-cli-nome","orc-cli-doc","orc-cli-contato","orc-cli-tel","orc-cli-email","orc-cli-cidade"].forEach(id => { const el = $(id); if(el) el.value = ""; });
@@ -1894,18 +1894,18 @@ function orcAbrirNovoCliente(){
 }
 function orcFecharNovoCliente(){ $("orc-cli-modal").style.display = "none"; }
 
-/* CNPJ no cadastro rápido (orçamento 8896/2026, 10/11/2026): o campo só conferia os dígitos, e um CNPJ com a raiz trocada
-   só apareceria na hora da nota. Ao sair do campo (ou no botão): 1) dígitos verificadores; 2) cliente já cadastrado com o
-   mesmo documento vira "Usar este cliente", sem cadastrar outro; 3) CNPJ válido busca a Receita pela BrasilAPI
-   (fiscalBuscarCnpj, a mesma de Clientes e Fornecedores; CPF nunca sai do app) e preenche só campo vazio (nome, cidade, UF). Endereço, nome
-   fantasia e código IBGE não têm campo neste modal: ficam em _orcCliCnpj e vão no insert se o documento não mudou. */
-let _orcCliCnpj = null;    // { doc, dados } da última consulta que deu certo
-let _orcCliDupId = null;   // cliente já cadastrado com o documento digitado
-let _orcCliBusca = 0;      // descarta resposta de consulta antiga
+
+
+
+
+
+let _orcCliCnpj = null;
+let _orcCliDupId = null;
+let _orcCliBusca = 0;
 function orcCliDocStatus(txt, erro, html){
   const st = $("orc-cli-doc-status");
   if(!st) return;
-  if(html) st.innerHTML = /* html */ html; else st.textContent = txt || "";
+  if(html) st.innerHTML =   html; else st.textContent = txt || "";
   st.classList.toggle("txt-perigo", !!erro);
 }
 function _orcCliMascara(d){
@@ -1920,7 +1920,7 @@ async function orcCliConferirDoc(forcar){
   if(d.length !== 11 && d.length !== 14){ orcCliDocStatus("CPF tem 11 dígitos; CNPJ, 14.", true); return; }
   if(!fiscalDocValido(d)){ orcCliDocStatus("Dígitos verificadores não conferem: confira o número com o cliente.", true); return; }
   const vez = ++_orcCliBusca;
-  // o documento está gravado com ou sem máscara, conforme a origem do cadastro
+
   const { data: dup } = await sb.from("clientes").select("id,nome,contato_nome,telefone,email").in("cpf_cnpj", [d, _orcCliMascara(d)]).limit(1);
   if(vez !== _orcCliBusca) return;
   if(dup && dup.length){
@@ -1930,7 +1930,7 @@ async function orcCliConferirDoc(forcar){
     return;
   }
   if(d.length === 11){ orcCliDocStatus(""); if($("orc-cli-tipo")) $("orc-cli-tipo").value = "fisica"; return; }
-  if(!forcar && _orcCliCnpj && _orcCliCnpj.doc === d) return;   // já consultado: sair do campo de novo não repete
+  if(!forcar && _orcCliCnpj && _orcCliCnpj.doc === d) return;
   orcCliDocStatus("Buscando o CNPJ na BrasilAPI…");
   const r = await fiscalBuscarCnpj(d);
   if(vez !== _orcCliBusca) return;
@@ -1938,12 +1938,12 @@ async function orcCliConferirDoc(forcar){
   _orcCliCnpj = { doc: d, dados: r };
   const pos = (id, v) => { const c = $(id); if(!c || !v || String(c.value || "").trim()) return; c.value = v; };
   pos("orc-cli-nome", r.razao_social);
-  // telefone e e-mail da Receita não entram: aqui eles viram o contato da proposta, e o da Receita costuma ser o da contabilidade
+
   pos("orc-cli-cidade", r.cidade);
   const uf = $("orc-cli-uf");
   if(uf && !uf.value && r.uf && [...uf.options].some(o => o.value === r.uf)) uf.value = r.uf;
   if($("orc-cli-tipo")) $("orc-cli-tipo").value = "juridica";
-  // razão social diferente da já digitada: avisa, não troca (pode ser o CNPJ de outra empresa)
+
   const nome = ($("orc-cli-nome")?.value || "").trim();
   const difere = r.razao_social && nome && nome.toUpperCase() !== r.razao_social.toUpperCase();
   if(!r.ativa) orcCliDocStatus(`Atenção: situação cadastral na Receita = ${r.situacao}. Razão social: ${r.razao_social || "—"}.`, true);
@@ -1963,8 +1963,8 @@ function orcUsarClienteExistente(c){
   aviso("app-aviso", `Cliente ${c.nome} já estava cadastrado e foi escolhido neste orçamento.`, "ok");
 }
 async function orcSalvarNovoCliente(){
-  // clicar em Cadastrar logo depois de digitar o documento: espera a conferência (duplicidade e Receita) antes de gravar;
-  // BrasilAPI fora do ar não impede o cadastro
+
+
   const docAntes = fiscalDocLimpo($("orc-cli-doc").value);
   if(fiscalDocValido(docAntes) && !_orcCliDupId && !(_orcCliCnpj && _orcCliCnpj.doc === docAntes)) await orcCliConferirDoc(false);
   const nome = $("orc-cli-nome").value.trim();
@@ -1985,7 +1985,7 @@ async function orcSalvarNovoCliente(){
     uf:           $("orc-cli-uf").value || null,
     ativo:        true
   };
-  // dados da Receita sem campo no modal: só quando o documento gravado é o mesmo que foi consultado
+
   if(_orcCliCnpj && _orcCliCnpj.doc === fiscalDocLimpo(doc)){
     const r = _orcCliCnpj.dados;
     Object.assign(reg, { nome_fantasia: r.nome_fantasia || null, cep: r.cep || null, logradouro: r.logradouro || null, numero: r.numero || null,
@@ -1999,7 +1999,7 @@ async function orcSalvarNovoCliente(){
       : "Não foi possível cadastrar o cliente: " + error.message, "erro");
     return;
   }
-  // recarrega os selects de cliente (orçamento e obra) sem perder o que a ficha da obra tinha escolhido
+
   const obrCli = $("obr-cliente")?.value || "";
   if(typeof carregarClientesSelects === "function") await carregarClientesSelects();
   if($("obr-cliente") && obrCli) $("obr-cliente").value = obrCli;
@@ -2011,12 +2011,12 @@ async function orcSalvarNovoCliente(){
   $("orc-ficha-cliente-chip").textContent = data.nome;
   orcFecharNovoCliente();
   aviso("app-aviso", `Cliente ${data.nome} cadastrado e escolhido neste orçamento.`, "ok");
-  if(typeof carregarClientes === "function") carregarClientes();   // a lista do módulo Clientes também vê o novo
+  if(typeof carregarClientes === "function") carregarClientes();
 }
 
-/* ---------- Salvar / excluir ---------- */
+
 async function salvarOrcamento(novoStatus){
-  if(!orcPodeEditar()){ aviso("app-aviso", "Seu acesso a Orçamentos é só de leitura.", "erro"); return; }   // lote S57b (#211)
+  if(!orcPodeEditar()){ aviso("app-aviso", "Seu acesso a Orçamentos é só de leitura.", "erro"); return; }
   const cliente_id = $("orc-cliente").value;
   if(!cliente_id){ aviso("app-aviso","Selecione o cliente.","erro"); ativarTabOrc("geral"); return; }
 
@@ -2028,7 +2028,7 @@ async function salvarOrcamento(novoStatus){
       if(!desc) return;
       itens.push({
         ordem:          itens.length + 1,
-        secao:          null, // "Seção (agrupador)" saiu da tela em 02/09/2026 (2 de 915 itens usavam; nenhum PDF lê)
+        secao:          null,
         descricao:      desc,
         quantidade:     Number(tr.querySelector(".it-qtd").value || 0),
         unidade:        tr.querySelector(".it-un").value,
@@ -2044,7 +2044,7 @@ async function salvarOrcamento(novoStatus){
   const tipoProp = $("orc-tipo-proposta").value || "helice";
   const codigosRG = { helice:"RG 11.8", trado:"RG 11.9", raiz:"RG 11.10", secante:"RG 11.11", outro:"RG 11.0" };
 
-  // lote S44 (L4, #66): "8832" vira "8832/2026" (ano da data do orçamento); "8832/2026" fica como está
+
   const numero = orcNumeroNormalizado($("orc-numero").value, $("orc-data").value);
   if(!numero){ aviso("app-aviso","Informe o número do orçamento.","erro"); ativarTabOrc("geral"); $("orc-numero").focus(); return; }
   $("orc-numero").value = numero;
@@ -2063,10 +2063,10 @@ async function salvarOrcamento(novoStatus){
     tipo_obra:                  $("orc-tipo-obra")?.value || "convencional",
     codigo_modelo:              codigosRG[tipoProp] || null,
     numero_revisao:             $("orc-revisao").value.trim() || "00",
-    cidade_emissao:             "Itabira/MG", // chamado #9 (Thales, aprovado pelo Bernardo em 16/09/2026): campo saiu da tela; a proposta é sempre emitida na sede
+    cidade_emissao:             "Itabira/MG",
     referencia_obra:            $("orc-ref-obra").value.trim() || null,
     escopo_servicos:            $("orc-escopo").value || null,
-    equipamento_considerado:    $("orc-equipamento").value.trim() || orcSimEquipamentoConsiderado() || null,   // fase 140c: vazio recebe a máquina prevista
+    equipamento_considerado:    $("orc-equipamento").value.trim() || orcSimEquipamentoConsiderado() || null,
     equipamento_previsto_id:    $("orc-sim-maquina")?.dataset.id || null,
     inicio_desejado:            $("orc-sim-inicio")?.value || null,
     iss_percentual:             Number($("orc-iss-perc").value || 5),
@@ -2076,12 +2076,12 @@ async function salvarOrcamento(novoStatus){
     faixa_profundidade:         $("orc-faixa").value || null,
     projeto_fornecido:          $("orc-proj-forn").checked,
     sondagem_fornecida:         $("orc-sond-forn").checked,
-    projeto_sondagem_fornecido: $("orc-proj-forn").checked && $("orc-sond-forn").checked, // compat
+    projeto_sondagem_fornecido: $("orc-proj-forn").checked && $("orc-sond-forn").checked,
     contato_nome:               $("orc-contato-nome").value.trim() || null,
     contato_telefone:           $("orc-contato-tel").value.trim() || null,
     contato_email:              $("orc-contato-email").value.trim() || null,
     condicoes_pagamento:        $("orc-pagamento").value.trim() || null,
-    prazo_pagamento_dias:       Number($("orc-prazo-pagamento")?.value) || 15,   // chamado #12
+    prazo_pagamento_dias:       Number($("orc-prazo-pagamento")?.value) || 15,
     pagamento_forma:            $("orc-pagamento-forma")?.value === "boleto" ? "boleto" : "deposito",
     prazo_execucao:             $("orc-prazo").value.trim() || null,
     local_execucao:             $("orc-local").value.trim() || null,
@@ -2089,21 +2089,21 @@ async function salvarOrcamento(novoStatus){
     diesel_preco_litro:         Number($("orc-diesel-preco").value || 8.34),
     cgl_fornece_hospedagem:     $("orc-cgl-hospedagem").checked,
     hospedagem_valor_mensal:    $("orc-hosp-valor").value ? Number($("orc-hosp-valor").value) : null,
-    cgl_fornece_alimentacao:    !!$("orc-cgl-alimentacao")?.checked   // lote S44 (L7, #62): migration 20261020_loteS44_orcamento_alimentacao
+    cgl_fornece_alimentacao:    !!$("orc-cgl-alimentacao")?.checked
   };
-  // lote S47 (#111): só grava a concorrência quando a coluna existe (migration 20261022_loteS47)
+
   if(_orcTemConcorrencia) reg.concorrencia = ($("orc-concorrencia")?.value || "").trim().replace(/\s+/g, " ") || null;
 
-  // fase 174b: orçamento novo montado pelo assistente guarda a conversa e, depois de salvo, recebe os arquivos dela
+
   const doAssistente = !orcEditId && _orcAssistente ? _orcAssistente : null;
   if(doAssistente?.conversa_id) reg.assistente_conversa_id = doAssistente.conversa_id;
-  // fase 195c: orçamento novo do "Criar orçamento" de um pedido do site leva o WhatsApp do cliente e, salvo, liga o pedido
+
   const doPedidoSite = !orcEditId && typeof psiPedidoPendente === "function" ? psiPedidoPendente() : null;
   if(doPedidoSite?.whatsapp) reg.whatsapp_cliente = doPedidoSite.whatsapp;
 
   let orcId = orcEditId;
-  // lote S44 (L7): enquanto a migration 20261020_loteS44_orcamento_alimentacao não estiver aplicada, grava o
-  // resto e avisa no console (mesmo padrão de obras.sinal_abatimento_modelo), em vez de perder o orçamento
+
+
   const gravarOrc = (r) => orcEditId
     ? sb.from("orcamentos").update(r).eq("id", orcEditId)
     : sb.from("orcamentos").insert(r).select("id").single();
@@ -2154,7 +2154,7 @@ async function salvarOrcamento(novoStatus){
 }
 
 async function excluirOrcamento(){
-  if(!orcPodeEditar()) return;   // lote S57b (#211)
+  if(!orcPodeEditar()) return;
   if(!orcEditId) return;
   if(!confirm("Excluir este orçamento e seus itens?")) return;
   await sb.from("orcamento_itens").delete().eq("orcamento_id", orcEditId);
@@ -2166,7 +2166,7 @@ async function excluirOrcamento(){
   mostrarPainelOrc();
 }
 
-/* ---------- Listeners ---------- */
+
 function ligarOrcamentos(){
   document.querySelectorAll("#orc-painel .serv-view-btn").forEach(b => {
     b.addEventListener("click", () => {
@@ -2186,10 +2186,10 @@ function ligarOrcamentos(){
   });
 
   $("btn-novo-orcamento")?.addEventListener("click", novoOrcamento);
-  // lote S47: #112 cabeçalho ordena (estado na sessão); #111 concorrência no filtro e no Modelo
+
   _orcOrdem.ligar("orc-conteudo", renderOrcamentos);
   $("orc-f-conc")?.addEventListener("change", renderOrcamentos);
-  $("orc-f-retorno")?.addEventListener("change", renderOrcamentos);   // fase 187c
+  $("orc-f-retorno")?.addEventListener("change", renderOrcamentos);
   $("btn-orc-neg-registrar")?.addEventListener("click", () => comBotaoTravado("btn-orc-neg-registrar", orcRegistrarInteracao));
   $("btn-orc-neg-sem-retorno")?.addEventListener("click", () => comBotaoTravado("btn-orc-neg-sem-retorno", orcMarcarSemRetorno));
   $("orc-concorrencia")?.addEventListener("change", orcAoEscolherConcorrencia);
@@ -2197,14 +2197,14 @@ function ligarOrcamentos(){
   $("btn-salvar-orc")?.addEventListener("click", () => comBotaoTravado("btn-salvar-orc", () => salvarOrcamento()));
   $("btn-excluir-orc")?.addEventListener("click", excluirOrcamento);
   $("btn-add-item")?.addEventListener("click", adicionarItem);
-  ligarOrcSimulador();   // fase 140c
+  ligarOrcSimulador();
 
-  // Filtro do catálogo (aba Modelo → aba Itens) e validade derivada
+
   ["orc-tipo-obra","orc-porte","orc-faixa"].forEach(id => $(id)?.addEventListener("change", atualizarFiltroCatalogoOrc));
-  $("orc-tipo-proposta")?.addEventListener("change", orcTrocarModelo);   // lote S49 (#134): troca também os itens padrão
-  // Chamado #11: marcar "CGL fornece diesel/hospedagem" libera o serviço na aba Itens e já o acrescenta como item padrão; S45 (L10): alimentação idem
+  $("orc-tipo-proposta")?.addEventListener("change", orcTrocarModelo);
+
   ["orc-cgl-diesel","orc-cgl-hospedagem","orc-cgl-alimentacao"].forEach(id => $(id)?.addEventListener("change", (ev) => { atualizarFiltroCatalogoOrc(); if(ev.target.checked) carregarItensPadraoOrc(true); }));
-  // Chamado #12: prazo e forma de pagamento regeneram o texto padrão (que continua editável)
+
   ["orc-prazo-pagamento","orc-pagamento-forma"].forEach(id => $(id)?.addEventListener("change", () => {
     if(typeof textoPagamentoPadrao === "function" && $("orc-pagamento")) $("orc-pagamento").value = textoPagamentoPadrao($("orc-prazo-pagamento")?.value, $("orc-pagamento-forma")?.value);
   }));
@@ -2212,7 +2212,7 @@ function ligarOrcamentos(){
   ["orc-iss-perc","orc-iss-pdentro"].forEach(id => $(id)?.addEventListener("change", recalcularOrc));
   $("btn-orc-ir-modelo")?.addEventListener("click", () => ativarTabOrc("proposta"));
   $("btn-orc-itens-padrao")?.addEventListener("click", () => carregarItensPadraoOrc(false));
-  // Fase 40: ao escolher o cliente, A/c, telefone e e-mail vêm do cadastro (só se estiverem vazios)
+
   $("orc-cliente")?.addEventListener("change", async () => {
     const id = $("orc-cliente").value;
     orcAtualizarChipCliente();
@@ -2225,7 +2225,7 @@ function ligarOrcamentos(){
     preencher("orc-contato-email", c.email);
   });
 
-  // lote S49 (#140): cliente novo sem sair do orçamento
+
   $("btn-orc-novo-cliente")?.addEventListener("click", orcAbrirNovoCliente);
   $("btn-orc-cli-fechar")?.addEventListener("click", orcFecharNovoCliente);
   $("btn-orc-cli-salvar")?.addEventListener("click", () => comBotaoTravado("btn-orc-cli-salvar", orcSalvarNovoCliente));
@@ -2233,14 +2233,14 @@ function ligarOrcamentos(){
   $("orc-cli-doc")?.addEventListener("input", () => { _orcCliDupId = null; orcCliDocStatus(""); });
   $("btn-orc-cli-cnpj")?.addEventListener("click", () => comBotaoTravado("btn-orc-cli-cnpj", () => orcCliConferirDoc(true)));
 
-  // Ações novas: nova revisão + criar contrato
+
   $("btn-orc-nova-revisao")?.addEventListener("click", criarNovaRevisaoOrc);
   $("btn-orc-criar-obra")?.addEventListener("click", criarObraDoOrcamento);
-  $("orc-arquivos-conteudo")?.addEventListener("click", (e) => {   // fase 174b
+  $("orc-arquivos-conteudo")?.addEventListener("click", (e) => {
     const b = e.target.closest("[data-orc-arq-abrir]"); if(b) orcAbrirArquivo(b.dataset.orcArqAbrir);
   });
 
-  // Smart-buttons: com um único vínculo abrem a ficha direto; senão vão para a aba
+
   const SB_ORC_LISTA = { "sb-orc-contratos": ["contratos", "contrato"], "sb-orc-obras": ["obras", "obra"], "sb-orc-medicoes": ["medicoes", "medicao"] };
   document.querySelectorAll(".sb-btn[data-goto-tab]").forEach(b => {
     if(b.id.startsWith("sb-orc-")){
@@ -2252,7 +2252,7 @@ function ligarOrcamentos(){
       });
     }
   });
-  // Aba Vínculos: clique na linha abre a ficha
+
   $("orc-vinculos-conteudo")?.addEventListener("click", e => {
     const tr = e.target.closest("tr[data-abrir]");
     if(tr && tr.dataset.id) orcAbrirVinculo(tr.dataset.abrir, tr.dataset.id);
@@ -2291,7 +2291,7 @@ function ligarOrcamentos(){
   });
   document.querySelectorAll("#orc-statusbar .stage").forEach(el => {
     el.addEventListener("click", async () => {
-      if(!orcPodeEditar()) return;   // lote S57b (#211): só leitura não muda o status
+      if(!orcPodeEditar()) return;
       const novo = el.dataset.status;
       if(!orcEditId){
         $("orc-status").value = novo;
@@ -2303,18 +2303,18 @@ function ligarOrcamentos(){
     });
   });
 
-  $("btn-orc-enviar")?.addEventListener("click", abrirEnvioOrc);   // fase 192b
+  $("btn-orc-enviar")?.addEventListener("click", abrirEnvioOrc);
 
   const navOrc = document.querySelector('nav button[data-secao="orcamentos"]');
   if(navOrc) navOrc.addEventListener("click", mostrarPainelOrc);
 }
 
-/* ====================================================================
-   Fase 192b: envio da proposta pela caixa orcamento@ (edge function enviar-orcamento)
-   O texto do e-mail, o nome do anexo e a lista de anexos saem da function (ação "previa"), então a prévia é o que sai.
-   O PDF é o mesmo do botão PDF, gerado do que está gravado; o front sobe em orcamentos-envio/<orcamento_id>/ e a
-   function anexa a proposta e o institucional, envia, registra em orcamento_envios e passa o status para Enviado.
-   ==================================================================== */
+
+
+
+
+
+
 async function orcEnvioChamar(corpo){
   const { data, error } = await sb.functions.invoke("enviar-orcamento", { body: corpo });
   if(error){
@@ -2350,7 +2350,7 @@ async function carregarEnviosOrc(orcId){
   }
   const linhas = envios.map(e => {
     const quem = nomes[e.enviado_por] || "—";
-    // fase 195c: o canal aparece na linha ("WhatsApp para (31) 99999-0000" ou "E-mail para ...")
+
     const wa = e.metodo === "whatsapp";
     const para = (e.destinatarios_para || []).map(x => wa && typeof psiFoneBR === "function" ? psiFoneBR(x) : x).join(", ");
     const anexos = (e.anexos || []).join(" · ");
@@ -2370,17 +2370,17 @@ async function abrirEnvioOrc(){
 
   const corpo = `<div class="orc-envio">
     <div class="orc-envio-campos">
-      ${/* html */ uiCampo({ id: "orc-env-para", rotulo: "Para", valor: o.contato_email || "", obrigatorio: true, placeholder: "e-mail do cliente", ajuda: "Vários: separe por vírgula." })}
+      ${  uiCampo({ id: "orc-env-para", rotulo: "Para", valor: o.contato_email || "", obrigatorio: true, placeholder: "e-mail do cliente", ajuda: "Vários: separe por vírgula." })}
       <div id="orc-env-sug" class="orc-env-sug"></div>
-      ${/* html */ uiCampo({ id: "orc-env-cc", rotulo: "Cc (além da orcamento@)", placeholder: "opcional" })}
-      ${/* html */ uiCampo({ id: "orc-env-fio", rotulo: "Responder ao pedido", tipo: "select", placeholder: "Mensagem nova", opcoes: [["", "Procurando pedidos na orcamento@…"]] })}
-      ${/* html */ uiCampo({ id: "orc-env-obs", rotulo: "Observação (parágrafo opcional no e-mail)", tipo: "textarea" })}
+      ${  uiCampo({ id: "orc-env-cc", rotulo: "Cc (além da orcamento@)", placeholder: "opcional" })}
+      ${  uiCampo({ id: "orc-env-fio", rotulo: "Responder ao pedido", tipo: "select", placeholder: "Mensagem nova", opcoes: [["", "Procurando pedidos na orcamento@…"]] })}
+      ${  uiCampo({ id: "orc-env-obs", rotulo: "Observação (parágrafo opcional no e-mail)", tipo: "textarea" })}
       <div id="orc-env-manual"></div>
     </div>
     <div class="orc-envio-previa-cab"><span class="rotulo-caps">Assunto</span> <strong id="orc-env-assunto">…</strong></div>
     <div class="orc-envio-dest" id="orc-env-dest"></div>
     <iframe id="orc-env-previa" class="orc-envio-previa" sandbox="" title="Prévia do e-mail como vai sair"></iframe>
-    <div id="orc-env-anexos">${/* html */ uiCarregando("Montando os anexos…")}</div>
+    <div id="orc-env-anexos">${  uiCarregando("Montando os anexos…")}</div>
     <div id="orc-env-msg"></div>
   </div>`;
   const d = document.createElement("dialog");
@@ -2392,16 +2392,16 @@ async function abrirEnvioOrc(){
   document.body.appendChild(d);
   const q = sel => d.querySelector(sel);
   let enviando = false, pdfBlob = null, pdfErro = null, anexosPrevia = [], seqPrevia = 0;
-  // fase 196c: manual do equipamento do método (a function diz se existe); desmarcado por padrão: nem todo equipamento tem manual cadastrado, quem finaliza decide (19/11)
-  // TODO (adiado em 19/11): o envio do manual junto fica para uma versão futura. Nada a mudar aqui: sem o PDF em
-  // orcamentos-envio/fixos/manuais/ a function não devolve manual, a caixa não aparece e a proposta sai como antes.
+
+
+
   let manualInfo = null, anexarManual = false;
   const fechar = () => { if(!enviando) d.close(); };
   d.addEventListener("close", () => d.remove());
   d.addEventListener("cancel", ev => { if(enviando) ev.preventDefault(); });
 
   const fioSel = q("#orc-env-fio");
-  // a proposta é gerada já na abertura: o tamanho entra na lista e o envio não espera de novo
+
   const pdfPronto = gerarPropostaPdfBlob(orcId).then(b => { pdfBlob = b; }).catch(err => { pdfErro = err; }).finally(() => renderAnexos());
 
   function renderAnexos(){
@@ -2418,7 +2418,7 @@ async function abrirEnvioOrc(){
     return { para: q("#orc-env-para").value, cc: q("#orc-env-cc").value, observacao: q("#orc-env-obs").value,
       email_origem_id: fioSel.value && fioSel.value !== "" ? fioSel.value : null, anexar_manual: !!manualInfo && anexarManual };
   }
-  // caixa do manual: só aparece quando a function acha o manual do método no servidor
+
   function renderManual(){
     const alvo = q("#orc-env-manual");
     if(!alvo) return;
@@ -2443,7 +2443,7 @@ async function abrirEnvioOrc(){
       manualInfo = r.manual || null;
       renderManual();
       renderAnexos();
-      // a primeira prévia não sabia do manual: refaz já com ele marcado, para a lista de anexos ser a que sai
+
       if(achouManual && anexarManual) atualizarPrevia();
       if(!pdfErro) q("#orc-env-msg").innerHTML = "";
     } catch(err){
@@ -2513,7 +2513,7 @@ async function abrirEnvioOrc(){
   });
   d.showModal();
   q("#orc-env-para").focus();
-  if(typeof cctOrcSugerirEmails === "function") cctOrcSugerirEmails(d, $("orc-cliente")?.value || "");   // fase 183a
+  if(typeof cctOrcSugerirEmails === "function") cctOrcSugerirEmails(d, $("orc-cliente")?.value || "");
   carregarPedidos();
 }
 

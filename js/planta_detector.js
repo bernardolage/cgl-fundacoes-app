@@ -1,19 +1,19 @@
-// =====================================================================
-// Símbolos redondos da folha do projeto (prefixo ppd-), sem tela e sem banco.
-// Lê a lista de operações do pdf.js (page.getOperatorList()) guardando a transformação corrente e devolve os círculos
-// desenhados (quatro curvas ou polígono fechado de muitos lados), em fração da imagem da folha. Usado pela leitura da
-// planta (js/planta_leitura.js) para puxar cada nome lido pela IA para o centro do símbolo da estaca.
-// O formato da lista de operações é o do pdf.js de vendor/ (4.10.38); trocar a versão exige rodar scripts/testar-fase175b.mjs.
-// =====================================================================
 
-// Códigos de operação do pdf.js 4.10 (pdfjs.OPS). Fixos aqui para o módulo rodar sem a biblioteca (teste em Node).
+
+
+
+
+
+
+
+
 const PPD_OPS = { save: 10, restore: 11, transform: 12, moveTo: 13, lineTo: 14, curveTo: 15, curveTo2: 16, curveTo3: 17,
   closePath: 18, rectangle: 19, constructPath: 91, paintFormXObjectBegin: 74, paintFormXObjectEnd: 75 };
-const PPD_REDONDO_TOL = 0.12;        // distância ao centro varia no máximo 12% entre os pontos do contorno
-const PPD_RAIO_MIN_PX = 3;           // abaixo disso é ponto de cota ou hachura
-const PPD_RAIO_MAX_FRAC = 0.05;      // acima disso (fração do lado maior) é bolha de carimbo, não estaca
-const PPD_SERIE_PASSO = 0.05;        // símbolos da mesma série têm raio igual a 5%
-const PPD_SERIE_MIN = 5;             // série com menos de 5 símbolos não é contada
+const PPD_REDONDO_TOL = 0.12;
+const PPD_RAIO_MIN_PX = 3;
+const PPD_RAIO_MAX_FRAC = 0.05;
+const PPD_SERIE_PASSO = 0.05;
+const PPD_SERIE_MIN = 5;
 
 function ppdMult(m1, m2){
   return [m1[0] * m2[0] + m1[2] * m2[1], m1[1] * m2[0] + m1[3] * m2[1], m1[0] * m2[2] + m1[2] * m2[3],
@@ -21,7 +21,7 @@ function ppdMult(m1, m2){
 }
 function ppdAplicar(m, x, y){ return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]; }
 
-// Um subcaminho (lista de pontos do contorno, já em pixels da imagem) é redondo? Devolve {cx, cy, r} ou null.
+
 function ppdCirculo(pts, curvas){
   if(!Array.isArray(pts) || pts.length < 4) return null;
   const ini = pts[0], fim = pts[pts.length - 1];
@@ -34,15 +34,15 @@ function ppdCirculo(pts, curvas){
   const rmax = Math.max(...ds), rmin = Math.min(...ds);
   if(!(rmax > 0) || (rmax - rmin) / rmax > PPD_REDONDO_TOL) return null;
   const r = ds.reduce((s, d) => s + d, 0) / ds.length;
-  // fechado: o fim volta ao começo (até 1/4 do raio)
+
   if(Math.hypot(ini[0] - fim[0], ini[1] - fim[1]) > r * 0.25) return null;
-  // polígono sem curva precisa de muitos lados; com curva, 4 bastam
+
   if(!curvas && unicos.length < 8) return null;
   return { cx, cy, r };
 }
 
-// operacoes: { fnArray, argsArray } do pdf.js. viewport: { width, height, transform } (page.getViewport). Devolve
-// [{x, y, r}] em fração da imagem (x pela largura, y pela altura, r pelo lado maior), já sem os repetidos concêntricos.
+
+
 function ppdFormas(operacoes, viewport){
   const fn = operacoes && operacoes.fnArray, args = operacoes && operacoes.argsArray;
   if(!Array.isArray(fn) && !(fn && typeof fn.length === "number")) return [];
@@ -53,7 +53,7 @@ function ppdFormas(operacoes, viewport){
   let ctm = [1, 0, 0, 1, 0, 0];
   const pilha = [];
   const achados = [];
-  const pedacos = [];      // arcos soltos: círculo desenhado em vários caminhos (comum no AutoCAD com contorno tracejado)
+  const pedacos = [];
   const paraTela = (x, y) => { const p = ppdAplicar(ctm, x, y); return ppdAplicar(vt, p[0], p[1]); };
   const guardarPedaco = (arco) => { if(arco && arco.r >= PPD_RAIO_MIN_PX && arco.r / lado <= PPD_RAIO_MAX_FRAC) pedacos.push(arco); };
   for(let i = 0; i < fn.length; i++){
@@ -100,7 +100,7 @@ function ppdFormas(operacoes, viewport){
         atual = [co[k + 2], co[k + 3]]; k += 4;
         if(sub){
           const p3 = paraTela(atual[0], atual[1]);
-          // "v": o primeiro controle é o ponto atual; "y": o segundo controle é o ponto final
+
           beziers.push(o === PPD_OPS.curveTo2 ? [p0, p0, q, p3] : [p0, q, p3, p3]);
           sub.push(p3); curvas++;
         }
@@ -117,9 +117,9 @@ function ppdFormas(operacoes, viewport){
   return ppdSemRepetidos(achados);
 }
 
-// ---- arcos soltos ----
-const PPD_GOMOS = 36;                // a volta dividida em 36 gomos de 10°
-const PPD_COBERTURA_MIN = 30;        // pedaços que cobrem 300° ou mais com o mesmo centro e raio são um círculo
+
+const PPD_GOMOS = 36;
+const PPD_COBERTURA_MIN = 30;
 function ppdCirculo3(a, b, c){
   const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
   if(Math.abs(d) < 1e-9) return null;
@@ -132,7 +132,7 @@ function ppdBezier(b, t){
   const u = 1 - t, A = u * u * u, B = 3 * u * u * t, C = 3 * u * t * t, D = t * t * t;
   return [A * b[0][0] + B * b[1][0] + C * b[2][0] + D * b[3][0], A * b[0][1] + B * b[1][1] + C * b[2][1] + D * b[3][1]];
 }
-// os gomos (de 0 a 35) que uma lista de pontos sobre o círculo cobre, andando de ponto em ponto pelo lado curto
+
 function ppdGomos(c, pts){
   const g = new Set(), ang = (p) => Math.atan2(p[1] - c.cy, p[0] - c.cx);
   for(let i = 0; i + 1 < pts.length; i++){
@@ -147,7 +147,7 @@ function ppdGomos(c, pts){
   }
   return g;
 }
-// uma curva de Bézier que é arco de círculo: { cx, cy, r, gomos } ou null
+
 function ppdArcoBezier(b){
   if(!b || !b[0]) return null;
   const c = ppdCirculo3(b[0], ppdBezier(b, 0.5), b[3]);
@@ -156,14 +156,14 @@ function ppdArcoBezier(b){
   if(amostra.some(p => Math.abs(Math.hypot(p[0] - c.cx, p[1] - c.cy) - c.r) > c.r * 0.04)) return null;
   return { ...c, gomos: ppdGomos(c, amostra) };
 }
-// um polígono aberto (só retas, 4 pontos ou mais) que segue um arco de círculo
+
 function ppdArcoPoligono(pts){
   const c = ppdCirculo3(pts[0], pts[Math.floor(pts.length / 2)], pts[pts.length - 1]);
   if(!c || !(c.r > 0)) return null;
   if(pts.some(p => Math.abs(Math.hypot(p[0] - c.cx, p[1] - c.cy) - c.r) > c.r * 0.04)) return null;
   return { ...c, gomos: ppdGomos(c, pts) };
 }
-// junta os pedaços de mesmo centro (até 5% do raio) e raio (até 5%); fica círculo o que cobrir 300° ou mais
+
 function ppdJuntarPedacos(pedacos){
   const grupos = [], grade = new Map();
   for(const p of pedacos || []){
@@ -184,8 +184,8 @@ function ppdJuntarPedacos(pedacos){
   return grupos.filter(g => g.gomos.size >= PPD_COBERTURA_MIN);
 }
 
-// Círculo duplo, contorno e preenchimento, ou o mesmo símbolo desenhado duas vezes: centro a menos de meio raio vira um só
-// (fica o maior). Grade por célula para não comparar todos com todos.
+
+
 function ppdSemRepetidos(formas){
   const lista = (formas || []).slice().sort((a, b) => b.r - a.r);
   const cel = 0.01, grade = new Map(), fica = [];
@@ -207,8 +207,8 @@ function ppdSemRepetidos(formas){
   return fica;
 }
 
-// Agrupa por tamanho (passo de 5%) e devolve as séries com 5 ou mais símbolos, da maior para a menor:
-// [{ serie, r, n, formas }].
+
+
 function ppdSeries(formas){
   const ord = (formas || []).slice().sort((a, b) => a.r - b.r);
   const grupos = [];
