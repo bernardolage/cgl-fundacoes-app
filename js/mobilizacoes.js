@@ -895,11 +895,18 @@ async function salvarMobilizacaoSilencioso(){
 }
 
 
+
+
+
+function mobPodeReabrirObra(){ return ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial"].includes(usuarioAtual?.cargo); }
 function abrirNovaMobilizacao(obraIdPre){
   const sel = $("mobn-obra");
   if(sel){
+    const opt = o => `<option value="${esc(o.id)}"${o.id === obraIdPre ? " selected" : ""}>${esc(o.codigo)} — ${esc(o.nome)}${o.cidade ? ` (${esc(o.cidade)}${o.uf ? "/" + esc(o.uf) : ""})` : ""}</option>`;
     const ativas = _mobObras.filter(o => o.status !== "concluida");
-    sel.innerHTML = '<option value="">— selecione a obra —</option>' + ativas.map(o => `<option value="${esc(o.id)}"${o.id === obraIdPre ? " selected" : ""}>${esc(o.codigo)} — ${esc(o.nome)}${o.cidade ? ` (${esc(o.cidade)}${o.uf ? "/" + esc(o.uf) : ""})` : ""}</option>`).join("");
+    const concluidas = mobPodeReabrirObra() ? _mobObras.filter(o => o.status === "concluida") : [];
+    sel.innerHTML = '<option value="">— selecione a obra —</option>' + ativas.map(opt).join("")
+      + (concluidas.length ? `<optgroup label="Concluídas (2ª etapa)">${concluidas.map(opt).join("")}</optgroup>` : "");
   }
   const eq = $("mobn-equip"); if(eq) eq.innerHTML = mobEquipOpts(null);
   const ap = $("mobn-apoio"); if(ap){ _mobApoioSel.mobn = []; ap.innerHTML = mobApoioHTML("mobn"); mobLigarApoio("mobn", () => $("mobn-obra")?.value, "mobn-equip"); }
@@ -911,13 +918,28 @@ async function criarMobilizacao(){
   if(!mobPodeEditar()){ aviso("app-aviso", "Seu cargo não pode criar mobilização.", "erro"); return; }
   const obra_id = $("mobn-obra")?.value;
   if(!obra_id){ aviso("app-aviso", "Selecione a obra.", "erro"); return; }
+
+  const obraSel = _mobObras.find(o => o.id === obra_id);
+  let reabriu = false;
+  if(obraSel && obraSel.status === "concluida"){
+    const ok = await uiConfirmar({ titulo: "Obra concluída", confirmar: "Reabrir e mobilizar",
+      texto: `A obra ${obraSel.codigo} está concluída. Ao criar a mobilização ela volta para Em andamento.` });
+    if(!ok) return;
+    const { data: upd, error: eObra } = await sb.from("obras").update({ status: "em_andamento" }).eq("id", obra_id).select("id");
+    if(eObra || !(upd || []).length){ aviso("app-aviso", "Não foi possível voltar a obra para Em andamento" + (eObra ? ": " + eObra.message : " (seu cargo não altera a obra).") + " A mobilização não foi criada.", "erro"); return; }
+    obraSel.status = "em_andamento"; reabriu = true;
+  }
   const reg = { obra_id, equipamento_id: $("mobn-equip")?.value || null,
     equipamentos_apoio: [..._mobApoioSel.mobn],
     data_mobilizacao_prev: $("mobn-data")?.value || null, status: "prevista" };
   const { data, error } = await sb.from("mobilizacoes").insert(reg).select("id").single();
+  if(error && reabriu){
+    const { error: eVolta } = await sb.from("obras").update({ status: "concluida" }).eq("id", obra_id);
+    if(!eVolta) obraSel.status = "concluida";
+  }
   if(error){ aviso("app-aviso", "Não foi possível criar: " + (/mobilizacoes_equip_ativa_uq/.test(error.message) ? "esta TAG já está em outra mobilização ativa." : error.message), "erro"); return; }
   fecharNovaMobilizacao();
-  aviso("app-aviso", "Mobilização criada com as pendências do modelo.", "ok");
+  aviso("app-aviso", reabriu ? `Obra ${obraSel.codigo} de volta para Em andamento e mobilização criada com as pendências do modelo.` : "Mobilização criada com as pendências do modelo.", "ok");
   await carregarMobilizacoes(true);
   abrirMobilizacao(data.id);
 }
