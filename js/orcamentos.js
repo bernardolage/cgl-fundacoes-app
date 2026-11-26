@@ -582,9 +582,9 @@ async function carregarOrcamentos(){
   const COLS = "id,numero,numero_revisao,cliente_id,data_orcamento,status,valor_total,validade,responsavel_id,tipo_proposta,porte_equipamento,faixa_profundidade,iss_percentual,iss_por_dentro";
   const ler = (cols) => sb.from("orcamentos").select(cols).order("data_orcamento",{ ascending:false });
   const pRetornos = orcCarregarRetornos();
-  let [{ data, error }, itensEixo] = await Promise.all([ler(COLS + ",concorrencia"), orcBuscarItensEixo()]);
+  let [{ data, error }, itensEixo] = await Promise.all([ler(COLS + ",concorrencia,motivo_encerramento"), orcBuscarItensEixo()]);
 
-  if(error && /concorrencia/i.test(error.message || "")) ({ data, error } = await ler(COLS));
+  if(error && /concorrencia|motivo_encerramento/i.test(error.message || "")) ({ data, error } = await ler(COLS));
   else if(!error) _orcTemConcorrencia = true;
   _orcamentos = orcSoVigentes(error ? [] : (data || []));
   orcAtualizarConcorrencias();
@@ -863,6 +863,7 @@ function renderOrcKanban(dados){
         <div class="serv-kan-card-meta">
           <span class="meta">${dataBR(o.data_orcamento)}${o.validade ? " · val " + dataBR(o.validade) : ""} · ${esc(_orcTipoPorteTxt(o))}</span>
           ${o.concorrencia ? `<span class="meta" title="Concorrência (lote S47, #111)">🏗️ ${esc(o.concorrencia)}</span>` : ""}
+          ${o.motivo_encerramento && (o.status === "rejeitado" || o.status === "cancelado") ? `<span class="meta" title="Motivo do encerramento">${esc(o.motivo_encerramento)}</span>` : ""}
         </div>
         <div class="serv-kan-card-rod">
           <span class="meta">c/ ISS</span>
@@ -1170,6 +1171,27 @@ function abrirFichaOrcVisual(o){
 
 
 
+async function orcEncerrarSemAprovar(){
+  if(!orcEditId || !orcPodeEditar()) return;
+  const v = await uiPedirValores({ titulo: "Encerrar sem aprovar", confirmar: "Encerrar",
+    texto: "O orçamento sai do funil e vai para a coluna Perdida ou Cancelada. Para reabrir, mude o Status de volta.",
+    campos: [
+      { id: "desfecho", rotulo: "Desfecho", tipo: "select", valor: "rejeitado", obrigatorio: true,
+        opcoes: [["rejeitado", "Perdida: o cliente fechou com outro ou recusou"], ["cancelado", "Cancelada: a obra não vai acontecer"]] },
+      { id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, obrigatorio: true, placeholder: "Ex.: preço acima do concorrente" },
+      { id: "concorrente", rotulo: "Quem levou (se souber)", tipo: "text" }
+    ] });
+  if(!v) return;
+  const motivo = String(v.motivo || "").trim();
+  if(motivo.length < 5){ aviso("app-aviso", "Informe o motivo do encerramento (5 letras ou mais).", "erro"); return; }
+  const st = v.desfecho === "cancelado" ? "cancelado" : "rejeitado";
+  const { error } = await sb.from("orcamentos").update({ motivo_encerramento: motivo, concorrente: String(v.concorrente || "").trim() || null }).eq("id", orcEditId);
+  if(error){ aviso("app-aviso", "Não foi possível encerrar: " + error.message, "erro"); return; }
+  await salvarOrcamento(st);
+}
+
+
+
 
 async function atualizarAcoesOrc(o){
   const btnObra = $("btn-orc-criar-obra");
@@ -1177,6 +1199,13 @@ async function atualizarAcoesOrc(o){
   if(!btnObra) return;
   btnObra.style.display = "none";
   if(hint) hint.textContent = "";
+
+  const btnEnc = $("btn-orc-encerrar");
+  if(btnEnc) btnEnc.hidden = !(orcEditId && orcPodeEditar() && ["enviado", "em_negociacao"].includes(o.status));
+  if(orcEditId && (o.status === "rejeitado" || o.status === "cancelado") && hint){
+    hint.textContent = `${o.status === "rejeitado" ? "Perdida" : "Cancelada"}${o.motivo_encerramento ? ": " + o.motivo_encerramento : ""}${o.concorrente ? " · fechou com " + o.concorrente : ""}`;
+    return;
+  }
   if(!orcEditId || !orcPodeEditar()) return;
 
   if(o.status !== "aprovado"){
@@ -2236,6 +2265,7 @@ function ligarOrcamentos(){
 
   $("btn-orc-nova-revisao")?.addEventListener("click", criarNovaRevisaoOrc);
   $("btn-orc-criar-obra")?.addEventListener("click", criarObraDoOrcamento);
+  $("btn-orc-encerrar")?.addEventListener("click", orcEncerrarSemAprovar);
   $("orc-arquivos-conteudo")?.addEventListener("click", (e) => {
     const b = e.target.closest("[data-orc-arq-abrir]"); if(b) orcAbrirArquivo(b.dataset.orcArqAbrir);
   });

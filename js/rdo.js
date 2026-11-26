@@ -3425,6 +3425,29 @@ function diasImportacao(){
 
 
 let _csvMaqSugerida = null;
+
+
+let _csvRdoMaqDia = {};
+async function rdoCarregarMaqDiariosImport(obraId){
+  _csvRdoMaqDia = {};
+  const dias = diasImportacao();
+  if(!obraId || !dias.length) return _csvRdoMaqDia;
+  const { data, error } = await sb.from("rdo").select("data,equipamento_id").eq("obra_id", obraId).in("data", dias).not("equipamento_id", "is", null);
+  if(error) return _csvRdoMaqDia;
+  const porDia = {};
+  (data || []).forEach(r => { (porDia[r.data] = porDia[r.data] || new Set()).add(r.equipamento_id); });
+  Object.entries(porDia).forEach(([d, set]) => { if(set.size === 1) _csvRdoMaqDia[d] = [...set][0]; });
+  return _csvRdoMaqDia;
+}
+
+
+function rdoMaqDiaVazioImport(dia){
+  const sel = $("csv-maq-sem");
+  if(sel && sel.value) return sel.value;
+  if(_csvRdoMaqDia[dia]) return _csvRdoMaqDia[dia];
+  if(!sel && _csvMaqSugerida && !_csvMaqEstrito) return _csvMaqSugerida.id;
+  return null;
+}
 function rdoMaqDaLinhaImport(r){
   if(r.equipamento_id) return r.equipamento_id;
   if(r.maquina_codigo && _csvMapaManual[r.maquina_codigo]) return _csvMapaManual[r.maquina_codigo];
@@ -3444,7 +3467,7 @@ function rdoDiariosImport(){
 
 
       const maqDia = _iaOrigem === "xlsx_rg113" ? (_iaExtras?.[dia]?.maquina_dia || "") : "";
-      const eqDia = maqDia ? ((rdoCasarMaquinaImport(maqDia) || {}).id || _csvMapaManual[maqDia] || null) : null;
+      const eqDia = (maqDia ? ((rdoCasarMaquinaImport(maqDia) || {}).id || _csvMapaManual[maqDia] || null) : null) || rdoMaqDiaVazioImport(dia);
       grupos[""] = { dia, eq: eqDia, linhas: [] };
     }
     Object.values(grupos).forEach(g => out.push(g));
@@ -4112,6 +4135,7 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
   _csvTipoDetectado = detectarTipoServico(registros);
 
   await rdoCarregarMaqObraImport($("rdo-obra")?.value || (_csvObraDetectada && _csvObraDetectada.id) || null);
+  await rdoCarregarMaqDiariosImport($("rdo-obra")?.value || (_csvObraDetectada && _csvObraDetectada.id) || null);
 
 
   const maquinasNoCSV = [...new Set(registros.map(r => (r.maquina_codigo||"").trim()).filter(Boolean))];
@@ -4200,8 +4224,11 @@ async function continuarProcessamentoImport(registros, obraTxtFonte, formato){
 
 
   const semMaq = registros.filter(r => !r.equipamento_id && !(r.maquina_codigo && _csvMaquinasSemMatch.includes(r.maquina_codigo))).length;
-  const blocoSemMaq = semMaq ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
-      ⚠️ <strong>${semMaq} linha${semMaq>1?"s":""} sem máquina identificada</strong> — vão para o diário sem máquina do dia (que entra em "Para regularizar"), a menos que você escolha a máquina:
+
+  const diasVaziosSemMaq = rdoDiariosImport().filter(g => !g.linhas.length && !g.eq).length;
+  const txtSemMaq = [semMaq ? `${semMaq} linha${semMaq>1?"s":""} sem máquina identificada` : "", diasVaziosSemMaq ? `${diasVaziosSemMaq} dia${diasVaziosSemMaq>1?"s":""} sem estaca e sem máquina` : ""].filter(Boolean).join(" e ");
+  const blocoSemMaq = (semMaq || diasVaziosSemMaq) ? `<div style="background:var(--aviso-bg);border-left:3px solid var(--aviso);padding:10px 14px;margin-bottom:10px;font-size:var(--txt-sm);">
+      ⚠️ <strong>${esc(txtSemMaq)}</strong> — vão para o diário sem máquina do dia (que entra em "Para regularizar"), a menos que você escolha a máquina:
       <select id="csv-maq-sem" style="width:100%;margin-top:6px;"><option value="">— deixar sem máquina —</option>${rdoOptsMaquinas(_csvMaqObraIds, _csvMaqSugerida && !_csvMaqEstrito ? _csvMaqSugerida.id : null)}</select>
       ${_csvMaqSugerida ? `<div class="meta">Sugerida: ${esc(_csvMaqSugerida.codigo)} (única mobilização ativa da obra).${_csvMaqEstrito ? ` <button type="button" class="btn-sec btn-sm" id="csv-maq-sem-usar" data-eq="${esc(_csvMaqSugerida.id)}">usar</button>` : ""}</div>` : ""}
     </div>` : "";
@@ -4446,6 +4473,7 @@ async function confirmarImportCSV(){
   }
 
 
+  await rdoCarregarMaqDiariosImport(obra_id);
   const gruposPrev = rdoDiariosImport();
   const semMaqPrev = gruposPrev.filter(g => !g.eq && g.linhas.length).length;
 
@@ -4458,6 +4486,8 @@ async function confirmarImportCSV(){
     if(!eEx && oEx?.rdo_exige_equipamento){
       aviso("app-aviso", `Esta obra exige a máquina do diário: ${semMaqTodos} diário(s) ficariam sem máquina. Confirme a TAG no bloco de máquinas (💡 usar) ou escolha a máquina das linhas sem máquina.`, "erro");
       if($("csv-aviso")) aviso("csv-aviso", "Obra exige máquina: escolha a TAG antes de importar.", "erro");
+      const selSem = $("csv-maq-sem");
+      if(selSem){ selSem.scrollIntoView({ block: "center" }); selSem.focus(); }
       return;
     }
   }

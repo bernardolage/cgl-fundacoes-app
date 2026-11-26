@@ -16,7 +16,7 @@ let _prodTotalFiltro = 0;
 let _prodTodos = false;
 let _prodPagina = 0;
 const PROD_PAGINA = 300;
-const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo,tipo_item";
+const PROD_COLS = "id,codigo,nome,unidade,categoria_id,estoque_atual,estoque_minimo,estoque_ideal,controle_reposicao,custo_ultimo,inventario_conferido,ativo,tipo_item,ca";
 
 
 
@@ -300,7 +300,7 @@ async function carregarProdutos(){
   const termo = prodTermo(), fCat = $("prod-f-categoria")?.value || "", fEst = $("prod-f-estoque")?.value || "", fTipo = $("prod-f-tipo")?.value || "";
   const baixo = fEst === "baixo";
   let q = sb.from("produtos").select(PROD_COLS, { count: "exact" }).eq("ativo", fEst !== "inativos").order("nome");
-  if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo},aplicacao.ilike.%${termo}%`);
+  if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo},aplicacao.ilike.%${termo}%,ca.eq.${termo}`);
   if(fCat) q = q.eq("categoria_id", fCat);
   if(fTipo) q = q.eq("tipo_item", fTipo);
   if(fEst === "pendentes") q = q.eq("aprovacao", "pendente");
@@ -426,6 +426,7 @@ function renderProdLista(dados){
       <td>${esc(p.codigo)}</td>
       <td>${esc(p.nome)}${prodTagServico(p)}${conf}</td>
       <td>${esc(_prodCategorias[p.categoria_id] || "—")}</td>
+      <td>${p.ca ? `<span class="ui-codigo">${esc(p.ca)}</span>` : "—"}</td>
       <td>${esc(p.unidade)}</td>
       <td class="num">${num(p.estoque_atual)}</td>
       <td class="num">${num(p.estoque_minimo)}</td>
@@ -435,7 +436,7 @@ function renderProdLista(dados){
   }).join("");
   cont.innerHTML = `${aviso_lim}<div class="tabela-rola"><table>
     <thead><tr>
-      <th>Código</th><th>Nome</th><th>Categoria</th><th>Un.</th>
+      <th>Código</th><th>Nome</th><th>Categoria</th><th title="Certificado de Aprovação do EPI">CA</th><th>Un.</th>
       <th class="num">Estoque</th><th class="num">Mínimo</th><th class="num">Custo</th><th>Status</th>
     </tr></thead>
     <tbody>${linhas}</tbody></table></div>`;

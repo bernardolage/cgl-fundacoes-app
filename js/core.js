@@ -118,7 +118,7 @@ const STATUS = {
     enviado:       { label:"Enviado",        cor:"azul"     },
     em_negociacao: { label:"Em negociação",  cor:"ambar"    },
     aprovado:      { label:"Aprovado",       cor:"verde"    },
-    rejeitado:     { label:"Rejeitado",      cor:"vermelho" },
+    rejeitado:     { label:"Perdida",        cor:"vermelho" },
     cancelado:     { label:"Cancelado",      cor:"vermelho" }
   },
   contrato: {
