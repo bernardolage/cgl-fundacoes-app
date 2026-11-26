@@ -171,7 +171,7 @@ function aptRenderHoras(){
       <td>${esc(h.equipamento || "—")}</td><td>${esc(h.funcionario || "—")}</td><td>${esc(aptHora(h.inicio))}</td><td>${esc(aptHora(h.fim))}</td>
       <td class="num">${esc(num(h.horas))}${h.hora_extra ? ' <span class="tag ambar" title="hora extra">HE</span>' : ""}</td>
       <td>${esc(h.observacao || "")}${h.centro ? ` <span class="meta">${esc(h.centro)}</span>` : ""}</td>
-      <td class="meta">${esc({ ficha: "ficha", apontamento: "apontamento", quadro: "quadro" }[h.origem] || h.origem || "")}</td></tr>`).join("")}
+      <td class="meta">${esc({ ficha: "ficha", apontamento: "apontamento", quadro: "quadro", atividade_os: "atividade da OS" }[h.origem] || h.origem || "")}</td></tr>`).join("")}
   </tbody></table></div>`;
 }
 function aptRenderAprovacoes(){
