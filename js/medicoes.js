@@ -4153,7 +4153,8 @@ async function medNfseArquivo(tipo){
   if(!m) return;
   const col = tipo === "pdf" ? "nfse_pdf_url" : "nfse_xml_url";
   const nome = tipo === "pdf" ? "PDF da NFS-e" : "XML da NFS-e";
-  const janela = window.open("", "_blank");   // aberta no clique, antes do await (bloqueador de pop-up)
+  // o XML baixa como arquivo; só o PDF abre numa aba (aberta no clique, antes do await, pelo bloqueador de pop-up)
+  const janela = tipo === "pdf" ? window.open("", "_blank") : null;
   let url = null, erro = null;
   if(m[col] && String(m[col]).startsWith("nfse/")){
     const { data, error } = await sb.storage.from("fiscal-documentos").createSignedUrl(m[col], 120);
@@ -4170,7 +4171,8 @@ async function medNfseArquivo(tipo){
     aviso("app-aviso", `${nome}: ${erro || "arquivo ainda não disponível"}.`, "erro");
     return;
   }
-  if(janela) janela.location.href = url; else window.open(url, "_blank");
+  if(tipo === "xml") await fiscalBaixarXml(url, `NFS-e ${m.nfse_numero || m.numero || ""}.xml`);
+  else if(janela) janela.location.href = url; else window.open(url, "_blank");
   if(!m[col]) await medNfseRecarregar();
 }
 function medNfseCancelar(){

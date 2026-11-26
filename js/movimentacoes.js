@@ -1513,7 +1513,8 @@ async function movNfeArquivo(tipo){
   const m = movimentacaoAtual;
   const col = tipo === "pdf" ? "arquivo_pdf_url" : "nf_xml_url";
   const nome = tipo === "pdf" ? "DANFE" : "XML";
-  const janela = window.open("", "_blank");   // aberta no clique, antes do await (bloqueador de pop-up)
+  // o XML baixa como arquivo; só o DANFE abre numa aba (aberta no clique, antes do await, pelo bloqueador de pop-up)
+  const janela = tipo === "pdf" ? window.open("", "_blank") : null;
   let url = null, erro = null;
   if(m[col] && String(m[col]).startsWith("nfe/")){
     const { data, error } = await sb.storage.from("fiscal-documentos").createSignedUrl(m[col], 120);
@@ -1530,7 +1531,8 @@ async function movNfeArquivo(tipo){
     aviso("app-aviso", `${nome}: ${erro || "arquivo ainda não disponível"}.`, "erro");
     return;
   }
-  if(janela) janela.location.href = url; else window.open(url, "_blank");
+  if(tipo === "xml") await fiscalBaixarXml(url, `NF-e ${m.nf_numero || m.numero}${m.nf_chave_acesso ? " - " + String(m.nf_chave_acesso).replace(/\D/g, "") : ""}.xml`);
+  else if(janela) janela.location.href = url; else window.open(url, "_blank");
   if(!m[col]) await movNfeRecarregar();
 }
 function movNfeCartaCorrecao(){

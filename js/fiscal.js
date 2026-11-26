@@ -432,6 +432,23 @@ async function fiscalChamarFocus(acao, corpo){
   }
 }
 
+/* XML da nota baixado como arquivo (pedido do Lucas, 26/11/2026: o MDF-e e o cliente pedem o .xml; abrir numa aba só
+   mostrava o texto). Baixa pela URL assinada e salva com o nome dado; se o navegador não deixar ler, abre na aba. */
+async function fiscalBaixarXml(url, nomeArquivo){
+  try {
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const blob = new Blob([await r.arrayBuffer()], { type: "application/xml" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = nomeArquivo;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch(_e){
+    window.open(url, "_blank");
+  }
+}
+
 /* ---------- Fase 105b: certificado A1 e webhook da Focus ----------
    O arquivo (.pfx/.p12) é lido no navegador em base64 e vai, com a senha, direto para a function focus-nfe, que repassa à
    Focus (API de Empresas). Nada disso é gravado no banco, em log ou no console; o app guarda só a validade. Envio só pelo
