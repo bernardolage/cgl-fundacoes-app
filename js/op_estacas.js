@@ -27,6 +27,34 @@ let _estEditando = null;
 let _estEtapa = null;
 
 
+
+
+let _refMotivo = null;
+let _refArquivo = null;
+let _refEstaca = null;
+function camposMotivoRefuro(prefixo, obs, nFotos){
+  return `<p class="op-meta">Motivo da Refurada</p>
+    <div class="op-chips">${Object.entries(ROTULO_REFURO).map(([k, r]) =>
+      `<button type="button" class="op-chip-btn${_refMotivo === k ? " ativo" : ""}" data-ref-motivo="${esc(k)}" aria-pressed="${_refMotivo === k}">${esc(r)}</button>`).join("")}</div>
+    <label class="op-campo">O que houve (obrigatório em Outro)<input type="text" id="${esc(prefixo)}-obs" maxlength="300" value="${esc(obs || "")}"></label>
+    <label class="op-btn op-btn-arquivo">📷 Foto do motivo (opcional)
+      <input type="file" id="${esc(prefixo)}-foto" accept="image/*" capture="environment" data-ref-foto="1"></label>
+    <p class="op-meta" id="${esc(prefixo)}-foto-txt">${_refArquivo ? "Foto escolhida: sobe com a estaca." : nFotos ? esc(nFotos) + " foto(s) já ligada(s) a esta estaca." : "Sem foto."}</p>`;
+}
+function fotosDaExecucao(id){
+  return id ? (OP.snap.fotos || []).filter(f => f.execucao_id === id && !f.desconsiderada).length : 0;
+}
+function avisoRefuroDaEstaca(numero){
+  const n = String(numero || "").trim().toUpperCase();
+  return (OP.snap.pendencias || []).find(p => p.tipo === "refuro_aviso" && String(p.detalhe?.estaca_numero || "").toUpperCase() === n) || null;
+}
+function motivoRefuroValido(obs){
+  if(!_refMotivo){ avisar("Escolha o motivo da Refurada.", "aviso"); return false; }
+  if(_refMotivo === "outro" && String(obs || "").trim().length < 5){ avisar("Com o motivo Outro, escreva o que houve (ao menos 5 letras).", "aviso"); return false; }
+  return true;
+}
+
+
 OP.telas.estacas = async function(){
   const s = OP.snap, box = $("op-estacas-conteudo");
   const tipo = s.rdo.tipo_servico;
@@ -77,8 +105,7 @@ function formularioEstaca(tipo){
     <label class="op-campo">Nº do boletim em papel<input type="text" id="op-est-boletim" maxlength="30" value="${v("numero_boletim_fisico")}"></label>
     <label class="op-check"><input type="checkbox" id="op-est-refuro" ${refuro ? "checked" : ""}> Refurada (refuro)</label>
     <div id="op-est-refuro-campos" ${refuro ? "" : "hidden"}>
-      <label class="op-campo">Motivo da Refurada<select id="op-est-refuro-motivo"><option value="">Escolha…</option>
-        ${Object.entries(ROTULO_REFURO).map(([k, r]) => `<option value="${esc(k)}" ${x?.refuro_motivo === k ? "selected" : ""}>${esc(r)}</option>`).join("")}</select></label>
+      ${camposMotivoRefuro("op-est-refuro", x?.refuro_obs, fotosDaExecucao(x?.id))}
     </div>
     <details class="op-detalhes">
       <summary>Mais dados</summary>
@@ -115,7 +142,8 @@ async function salvarEstaca(){
   const numero = $("op-est-numero").value.trim().toUpperCase();
   if(!numero){ avisar("Informe o número da estaca.", "aviso"); return; }
   const refuro = $("op-est-refuro").checked;
-  if(refuro && !$("op-est-refuro-motivo").value){ avisar("Escolha o motivo da Refurada.", "aviso"); return; }
+  const refObs = refuro ? $("op-est-refuro-obs").value.trim() : "";
+  if(refuro && !motivoRefuroValido(refObs)) return;
   if(!x && !refuro && (s.execucoes || []).some(e => e.modalidade_execucao !== "refuro" && String(e.estaca_numero).toUpperCase() === numero)){
     if(!confirm(`A estaca ${numero} já está no dia. Atualizar a que existe?`)) return;
   }
@@ -124,7 +152,8 @@ async function salvarEstaca(){
     profundidade_executada: $("op-est-prof").value,
     numero_boletim_fisico: $("op-est-boletim").value.trim(),
     modalidade_execucao: refuro ? "refuro" : "furo_normal",
-    refuro_motivo: refuro ? $("op-est-refuro-motivo").value : "",
+    refuro_motivo: refuro ? _refMotivo : "",
+    refuro_obs: refObs,
     observacoes: $("op-est-obs").value.trim()
   };
   const mapa = tipo === "estaca_raiz"
@@ -142,7 +171,8 @@ async function salvarEstaca(){
   }
   if(!x) campos.estaca_numero = numero;
   if(_estEtapa && _estEtapa !== etapaDaExecucao(x)) campos.etapa = _estEtapa;
-  if(x && !Object.keys(campos).length){ _estEditando = null; renderTelaAtual(); return; }
+  const fotoRefuro = refuro ? _refArquivo : null;
+  if(x && !Object.keys(campos).length && !fotoRefuro){ _estEditando = null; _refArquivo = null; renderTelaAtual(); return; }
 
   if("observacoes" in campos && !campos.etapa && etapaDaExecucao(x)) campos.etapa = etapaDaExecucao(x);
   const id = x?.id || novoId();
@@ -156,9 +186,13 @@ async function salvarEstaca(){
     linha.observacoes = (et ? `[etapa: ${et}]` : "") + (ob ? (et ? " " : "") + ob : "");
   }
   if(!x) (s.execucoes || (s.execucoes = [])).push(linha);
-  await enfileirar("rdo_campo_execucao_upsert", { p_rdo: OP.rdoId, p_id: id, p_campos: campos, p_anteriores: ant },
-    { rotulo: "Estaca " + numero, linha_id: id });
-  _estEditando = null; _estEtapa = null; _estHoras = {};
+  if(Object.keys(campos).length){
+    await enfileirar("rdo_campo_execucao_upsert", { p_rdo: OP.rdoId, p_id: id, p_campos: campos, p_anteriores: ant },
+      { rotulo: "Estaca " + numero, linha_id: id });
+  }
+
+  if(fotoRefuro) await guardarFotoNaFila(fotoRefuro, "estaca", { execucao_id: id }, "Motivo da Refurada: " + (ROTULO_REFURO[_refMotivo] || ""));
+  _estEditando = null; _estEtapa = null; _estHoras = {}; _refMotivo = null; _refArquivo = null;
   avisar(`Estaca ${numero} guardada.`, "ok");
   renderTelaAtual();
 }
@@ -192,18 +226,63 @@ OP.telas.geo = async function(){
       <label class="op-campo">Números (separe por vírgula)<input type="text" id="op-geo-faltou-numeros" maxlength="200"></label>
       <div class="op-acoes"><button type="button" class="op-btn op-btn-primario" id="op-btn-geo-faltou-ok">Avisar o engenheiro</button><button type="button" class="op-btn" id="op-btn-geo-faltou-cancelar">Cancelar</button></div>
     </div>
+    ${ed && _refEstaca ? folhaVouRefurar() : ""}
     ${!lista.length ? `<div class="op-vazio">${comCpu ? "Nenhuma estaca chegou do computador de bordo hoje. Se a máquina trabalhou, toque em Faltou estaca." : "Nesta máquina as estacas entram pelo relatório do Maya ou pelo engenheiro. Aqui você só confere."}</div>` : ""}
     ${lista.map(x => `<article class="op-card${x.modalidade_execucao === "refuro" ? " op-card-apagado" : ""}" data-geo="${esc(x.id)}">
       <div class="op-card-topo"><strong>${esc(x.estaca_numero || "")}</strong>${seloEstado(x.id)}</div>
       <p>${x.profundidade_executada != null ? num(x.profundidade_executada, 2) + " m" : ""}${x.diametro_mm ? " · Ø " + esc(x.diametro_mm) : ""}${x.volume_concreto_m3 ? " · " + num(x.volume_concreto_m3, 2) + " m³" : ""}${x.modalidade_execucao === "refuro" ? " · Refurada" : ""}</p>
       <p class="op-meta">${x.perfuracao_inicio ? esc(horaDeParede(x.perfuracao_inicio)) : ""}${x.concretagem_fim ? "–" + esc(horaDeParede(x.concretagem_fim)) : ""}</p>
       ${x.observacoes ? `<p class="op-meta">${esc(x.observacoes)}</p>` : ""}
+      ${x.modalidade_execucao === "refuro" && x.refuro_motivo ? `<p class="op-meta">Motivo: ${esc(ROTULO_REFURO[x.refuro_motivo] || x.refuro_motivo)}</p>` : ""}
+      ${  linhaAvisoRefuro(x)}
       ${ed ? `<div class="op-acoes">
         <button type="button" class="op-btn" data-geo-observar="${esc(x.id)}">Observar</button>
         <button type="button" class="op-btn" data-geo-contestar="${esc(x.id)}">Contestar</button>
+        ${x.modalidade_execucao === "furo_normal" ? `<button type="button" class="op-btn" data-geo-refurar="${esc(x.id)}">Vou refurar</button>` : ""}
       </div>` : ""}
     </article>`).join("")}`;
 };
+
+function linhaAvisoRefuro(x){
+  const av = x.modalidade_execucao === "refuro" ? null : avisoRefuroDaEstaca(x.estaca_numero);
+  return av ? `<p class="op-meta"><span class="op-selo op-selo-aviso">Refuro avisado</span> ${esc(ROTULO_REFURO[av.detalhe?.motivo] || "")}: junta-se ao refuro quando ele chegar.</p>` : "";
+}
+
+function folhaVouRefurar(){
+  const x = (OP.snap.execucoes || []).find(e => e.id === _refEstaca);
+  if(!x) return "";
+  const av = avisoRefuroDaEstaca(x.estaca_numero);
+  return `<section class="op-folha" id="op-geo-refuro-folha">
+    <h2>Vou refurar a estaca ${esc(x.estaca_numero || "")}</h2>
+    <p class="op-meta">O aviso fica guardado e se junta ao refuro quando ele chegar do computador de bordo. Se não chegar no dia, o engenheiro é avisado. Quem decide a cobrança é o engenheiro.</p>
+    ${camposMotivoRefuro("op-geo-refuro", av?.detalhe?.obs, 0)}
+    <div class="op-acoes">
+      <button type="button" class="op-btn op-btn-primario" id="op-btn-geo-refuro-ok">Guardar aviso</button>
+      <button type="button" class="op-btn" id="op-btn-geo-refuro-cancelar">Cancelar</button>
+    </div>
+  </section>`;
+}
+
+async function guardarVouRefurar(){
+  const s = OP.snap;
+  const x = (s.execucoes || []).find(e => e.id === _refEstaca);
+  if(!x) return;
+  const obs = $("op-geo-refuro-obs").value.trim();
+  if(!motivoRefuroValido(obs)) return;
+  const numero = String(x.estaca_numero || "").trim().toUpperCase();
+
+  const fotoId = _refArquivo ? await guardarFotoNaFila(_refArquivo, "estaca", null, "Refuro da estaca " + numero) : null;
+  if(_refArquivo && !fotoId) return;
+  const ant = avisoRefuroDaEstaca(numero);
+  const det = { estaca_numero: numero, motivo: _refMotivo, obs: obs || null };
+  if(ant) ant.detalhe = det;
+  else (s.pendencias || (s.pendencias = [])).push({ id: novoId(), tipo: "refuro_aviso", detalhe: det });
+  await enfileirar("rdo_campo_vou_refurar", { p_rdo: OP.rdoId, p_exec: x.id, p_motivo: _refMotivo, p_obs: obs || null, p_foto: fotoId },
+    { rotulo: "Vou refurar " + numero, linha_id: x.id });
+  avisar(`Aviso de refuro da ${numero} guardado.`, "ok");
+  _refEstaca = null; _refMotivo = null; _refArquivo = null;
+  renderTelaAtual();
+}
 
 async function geoObservar(id){
   const x = (OP.snap.execucoes || []).find(e => e.id === id);
@@ -230,7 +309,24 @@ document.addEventListener("click", async (ev) => {
   const el = ev.target.closest("button");
   if(!el || el.disabled) return;
   const d = el.dataset;
-  if(d.estEditar){ _estEditando = d.estEditar; _estEtapa = etapaDaExecucao((OP.snap.execucoes || []).find(e => e.id === d.estEditar)); _estHoras = {}; renderTelaAtual(); return; }
+  if(d.estEditar){
+    const xe = (OP.snap.execucoes || []).find(e => e.id === d.estEditar);
+    _estEditando = d.estEditar; _estEtapa = etapaDaExecucao(xe); _estHoras = {}; _refMotivo = xe?.refuro_motivo || null; _refArquivo = null;
+    renderTelaAtual(); return;
+  }
+  if(d.refMotivo){
+    _refMotivo = _refMotivo === d.refMotivo ? null : d.refMotivo;
+    el.closest(".op-chips")?.querySelectorAll("[data-ref-motivo]").forEach(b => { b.classList.toggle("ativo", b.dataset.refMotivo === _refMotivo); b.setAttribute("aria-pressed", String(b.dataset.refMotivo === _refMotivo)); });
+    return;
+  }
+  if(d.geoRefurar){
+    const xe = (OP.snap.execucoes || []).find(e => e.id === d.geoRefurar);
+    const av = avisoRefuroDaEstaca(xe?.estaca_numero);
+    _refEstaca = d.geoRefurar; _refMotivo = av?.detalhe?.motivo || null; _refArquivo = null;
+    renderTelaAtual();
+    $("op-geo-refuro-folha")?.scrollIntoView({ block: "start" });
+    return;
+  }
   if(d.estEtapa){
     _estEtapa = _estEtapa === d.estEtapa ? null : d.estEtapa;
     document.querySelectorAll("[data-est-etapa]").forEach(b => { b.classList.toggle("ativo", b.dataset.estEtapa === _estEtapa); b.setAttribute("aria-pressed", String(b.dataset.estEtapa === _estEtapa)); });
@@ -253,8 +349,10 @@ document.addEventListener("click", async (ev) => {
   if(d.geoObservar){ await geoObservar(d.geoObservar); return; }
   if(d.geoContestar){ await geoContestar(d.geoContestar); return; }
   switch(el.id){
-    case "op-btn-est-nova": _estEditando = "nova"; _estEtapa = "perfurando"; _estHoras = {}; renderTelaAtual(); break;
-    case "op-btn-est-cancelar": _estEditando = null; _estEtapa = null; _estHoras = {}; renderTelaAtual(); break;
+    case "op-btn-est-nova": _estEditando = "nova"; _estEtapa = "perfurando"; _estHoras = {}; _refMotivo = null; _refArquivo = null; renderTelaAtual(); break;
+    case "op-btn-est-cancelar": _estEditando = null; _estEtapa = null; _estHoras = {}; _refMotivo = null; _refArquivo = null; renderTelaAtual(); break;
+    case "op-btn-geo-refuro-ok": el.disabled = true; try { await guardarVouRefurar(); } finally { el.disabled = false; } break;
+    case "op-btn-geo-refuro-cancelar": _refEstaca = null; _refMotivo = null; _refArquivo = null; renderTelaAtual(); break;
     case "op-btn-est-salvar": el.disabled = true; try { await salvarEstaca(); } finally { el.disabled = false; } break;
     case "op-btn-geo-atualizar": el.disabled = true; try { await drenar(); if(await recarregarDia()) avisar("Atualizado.", "ok"); renderTelaAtual(); } finally { el.disabled = false; } break;
     case "op-btn-geo-faltou": $("op-geo-faltou-folha").hidden = false; $("op-geo-faltou-numeros").focus(); break;
@@ -271,4 +369,9 @@ document.addEventListener("click", async (ev) => {
 });
 document.addEventListener("change", (ev) => {
   if(ev.target.id === "op-est-refuro") $("op-est-refuro-campos").hidden = !ev.target.checked;
+  if(ev.target.dataset?.refFoto){
+    _refArquivo = (ev.target.files && ev.target.files[0]) || null;
+    const txt = $(ev.target.id + "-txt");
+    if(txt) txt.textContent = _refArquivo ? "Foto escolhida: sobe junto com o aviso." : "Sem foto.";
+  }
 });

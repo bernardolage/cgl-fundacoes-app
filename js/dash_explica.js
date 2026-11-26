@@ -271,6 +271,8 @@ const DASH_EXPLICA = {
     fazer: "Conferir o computador de bordo e lançar a estaca.", origem: "Das pendências abertas no aplicativo do campo." },
   "contestacao_campo": { regra: "Estaca do diário contestada pelo operador (não é dele, número errado ou outro motivo), ainda sem resolução.",
     fazer: "Analisar e responder.", origem: "Das pendências abertas no aplicativo do campo." },
+  "refuro_aviso": { regra: "O operador tocou em Vou refurar numa estaca de hélice ou secante e o refuro dela não chegou até o fim do dia do aviso.",
+    fazer: "Conferir no computador de bordo ou no Maya. Se o refuro não vai acontecer, Descartar aviso na ficha do diário; se chegar, o aviso se junta a ele sozinho.", origem: "Dos avisos de refuro do aplicativo do campo." },
   "relogio_divergente": { regra: "Ao abrir o dia, o relógio do celular do operador diferia do servidor em mais minutos do que o limite configurado. Pendência ainda não resolvida.",
     fazer: "Conferir os horários do diário.", origem: "Das pendências abertas no aplicativo do campo." },
   "obra_divergente": { regra: "Ao abrir o dia, o operador não confirmou a obra indicada, ou já havia outro diário da mesma máquina e dia em outra obra. Pendência ainda não resolvida.",

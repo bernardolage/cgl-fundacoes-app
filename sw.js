@@ -2,7 +2,7 @@
 
 
 
-const VERSAO = "7e57a78";
+const VERSAO = "1c90b5f";
 const CACHE = "cgl-campo-" + VERSAO;
 const ARQUIVOS = [
   "operador.html", "manifest.webmanifest", "css/estilo.css", "js/tema.js", "vendor/supabase-js-2.118.0.min.js",

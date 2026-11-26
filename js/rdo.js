@@ -724,6 +724,17 @@ function rdoRenderCampo(r){
       if(bOk){ bOk.dataset.id = pRel.id; bOk.style.display = rdoPodeOperarFront() ? "" : "none"; }
     }
   }
+
+  const fRef = $("rdo-ficha-refuro-aviso");
+  const avisos = cab ? (_rdoCampo.pendencias || []).filter(p => p.tipo === "refuro_aviso") : [];
+  if(fRef){
+    fRef.hidden = !avisos.length;
+    fRef.innerHTML = avisos.length ? `<span>O operador avisou refuro e ele ainda não chegou: ${avisos.map(p => {
+        const d = p.detalhe || {};
+        return `<span class="ui-codigo">${esc(d.estaca_numero || "?")}</span> (${esc(motivoRefuradaLbl(d.motivo) || "sem motivo")}${d.obs ? ": " + esc(d.obs) : ""})`
+          + (rdoPodeOperarFront() ? ` <button type="button" class="btn-sec btn-sm" data-rdo-refuro-descartar="${esc(p.id)}" title="O refuro não vai acontecer: tira o aviso desta ficha e do Para regularizar">Descartar aviso</button>` : "");
+      }).join(" · ")}. Quando o refuro chegar, o motivo e a foto entram nele sozinhos.</span>` : "";
+  }
   const nF = (_rdoCampo.fotos || []).length;
   const tabF = document.querySelector('#rdo-notebook button[data-tab="fotos"]');
   if(tabF) tabF.textContent = nF ? `Fotos (${nF})` : "Fotos";
@@ -2679,6 +2690,11 @@ function ligarRDO(){
   $("btn-excluir-rdo")?.addEventListener("click", excluirRDO);
   $("btn-rdo-devolver")?.addEventListener("click", () => comBotaoTravado("btn-rdo-devolver", rdoDevolverCampo));
   $("btn-rdo-relogio-ok")?.addEventListener("click", (ev) => rdoRelogioConferido(ev.currentTarget.dataset.id));
+
+  $("rdo-ficha-refuro-aviso")?.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-rdo-refuro-descartar]");
+    if(b) rdoRelogioConferido(b.dataset.rdoRefuroDescartar);
+  });
   $("btn-add-execucao")?.addEventListener("click", adicionarExecucao);
   $("btn-add-raiz-solo")?.addEventListener("click", adicionarRaizSolo);
   $("btn-add-rdo-atividade")?.addEventListener("click", adicionarRdoAtividade);

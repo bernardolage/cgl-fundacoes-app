@@ -70,26 +70,33 @@ OP.telas.foto = async function(){
     }).join("")}</div>`;
 };
 
-async function tirarFoto(arquivo){
+
+
+async function guardarFotoNaFila(arquivo, tipo, vinculo, legenda){
   const s = OP.snap;
+  let blob;
+  try { blob = await reduzirImagem(arquivo, Number(s.config?.fotos_max_px) || 1600); }
+  catch(e){ avisar(e.message, "erro"); return null; }
+  const id = novoId();
+  const path = `rdo/${OP.rdoId}/${id}.jpg`;
+  const tirada = new Date(arquivo.lastModified || Date.now()).toISOString();
+  await idbPut("fotos", { id, blob, rdo_id: OP.rdoId, criado_em: new Date().toISOString() });
+  (s.fotos || (s.fotos = [])).push({ id, tipo, legenda: legenda || null, enviada: false, desconsiderada: false, execucao_id: vinculo?.execucao_id || null });
+  _miniaturas.set(id, URL.createObjectURL(blob));
+  await enfileirar("rdo_campo_foto_registrar", { p_rdo: OP.rdoId, p_id: id, p_tipo: tipo, p_vinculo: vinculo && Object.keys(vinculo).length ? vinculo : null,
+    p_legenda: legenda || null, p_tirada_em: tirada }, { rotulo: "Foto: " + (ROTULO_VINCULO[tipo] || tipo), linha_id: id });
+  await enfileirar("upload_foto", { foto_id: id, path, rdo_id: OP.rdoId }, { rotulo: "Arquivo da foto", linha_id: id });
+  avisar(`Foto guardada (${num(blob.size / 1048576, 1)} MB).`, "ok");
+  return id;
+}
+
+async function tirarFoto(arquivo){
   const vinculo = {};
   if(_fotoTipo === "estaca"){ const v = $("op-foto-exec")?.value; if(!v){ avisar("Escolha a estaca.", "aviso"); return; } vinculo.execucao_id = v; }
   if(_fotoTipo === "ocorrencia"){ const v = $("op-foto-oc")?.value; if(!v){ avisar("Escolha a parada.", "aviso"); return; } vinculo.ocorrencia_id = v; }
   if(_fotoTipo === "horimetro" && $("op-foto-ab")?.value) vinculo.abastecimento_id = $("op-foto-ab").value;
-  let blob;
-  try { blob = await reduzirImagem(arquivo, Number(s.config?.fotos_max_px) || 1600); }
-  catch(e){ avisar(e.message, "erro"); return; }
-  const id = novoId();
-  const path = `rdo/${OP.rdoId}/${id}.jpg`;
   const legenda = $("op-foto-legenda")?.value.trim() || null;
-  const tirada = new Date(arquivo.lastModified || Date.now()).toISOString();
-  await idbPut("fotos", { id, blob, rdo_id: OP.rdoId, criado_em: new Date().toISOString() });
-  (s.fotos || (s.fotos = [])).push({ id, tipo: _fotoTipo, legenda, enviada: false, desconsiderada: false });
-  _miniaturas.set(id, URL.createObjectURL(blob));
-  await enfileirar("rdo_campo_foto_registrar", { p_rdo: OP.rdoId, p_id: id, p_tipo: _fotoTipo, p_vinculo: Object.keys(vinculo).length ? vinculo : null,
-    p_legenda: legenda, p_tirada_em: tirada }, { rotulo: "Foto: " + ROTULO_VINCULO[_fotoTipo], linha_id: id });
-  await enfileirar("upload_foto", { foto_id: id, path, rdo_id: OP.rdoId }, { rotulo: "Arquivo da foto", linha_id: id });
-  avisar(`Foto guardada (${num(blob.size / 1048576, 1)} MB).`, "ok");
+  await guardarFotoNaFila(arquivo, _fotoTipo, vinculo, legenda);
   renderTelaAtual();
 }
 
