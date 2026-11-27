@@ -377,7 +377,7 @@ function renderObrasNomes(dados){
   }).join("");
   cont.innerHTML = `<p class="texto-apoio compacto">Obras sem nome do projeto cujo nome começa pelo cliente. A sugestão sai do que sobra depois do cliente e do código; confira e grave uma por uma. O nome cadastrado não muda.</p>
     <div class="tabela-rola"><table>
-    <thead><tr><th>Código</th><th>Nome cadastrado</th><th>Nome do projeto (sugestão)</th><th>Obra para</th><th></th></tr></thead>
+    <thead><tr><th>Código</th><th>Nome cadastrado</th><th>Obra / Concorrência (sugestão)</th><th>Obra para</th><th></th></tr></thead>
     <tbody>${tr}</tbody></table></div>`;
 }
 async function obrNomesGravar(id){
@@ -389,7 +389,7 @@ async function obrNomesGravar(id){
   if(!reg.nome_projeto && !reg.obra_para_id){ aviso("app-aviso", "Digite o nome do projeto ou marque a Obra para.", "aviso"); return; }
   const { error } = await sb.from("obras").update(reg).eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível gravar: " + error.message, "erro"); return; }
-  aviso("app-aviso", "Nome do projeto gravado.", "ok");
+  aviso("app-aviso", "Obra / Concorrência gravada.", "ok");
   await obrCarregarEtiquetas();
   renderObras();
 }

@@ -79,13 +79,16 @@ function cliAvisoRaiz(){
     ${cliPodeEditar() ? `<button type="button" class="btn-sec btn-sm" data-cli-usar-grupo="1" title="Preenche o campo; grava só ao Salvar">Usar este grupo</button>` : ""}`;
 }
 
-async function cliResolverGrupo(){
-  const txt = ($("cli-grupo")?.value || "").trim();
+async function cliResolverGrupo(){ return cliGrupoResolverTexto($("cli-grupo")?.value, $("cli-doc")?.value); }
+
+async function cliGrupoResolverTexto(texto, doc){
+  const txt = String(texto || "").trim();
   if(!txt) return null;
+  if(!_cliGrupos.length) await cliCarregarGrupos();
   const g = cliGrupoPorNome(txt);
   if(g) return g.id;
   if(!await uiConfirmar({ titulo: "Criar grupo econômico", texto: `Criar o grupo econômico "${txt}"?`, confirmar: "Criar grupo" })) return undefined;
-  const raiz = cliRaiz($("cli-doc")?.value);
+  const raiz = cliRaiz(doc);
   const ja = raiz && _cliGrupos.some(x => x.cnpj_raiz === raiz);
   const { data, error } = await sb.from("grupos_economicos").insert({ nome: txt, cnpj_raiz: raiz && !ja ? raiz : null }).select("id").single();
   if(error){ aviso("app-aviso", "Não foi possível criar o grupo: " + error.message, "erro"); return undefined; }

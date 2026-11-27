@@ -597,6 +597,7 @@ async function carregarOrcamentos(){
     (_orcMetodos[it.orcamento_id] = _orcMetodos[it.orcamento_id] || new Set()).add(eixo);
   });
   _orcRetornos = await pRetornos;
+  await orcCarregarGruposClientes();
   renderOrcamentos();
   if(typeof psiAtualizarBadge === "function") psiAtualizarBadge();
 
@@ -678,8 +679,8 @@ function orcAtualizarConcorrencias(){
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   const dl = $("orc-conc-lista");
   if(dl) dl.innerHTML = _orcConcorrencias.map(c => `<option value="${esc(c.nome)}"></option>`).join("");
-  const campo = $("orc-concorrencia")?.closest(".campo");
-  if(campo) campo.style.display = _orcTemConcorrencia ? "" : "none";
+  const campo = $("orc-conc-campo");
+  if(campo) campo.hidden = !_orcTemConcorrencia;
   const fc = $("orc-f-conc");
   if(fc) fc.style.display = _orcTemConcorrencia ? "" : "none";
 }
@@ -726,12 +727,14 @@ function orcFiltrados(){
   const fPorte = $("orc-f-porte")?.value || "";
   const fMet   = $("orc-f-metodo")?.value || "";
   const fConc  = $("orc-f-conc")?.value || "";
+  const fGrupo = $("orc-f-grupo")?.value || "";
   const fRet   = $("orc-f-retorno")?.value || "";
   const fimSem = fRet === "semana" ? orcFimDaSemanaISO() : "";
   return _orcamentos.filter(o => {
     if(fRet === "semana" && !(_orcRetornos[o.id] && _orcRetornos[o.id] <= fimSem)) return false;
     if(fStat && o.status !== fStat) return false;
     if(fCli && o.cliente_id !== fCli) return false;
+    if(fGrupo && (_orcCliGrupo[o.cliente_id] || "__sem") !== fGrupo) return false;
     if(fPorte && (o.porte_equipamento || "") !== fPorte) return false;
     if(fMet && !orcTemMetodo(o, fMet)) return false;
     if(fConc && fConc !== ORC_CONC_AGRUPAR && orcConcChave(o.concorrencia) !== fConc) return false;
@@ -765,6 +768,13 @@ function preencherFiltrosOrc(){
     selConc.innerHTML = `<option value="">Todas as concorrências</option><option value="${ORC_CONC_AGRUPAR}">Agrupar por concorrência</option>` +
       _orcConcorrencias.map(c => `<option value="${esc(orcConcChave(c.nome))}">${esc(c.nome)} (${esc(orcConcResumo(c))})</option>`).join("");
     selConc.value = [...selConc.options].some(o => o.value === atual) ? atual : "";
+  }
+  const selGr = $("orc-f-grupo");
+  if(selGr){
+    const atual = selGr.value;
+    selGr.innerHTML = `<option value="">Todos os grupos</option><option value="__sem">Sem grupo</option>` +
+      _cliGrupos.map(g => `<option value="${esc(g.id)}">${esc(g.nome)}</option>`).join("");
+    selGr.value = [...selGr.options].some(o => o.value === atual) ? atual : "";
   }
   const selCli = $("orc-f-cliente");
   if(selCli){
@@ -909,6 +919,127 @@ function orcLimparAssistente(){
 function orcAtualizarChipCliente(){
   const chip = $("orc-ficha-cliente-chip"), sel = $("orc-cliente");
   if(chip && sel) chip.textContent = (sel.value && (mapaClientes[sel.value] || sel.options[sel.selectedIndex]?.text)) || "—";
+  orcMostrarGrupoDoCliente();
+}
+
+
+
+
+
+let _orcGrupoCli = null;
+let _orcGrupoVez = 0;
+function orcGrupoDica(){
+  const el = $("orc-grupo-dica"); if(!el) return;
+  el.textContent = "";
+  const c = _orcGrupoCli; if(!c) return;
+  const txt = ($("orc-grupo")?.value || "").trim();
+  if(txt && !cliGrupoPorNome(txt)){ el.textContent = `Criar o grupo "${txt}" ao sair do campo.`; return; }
+  if(c.grupo_id){ el.textContent = `Vale para todos os orçamentos e obras de ${c.nome}.`; return; }
+  const raiz = cliRaiz(c.cpf_cnpj);
+  const g = raiz && _cliGrupos.find(x => x.cnpj_raiz === raiz && x.ativo !== false);
+  if(g && !$("orc-grupo").disabled){
+    el.innerHTML = `Este CNPJ é da raiz do grupo ${esc(g.nome)}. <button type="button" class="btn-sec btn-sm" id="btn-orc-grupo-raiz" title="Grava este grupo no cadastro do cliente">Usar este grupo</button>`;
+    $("btn-orc-grupo-raiz")?.addEventListener("click", () => { $("orc-grupo").value = g.nome; orcGrupoMudou(); });
+  }
+}
+function orcGrupoPreencherLista(){
+  const dl = $("orc-grupos-lista");
+  if(dl) dl.innerHTML = _cliGrupos.filter(g => g.ativo !== false).map(g => `<option value="${esc(g.nome)}"></option>`).join("");
+}
+async function orcMostrarGrupoDoCliente(){
+  const el = $("orc-grupo"); if(!el) return;
+  const id = $("orc-cliente")?.value || "";
+  const vez = ++_orcGrupoVez;
+  _orcGrupoCli = null; el.value = ""; el.disabled = true; orcGrupoDica();
+  if(typeof orcGrupoHistorico === "function") orcGrupoHistorico();
+  if(!id) return;
+  const [{ data: c }] = await Promise.all([
+    sb.from("clientes").select("id,nome,nome_fantasia,grupo_id,cpf_cnpj").eq("id", id).maybeSingle(),
+    _cliGrupos.length ? null : cliCarregarGrupos()
+  ]);
+  if(vez !== _orcGrupoVez || !c) return;
+  orcGrupoPreencherLista();
+  _orcGrupoCli = { id: c.id, nome: String(c.nome_fantasia || "").trim() || c.nome || "", grupo_id: c.grupo_id || null, cpf_cnpj: c.cpf_cnpj || "" };
+  el.value = cliGrupoNome(c.grupo_id);
+  el.disabled = !orcPodeCadastrarCliente();
+  orcGrupoDica();
+  if(typeof orcGrupoHistorico === "function") orcGrupoHistorico();
+}
+
+
+
+
+let _orcCliGrupo = {};
+async function orcCarregarGruposClientes(){
+  const [{ data, error }] = await Promise.all([
+    sb.from("clientes").select("id,grupo_id").not("grupo_id", "is", null),
+    cliCarregarGrupos()
+  ]);
+  _orcCliGrupo = {};
+  if(!error) (data || []).forEach(c => { _orcCliGrupo[c.id] = c.grupo_id; });
+}
+let _orcHistVez = 0;
+async function orcGrupoHistorico(){
+  const el = $("orc-grupo-hist"); if(!el) return;
+  const c = _orcGrupoCli, gid = c && c.grupo_id;
+  const vez = ++_orcHistVez;
+  if(!gid){ el.hidden = true; el.textContent = ""; return; }
+  const { data: clis, error } = await sb.from("clientes").select("id").eq("grupo_id", gid);
+  if(vez !== _orcHistVez) return;
+  if(error){ el.hidden = true; return; }
+  const ids = (clis || []).map(x => x.id);
+  ids.forEach(id => { _orcCliGrupo[id] = gid; });
+  const idSet = new Set(ids);
+  const orcs = _orcamentos.filter(o => idSet.has(o.cliente_id));
+  const aprov = orcs.filter(o => o.status === "aprovado").length;
+  const { count } = ids.length ? await sb.from("obras").select("id", { count: "exact", head: true }).in("cliente_id", ids) : { count: 0 };
+  if(vez !== _orcHistVez) return;
+  const nObras = count || 0;
+  el.innerHTML = `${esc(cliGrupoNome(gid))}: <button type="button" class="ui-link" id="btn-orc-grupo-orcs" title="Abre o painel de Orçamentos só com os do grupo">${esc(orcs.length)} orçamento${orcs.length === 1 ? "" : "s"} (${esc(aprov)} aprovado${aprov === 1 ? "" : "s"})</button> · <button type="button" class="ui-link" id="btn-orc-grupo-obras" title="Abre o painel de Obras só com as obras dos clientes do grupo">${esc(nObras)} obra${nObras === 1 ? "" : "s"}</button>`;
+  el.hidden = false;
+  $("btn-orc-grupo-orcs")?.addEventListener("click", () => orcAbrirOrcamentosDoGrupo(gid).catch(err => aviso("app-aviso", err.message, "erro")));
+  $("btn-orc-grupo-obras")?.addEventListener("click", () => orcAbrirObrasDoGrupo(gid, ids).catch(err => aviso("app-aviso", err.message, "erro")));
+}
+async function orcSairDaFichaPara(oQue){
+  return uiConfirmar({ titulo: "Sair da ficha", texto: `Abrir ${oQue}? O que não foi salvo neste orçamento se perde.`, confirmar: "Abrir", cancelar: "Ficar" });
+}
+async function orcAbrirOrcamentosDoGrupo(gid){
+  if(!await orcSairDaFichaPara("os orçamentos do grupo " + cliGrupoNome(gid))) return;
+  mostrarPainelOrc();
+  preencherFiltrosOrc();
+  const sel = $("orc-f-grupo");
+  if(sel){ sel.value = gid; }
+  renderOrcamentos();
+}
+async function orcAbrirObrasDoGrupo(gid, ids){
+  if(!await orcSairDaFichaPara("as obras do grupo " + cliGrupoNome(gid))) return;
+  const { data, error } = await sb.from("obras").select("id").in("cliente_id", ids);
+  if(error){ aviso("app-aviso", "Não foi possível ler as obras do grupo: " + error.message, "erro"); return; }
+  if(!irParaSecao("obras")) return;
+  if(typeof mostrarPainelObra === "function") mostrarPainelObra();
+  renderObras({ ids: (data || []).map(o => o.id), rotulo: "Grupo " + cliGrupoNome(gid) });
+}
+async function orcGrupoMudou(){
+  const el = $("orc-grupo"), c = _orcGrupoCli;
+  if(!el || el.disabled || !c || $("orc-cliente")?.value !== c.id) return;
+  const atual = cliGrupoNome(c.grupo_id);
+  const txt = el.value.trim();
+  if(txt.toLowerCase() === atual.trim().toLowerCase()){ el.value = atual; orcGrupoDica(); return; }
+  const gid = await cliGrupoResolverTexto(txt, c.cpf_cnpj);
+  if(gid === undefined || $("orc-cliente")?.value !== c.id || _orcGrupoCli !== c){ if(_orcGrupoCli === c){ el.value = atual; orcGrupoDica(); } return; }
+
+  const { data: gravou, error } = await sb.from("clientes").update({ grupo_id: gid }).eq("id", c.id).select("id");
+  if(error || !(gravou && gravou.length)){
+    aviso("app-aviso", "Não foi possível gravar o grupo no cliente" + (error ? ": " + error.message : ": seu perfil não altera este cadastro."), "erro");
+    el.value = atual; orcGrupoDica(); return;
+  }
+  c.grupo_id = gid;
+  if(gid) _orcCliGrupo[c.id] = gid; else delete _orcCliGrupo[c.id];
+  orcGrupoPreencherLista();
+  el.value = cliGrupoNome(gid);
+  aviso("app-aviso", gid ? `Grupo ${cliGrupoNome(gid)} gravado no cadastro de ${c.nome}.` : `Grupo tirado do cadastro de ${c.nome}.`, "ok");
+  orcGrupoDica();
+  if(typeof orcGrupoHistorico === "function") orcGrupoHistorico();
 }
 async function preencherOrcamentoDoAssistente(r, origem){
   if(!r || !irParaSecao("orcamentos")) return;
@@ -1152,6 +1283,7 @@ function abrirFichaOrcVisual(o){
   $("orc-ficha-numero").textContent = o.numero || "(novo)";
   if($("orc-ficha-revisao-chip")) $("orc-ficha-revisao-chip").textContent = `Rev ${o.numero_revisao || "00"}`;
   $("orc-ficha-cliente-chip").textContent = mapaClientes[o.cliente_id] || "—";
+  orcMostrarGrupoDoCliente();
   $("orc-ficha-valor-chip").textContent = brl(orcTotalComIss(o));
   if($("orc-ficha-validade-chip")) $("orc-ficha-validade-chip").textContent = dataBR(o.validade);
   $("orc-ficha-titulo").textContent = orcEditId ? `Orçamento ${o.numero} · Rev ${o.numero_revisao||"00"}` : "Novo orçamento";
@@ -1429,7 +1561,7 @@ async function criarObraDoOrcamento(){
   const vals = await uiPedirValores({ titulo: "Criar obra", confirmar: "Criar obra", campos: [
     { id: "codigo", rotulo: `Código da obra (sugestão: ${sugCodigo})`, valor: sugCodigo, obrigatorio: true },
     { id: "nome", rotulo: "Nome da obra", valor: sugNome, obrigatorio: true },
-    { id: "projeto", rotulo: "Nome do projeto (como o cliente chama o empreendimento; deixe em branco se não houver)", valor: String(orc.concorrencia || "").trim() }
+    { id: "projeto", rotulo: "Obra / Concorrência (como o cliente chama o empreendimento; deixe em branco se não houver)", valor: String(orc.concorrencia || "").trim() }
   ] });
   if(!vals) return;
   const codigo = vals.codigo, nome = vals.nome, nomeProjeto = vals.projeto;
@@ -2042,6 +2174,7 @@ async function orcSalvarNovoCliente(){
   preencher("orc-contato-tel",   data.telefone);
   preencher("orc-contato-email", data.email);
   $("orc-ficha-cliente-chip").textContent = data.nome;
+  orcMostrarGrupoDoCliente();
   orcFecharNovoCliente();
   aviso("app-aviso", `Cliente ${data.nome} cadastrado e escolhido neste orçamento.`, "ok");
   if(typeof carregarClientes === "function") carregarClientes();
@@ -2209,7 +2342,7 @@ function ligarOrcamentos(){
       renderOrcamentos();
     });
   });
-  ["orc-busca","orc-f-status","orc-f-cliente","orc-f-porte","orc-f-metodo"].forEach(id => {
+  ["orc-busca","orc-f-status","orc-f-cliente","orc-f-grupo","orc-f-porte","orc-f-metodo"].forEach(id => {
     const el = $(id);
     if(el) el.addEventListener(id === "orc-busca" ? "input" : "change", id === "orc-busca" ? debounce(renderOrcamentos) : renderOrcamentos);
   });
@@ -2260,6 +2393,9 @@ function ligarOrcamentos(){
 
 
   $("btn-orc-novo-cliente")?.addEventListener("click", orcAbrirNovoCliente);
+
+  $("orc-grupo")?.addEventListener("input", orcGrupoDica);
+  $("orc-grupo")?.addEventListener("change", () => orcGrupoMudou().catch(err => aviso("app-aviso", err.message, "erro")));
   $("btn-orc-cli-fechar")?.addEventListener("click", orcFecharNovoCliente);
   $("btn-orc-cli-salvar")?.addEventListener("click", () => comBotaoTravado("btn-orc-cli-salvar", orcSalvarNovoCliente));
   $("orc-cli-doc")?.addEventListener("blur", () => orcCliConferirDoc(false));
