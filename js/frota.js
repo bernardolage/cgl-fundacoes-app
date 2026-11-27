@@ -98,7 +98,7 @@ async function carregarFrota(force){
   if(force || !_frotaVeic.length){
     cont.innerHTML = `<p class="vazio">Carregando logística…</p>`;
     const [eq, fu, ob, ns] = await Promise.all([
-      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,km,valor_km,valor_fipe,fipe_referencia,fipe_codigo,status,ativo,localizacao_tipo,localizacao_descricao,localizacao_obra_id,observacoes,venda_id,baixa_em").order("codigo"),
+      sb.from("equipamentos").select("id,codigo,nome,tipo,placa,km,valor_km,valor_fipe,fipe_referencia,fipe_codigo,status,ativo,localizacao_tipo,localizacao_descricao,localizacao_obra_id,observacoes,venda_id,baixa_em,renavam,tara_kg,capacidade_kg,tipo_rodado,tipo_carroceria,uf_licenciamento").order("codigo"),
       sb.from("funcionarios").select("id,nome,funcao").eq("ativo", true).order("nome"),
       sb.from("obras").select("id,codigo,nome,status,uf").not("status", "in", "(cancelada)").order("codigo", { ascending: false }),
       sb.from("movimentacoes_ativos").select("id", { count: "exact", head: true }).is("viagem_id", null).eq("interna", false).in("status", ["rascunho", "emitida", "em_transito"])
@@ -234,13 +234,14 @@ function renderFrotaVeiculos(){
 
   const vendidos = _frotaVeic.filter(v => bemVendido(v));
   const lista = _frotaVeic.filter(v => !bemVendido(v) && (!termo || `${v.codigo} ${v.nome || ""} ${v.placa || ""}`.toLowerCase().includes(termo))
-    && (!_frotaTipoFiltro || (v.tipo === _frotaTipoFiltro && v.ativo !== false)));
+    && (!_frotaTipoFiltro || (v.tipo === _frotaTipoFiltro && v.ativo !== false))
+    && (typeof _vdocFiltro === "undefined" || !_vdocFiltro || _vdocFiltro.ids.includes(v.id)));
   const c = $("frota-contador"); if(c) c.textContent = `${lista.length} de ${_frotaVeic.length - vendidos.length}`;
   const ativos = _frotaVeic.filter(v => v.ativo !== false);
   const comFipe = ativos.filter(v => v.valor_fipe != null);
   const totalFipe = comFipe.reduce((s, v) => s + Number(v.valor_fipe || 0), 0);
   const fipeRef = v => v.fipe_referencia ? ` <span class="meta" title="referência FIPE">${esc(String(v.fipe_referencia).slice(5, 7))}/${esc(String(v.fipe_referencia).slice(0, 4))}</span>` : "";
-  cont.innerHTML = `<p class="meta" style="margin:0 0 8px;">${(typeof ehDiretoria === "function" && ehDiretoria()) ? `Valor FIPE da frota ativa: <strong data-val-sens>${frotaMoeda(totalFipe)}</strong> ` : "FIPE "}(${comFipe.length} de ${ativos.length} com FIPE informada${ativos.length - comFipe.length ? ` · ${ativos.length - comFipe.length} sem valor` : ""})</p>
+  cont.innerHTML = (typeof vdocFiltroHTML === "function" ? vdocFiltroHTML() : "") + `<p class="meta" style="margin:0 0 8px;">${(typeof ehDiretoria === "function" && ehDiretoria()) ? `Valor FIPE da frota ativa: <strong data-val-sens>${frotaMoeda(totalFipe)}</strong> ` : "FIPE "}(${comFipe.length} de ${ativos.length} com FIPE informada${ativos.length - comFipe.length ? ` · ${ativos.length - comFipe.length} sem valor` : ""})</p>
   <div class="tabela-rola"><table>
     <thead><tr><th>TAG</th><th>Tipo</th><th>Descrição</th><th>Placa</th><th>Condutor</th><th class="num">km atual</th><th class="num">R$/km</th><th class="num">FIPE</th><th>Onde está</th><th>Status</th></tr></thead>
     <tbody>${lista.map(v => `<tr class="linha-clicavel" data-veic="${esc(v.id)}" ${v.ativo === false ? 'style="opacity:.55"' : ""}>
@@ -251,6 +252,7 @@ function renderFrotaVeiculos(){
   </table></div>
   ${vendidos.length ? `<p class="meta" style="margin:8px 0 0;">${vendidos.length} veículo(s) vendido(s) fora da lista: ${vendidos.map(v => esc(v.codigo)).join(", ")}. ${typeof vbAbrirPainel === "function" ? `<a href="#" id="frota-vendidos-ver">Ver em Equipamentos › Vendas</a>` : ""}</p>` : ""}`;
   $("frota-vendidos-ver")?.addEventListener("click", (e) => { e.preventDefault(); vbAbrirPainel({ busca: "" }); });
+  cont.querySelector('[data-faixa-acao="vdoc-limpar"]')?.addEventListener("click", () => { _vdocFiltro = null; renderFrotaVeiculos(); });
 }
 
 
@@ -461,7 +463,11 @@ async function renderFrotaDocumentos(){
 
 
 function abrirVeiculo(id){
-  if(!frotaPodeEditar()) return;
+
+  const podeCad = frotaPodeEditar(), podeDoc = typeof vdocPodeEnviar === "function" && vdocPodeEnviar();
+  const soVer = !podeCad && !podeDoc && typeof ehSomenteLeitura === "function" && ehSomenteLeitura();
+  if(!podeCad && !podeDoc && !soVer) return;
+  if(!podeCad && !id) return;
   _frotaVeicEditId = id || null;
   const v = id ? _frotaVeic.find(x => x.id === id) : null;
   $("fveic-titulo").textContent = v ? `Veículo ${v.codigo}` : "Novo veículo";
@@ -480,7 +486,10 @@ function abrirVeiculo(id){
   $("fveic-obs").value = v?.observacoes || "";
 
   const bVend = $("btn-fveic-vender");
-  if(bVend) bVend.style.display = (v && !bemVendido(v) && typeof vbPodeRegistrar === "function" && vbPodeRegistrar(v)) ? "" : "none";
+  if(bVend) bVend.style.display = (podeCad && v && !bemVendido(v) && typeof vbPodeRegistrar === "function" && vbPodeRegistrar(v)) ? "" : "none";
+  ["fveic-codigo", "fveic-tipo", "fveic-nome", "fveic-placa", "fveic-km", "fveic-valor-km", "fveic-fipe", "fveic-fipe-ref", "fveic-fipe-cod", "fveic-status", "fveic-ativo", "fveic-obs"].forEach(k => { const el = $(k); if(el) el.disabled = !podeCad; });
+  $("btn-fveic-salvar").hidden = soVer;
+  if(typeof vdocAbrir === "function") vdocAbrir(v);
   $("frota-veic-modal").style.display = "flex";
 }
 function fecharVeiculo(){ $("frota-veic-modal").style.display = "none"; _frotaVeicEditId = null; }
@@ -494,6 +503,10 @@ function frotaAvisoVeic(msg, tipo){
 }
 const frotaSoAlfaNum = s => String(s || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 async function salvarVeiculo(){
+
+  if(!frotaPodeEditar()){ if(typeof vdocSalvarSoMdfe === "function") await vdocSalvarSoMdfe(); return; }
+  const mdfe = typeof vdocLerCampos === "function" ? vdocLerCampos() : { reg: {} };
+  if(mdfe.erro){ frotaAvisoVeic(mdfe.erro, "erro"); return; }
 
 
   const codigo = $("fveic-codigo").value.trim().toUpperCase();
@@ -520,6 +533,7 @@ async function salvarVeiculo(){
     fipe_referencia: $("fveic-fipe-ref").value ? $("fveic-fipe-ref").value + "-01" : null,
     fipe_codigo: $("fveic-fipe-cod").value.trim() || null,
     status: $("fveic-status").value, ativo: $("fveic-ativo").checked, observacoes: $("fveic-obs").value.trim() || null,
+    ...(mdfe.reg || {}),
   };
   let r;
   if(_frotaVeicEditId) r = await sb.from("equipamentos").update(tagMudou ? { ...reg, codigo } : reg).eq("id", _frotaVeicEditId);
@@ -531,6 +545,7 @@ async function salvarVeiculo(){
       : r.error.message;
     frotaAvisoVeic("Erro ao salvar veículo: " + msg, "erro"); return;
   }
+  if(typeof vdocGravarPendente === "function") await vdocGravarPendente();
   if($("fveic-aviso")){ $("fveic-aviso").className = "aviso"; $("fveic-aviso").textContent = ""; }
   aviso("app-aviso", "Veículo salvo.", "ok");
   fecharVeiculo();

@@ -4827,6 +4827,20 @@ button.mtz-cel:focus-visible { outline: 2px solid var(--marca-600); outline-offs
 
 
 @layer componentes {
+  .vdoc-bloco { margin-top: var(--esp-3); }
+  .vdoc-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); margin-bottom: var(--esp-2); }
+  .vdoc-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--esp-2) var(--esp-3); }
+  .vdoc-form { margin: var(--esp-2) 0; padding: var(--esp-3); border: 1px solid var(--borda); border-radius: var(--radius-md); background: var(--sup-0); }
+  .vdoc-form-acoes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--esp-2); margin-top: var(--esp-2); }
+  .vdoc-acoes { display: flex; flex-wrap: wrap; gap: var(--esp-1); }
+  .vdoc-duvidas { margin: var(--esp-2) 0; padding-left: var(--esp-4); font-size: var(--txt-sm); }
+  .vdoc-lido input, .vdoc-lido select { border-color: var(--info-txt); background: var(--info-bg); }
+  .vdoc-arquivo { display: none; }
+  #btn-fveic-salvar[hidden] { display: none; }
+}
+
+
+@layer componentes {
   .cli-ct-aviso { margin: var(--esp-2) 0; }
   .cli-ct-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-2); margin-bottom: var(--esp-2); }
   .cli-ct-sub { margin: var(--esp-4) 0 var(--esp-2); font-size: var(--txt-base); font-weight: 600; }

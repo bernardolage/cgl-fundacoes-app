@@ -301,35 +301,6 @@ function blocoCondicoesGerais(escopo, equipamento, orcamento){
 
 
 
-function itensVirtuais(orcamento, itens){
-  const extras = [];
-  const temItem = (re) => (itens || []).some(it => re.test(String(it.descricao || "")));
-  if(orcamento.cgl_fornece_diesel && !temItem(/diesel/i)){
-    extras.push({
-      descricao:      "Diesel (fornecido pela CGL)",
-      quantidade:     1,
-      unidade:        "l",
-      valor_unitario: Number(orcamento.diesel_preco_litro || 8.34),
-      _virtual:       true
-    });
-  }
-
-  if(orcamento.cgl_fornece_hospedagem && Number(orcamento.hospedagem_valor_mensal || 0) > 0 && !temItem(/hosped/i)){
-    extras.push({
-      descricao:      "Hospedagem e alimentação externa (fornecidas pela CGL)",
-      quantidade:     1,
-      unidade:        "mês",
-      valor_unitario: Number(orcamento.hospedagem_valor_mensal || 0),
-      _virtual:       true
-    });
-  }
-  return extras;
-}
-
-
-
-
-
 function calcularTotaisProposta(itens, orcamento){
   const subtotal = (itens || []).reduce((s, it) => s + Number(it.quantidade || 0) * Number(it.valor_unitario || 0), 0);
   const p  = Number((orcamento && orcamento.iss_percentual) || 0);
@@ -1141,9 +1112,7 @@ function montarHtmlProposta(dados){
 
 
 
-
-  const extras = itensVirtuais(orcamento, itens);
-  const itensQuadro = [...(itens || []), ...extras];
+  const itensQuadro = itens || [];
   const secoes = propostaSecoes(tipo, orcamento, dados.modelo);
 
   const corpo = `
@@ -1545,7 +1514,7 @@ async function gerarPropostaPdfTexto(dados){
   const tipo = o.tipo_proposta || "helice";
   const tInfo = PROPOSTA_TIPOS[tipo] || PROPOSTA_TIPOS.outro;
   const rev = o.numero_revisao || "00";
-  const itensQuadro = [...(itens || []), ...itensVirtuais(o, itens)];
+  const itensQuadro = itens || [];
   const pdf = await pdfNovoDocumento();
   const logo = await pdfCarregarImagem(PDF_LOGO_SRC, 300).catch(() => null);
   const selo = await pdfCarregarImagem(PDF_SELO_SRC, 300).catch(() => null);

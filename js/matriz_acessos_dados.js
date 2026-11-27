@@ -6,8 +6,8 @@
 
 
 const MATRIZ_ACESSOS = {
-  retrato: "2026-11-24",
-  carimbo: "ec571afbab4d836cd2b26b8b54d8bafc",
+  retrato: "2026-11-27",
+  carimbo: "64aada8d43cfdec2bea6def09c42288d",
   acoes: ["ver","incluir","alterar","apagar"],
   grupos: ["Geral","Cadastros","Suprimentos","Comercial e financeiro","Campo","Pessoas e segurança","Sistema","Fora do menu"],
   modulos: [

@@ -296,10 +296,12 @@ async function prodAbrirPendentes(){
 
 function prodTermo(){ return ($("prod-busca")?.value || "").trim().replace(/[%,()]/g, " ").trim(); }
 function prodModoPadrao(){ return !prodTermo() && !($("prod-f-categoria")?.value) && !($("prod-f-estoque")?.value) && !($("prod-f-tipo")?.value) && !_prodTodos; }
-async function carregarProdutos(){
+
+
+function prodConsultaFiltros(opcoesSelect){
   const termo = prodTermo(), fCat = $("prod-f-categoria")?.value || "", fEst = $("prod-f-estoque")?.value || "", fTipo = $("prod-f-tipo")?.value || "";
   const baixo = fEst === "baixo";
-  let q = sb.from("produtos").select(PROD_COLS, { count: "exact" }).eq("ativo", fEst !== "inativos").order("nome");
+  let q = sb.from("produtos").select(PROD_COLS, opcoesSelect).eq("ativo", fEst !== "inativos").order("nome");
   if(termo) q = q.or(`nome.ilike.%${termo}%,codigo.ilike.%${termo}%,codigo_barras.eq.${termo},aplicacao.ilike.%${termo}%,ca.eq.${termo}`);
   if(fCat) q = q.eq("categoria_id", fCat);
   if(fTipo) q = q.eq("tipo_item", fTipo);
@@ -310,6 +312,12 @@ async function carregarProdutos(){
   else if(fEst === "positivo") q = q.gt("estoque_atual", 0);
   else if(baixo) q = q.gt("estoque_minimo", 0);
   else if(prodModoPadrao()) q = q.gt("estoque_atual", 0);
+  return q;
+}
+function prodFiltroBaixo(lista){ return lista.filter(p => Number(p.estoque_atual) <= Number(p.estoque_minimo)); }
+async function carregarProdutos(){
+  const termo = prodTermo(), baixo = $("prod-f-estoque")?.value === "baixo";
+  let q = prodConsultaFiltros({ count: "exact" });
   const paginado = _prodTodos && !termo;
   const de = paginado ? _prodPagina * PROD_PAGINA : 0;
   q = baixo ? q.limit(1000) : q.range(de, de + PROD_PAGINA - 1);
@@ -318,7 +326,7 @@ async function carregarProdutos(){
   if(res.error){ aviso("app-aviso", "Erro ao carregar produtos: " + res.error.message, "erro"); _produtos = []; _prodTotalFiltro = 0; }
   else {
     _produtos = res.data || [];
-    if(baixo) _produtos = _produtos.filter(p => Number(p.estoque_atual) <= Number(p.estoque_minimo));
+    if(baixo) _produtos = prodFiltroBaixo(_produtos);
     _prodTotalFiltro = baixo ? _produtos.length : (res.count || 0);
   }
   renderProdutos();
@@ -396,7 +404,7 @@ function renderProdutos(){
   if(cont) cont.textContent = `${num(_prodTotalFiltro)} de ${num(_prodTotalAtivos ?? _prodTotalFiltro)}`;
 
   const ssc = _prodView === "saidas_sem_custo", ssv = _prodView === "saidas_sem_vinculo";
-  document.querySelectorAll("#prod-painel .serv-filtros, #prod-modo").forEach(el => { el.style.display = ssc || ssv ? "none" : ""; });
+  document.querySelectorAll("#prod-painel .serv-filtros, #prod-modo, #btn-prod-exportar").forEach(el => { el.style.display = ssc || ssv ? "none" : ""; });
   if(ssc){ prodRenderSaidasSemCusto(); return; }
   if(ssv){ prodRenderSaidasSemVinculo(); return; }
   renderProdModo();
@@ -600,6 +608,25 @@ async function prodSemCustoExportar(){
     "Categoria": _prodCategorias[p.categoria_id] || "", "Custo": "" }));
   const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "SEM CUSTO");
   XLSX.writeFile(wb, `produtos-sem-custo${todos ? "-todos" : ""}-${hojeISO()}.xlsx`);
+}
+
+
+async function prodExportarLista(){
+  const fCat = $("prod-f-categoria")?.value || "";
+  const { data, error } = await lerTudo(() => prodConsultaFiltros(), "id");
+  if(error){ aviso("app-aviso", "Não consegui ler os produtos: " + error.message, "erro"); return; }
+  const lista = $("prod-f-estoque")?.value === "baixo" ? prodFiltroBaixo(data) : data;
+  if(!lista.length){ uiAvisar("Nenhum produto com esses filtros: nada para exportar.", "aviso"); return; }
+  const rows = lista.map(p => {
+    const baixo = Number(p.estoque_atual) <= Number(p.estoque_minimo);
+    return { "Código": p.codigo || "", "Nome": p.nome || "", "Categoria": _prodCategorias[p.categoria_id] || "",
+      "Tipo": p.tipo_item === "servico" ? "Serviço consumido" : "Produto", "CA": p.ca || "", "Unidade": p.unidade || "",
+      "Estoque": Number(p.estoque_atual || 0), "Mínimo": Number(p.estoque_minimo || 0), "Custo": Number(p.custo_ultimo || 0),
+      "Status": baixo ? "Abaixo do mínimo" : "OK" };
+  });
+  const cat = fCat ? String(_prodCategorias[fCat] || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() : "todas";
+  const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "PRODUTOS");
+  XLSX.writeFile(wb, `produtos-${cat || "categoria"}-${hojeISO()}.xlsx`);
 }
 
 async function prodImportarCustos(file){
@@ -1294,6 +1321,7 @@ function ligarProdutos(){
   });
 
   $("btn-novo-produto")?.addEventListener("click", novoProduto);
+  $("btn-prod-exportar")?.addEventListener("click", () => comBotaoTravado("btn-prod-exportar", prodExportarLista));
   $("btn-voltar-prod")?.addEventListener("click", mostrarPainelProd);
   $("btn-salvar-prod")?.addEventListener("click", () => comBotaoTravado("btn-salvar-prod", salvarProduto));
   $("btn-excluir-prod")?.addEventListener("click", excluirProduto);

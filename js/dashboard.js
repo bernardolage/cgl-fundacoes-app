@@ -502,7 +502,8 @@ async function dashCarregarRegularizar(){
 
 
 
-  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia, refuro, ctr, cat, vbol, obraFis] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
+
+  const [dados, fin, man, rh, rhh, sesmt, sst, geo, ace, log, campo, apt, mob, est, prod, rdoDia, refuro, ctr, cat, vbol, obraFis, veic] = await Promise.all([dashLer("vw_sc_regularizar", q => q.select("*"), "dash-regularizar"), dashLer("vw_sc_regularizar_fin", q => q.select("*")), dashLer("vw_sc_regularizar_man", q => q.select("*")), dashLer("vw_sc_regularizar_rh", q => q.select("*")), dashLer("vw_sc_regularizar_rhh", q => q.select("*")),
     (dashPodeVerEpi() || (typeof podeVerSesmt === "function" && podeVerSesmt())) ? dashLer("vw_sc_regularizar_sesmt", q => q.select("*")) : null,
     dashLer("vw_sc_regularizar_sst_ocorrencias", q => q.select("*")),
     dashLer("vw_sc_regularizar_geo", q => q.select("*")),
@@ -523,10 +524,11 @@ async function dashCarregarRegularizar(){
     usuarioAtual?.cargo === "diretor" ? dashLer("vw_sc_regularizar_cat", q => q.select("*")) : null,
     usuarioAtual && ["diretor", "admin", "financeiro"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_vbol", q => q.select("*")) : null,
 
-    dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "obra").order("obra_codigo"))]);
+    dashLer("vw_pendencias_cliente_fiscal", q => q.select("*").eq("tipo", "obra").order("obra_codigo")),
+    usuarioAtual && ["diretor", "admin", "gestor_frota"].includes(usuarioAtual.cargo) ? dashLer("vw_sc_regularizar_veic", q => q.select("*")) : null]);
   if(!dados) return;
   const obrEnd = dashRegObraEndereco(obraFis || []);
-  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || [], rdoDia || [], refuro || [], ctr || [], cat || [], vbol || [], obrEnd).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
+  _dashReg = dados.concat(fin || [], man || [], rh || [], rhh || [], sesmt || [], sst || [], geo || [], ace || [], log || [], campo || [], apt || [], mob || [], est || [], prod || [], rdoDia || [], refuro || [], ctr || [], cat || [], vbol || [], obrEnd, veic || []).sort((a, b) => (DASH_REG_PAPEL[a.papel]?.ordem || 9) - (DASH_REG_PAPEL[b.papel]?.ordem || 9)
     || a.ordem - b.ordem || String(a.titulo).localeCompare(String(b.titulo), "pt-BR", { numeric: true }));
   dashRenderRegularizar();
 }
@@ -682,6 +684,7 @@ async function dashAbrirRegularizar(a){
 
 
   if(a.setor === "campo"){ if(typeof rdoAbrirPresetCampo === "function") await rdoAbrirPresetCampo(a); return; }
+  if(a.setor === "frota" && /crlv/.test(a.filtro || "")){ if(typeof vdocAbrirRegularizar === "function") await vdocAbrirRegularizar(a); return; }
 
   if(a.filtro === "contrato_obrigacao_vencida"){ if(typeof conAbrirObrigacoesVencidas === "function") await conAbrirObrigacoesVencidas(a); return; }
 

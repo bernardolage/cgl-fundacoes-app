@@ -1213,8 +1213,10 @@ async function cmpBuscar(){
   _cmpBuscaServidorIds = ids;
   renderCompras();
 }
+
+const CMP_SEM_FORN = "__sem__";
 function cmpPreencherSelectsFixos(){
-  const fornOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
+  const fornOpts = (ph, comSem) => `<option value="">${esc(ph)}</option>` + (comSem ? `<option value="${esc(CMP_SEM_FORN)}">Sem fornecedor</option>` : "") + _cmpForns.map(f => `<option value="${esc(f.id)}">${esc(f.razao_social)}${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? " (" + esc(f.nome_fantasia) + ")" : ""}</option>`).join("");
   const obraOpts = ph => `<option value="">${esc(ph)}</option>` + cmpObraOptgroups("", o => o.id, o => obraRotulo(o), "Obras");
 
   const eqOpts = ph => `<option value="">${esc(ph)}</option>` + _cmpEquips.map(e => `<option value="${esc(e.id)}">${esc(e.codigo)} — ${esc(e.nome || "")}</option>`).join("") + cmpEqBaixaOptgroup("", "", "");
@@ -1222,7 +1224,7 @@ function cmpPreencherSelectsFixos(){
   const vForn = $("cmp-forn")?.value || "";
   set("cmp-forn", fornOpts("— escolha o fornecedor —"));
   if(vForn && $("cmp-forn").value !== vForn && _cmpAtual?.fornecedor_id === vForn){ cmpFornGarantirOpcao(_cmpAtual); $("cmp-forn").value = vForn; }
-  set("cmp-f-forn", fornOpts("Fornecedor")); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
+  set("cmp-f-forn", fornOpts("Fornecedor", true)); set("cmp-rec-forn", fornOpts("— fornecedor —")); set("cmp-av-forn", fornOpts("— nenhum —"));
   set("cmp-cot-forn", fornOpts("— fornecedor da cotação —"));
   set("cmp-corrforn-forn", fornOpts("— fornecedor certo —"));
   set("cmp-f-etapa", `<option value="">Etapa</option>` + Object.entries(CMP_ETAPA).filter(([k]) => k !== "cancelado").map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join("")
@@ -1255,7 +1257,8 @@ function cmpFiltrados(){
     if(fSt === "_abertos"){ if(!ignoraAbertos && !casouServidor && !CMP_ETAPAS_ABERTAS.includes(cmpEtapa(p))) return false; }
     else if(fSt && p.status !== fSt) return false;
     if(!fSt && _cmpKpi === "" && _cmpView === "kanban" && p.status === "cancelado") return false;
-    if(fF && p.fornecedor_id !== fF) return false;
+    if(fF === CMP_SEM_FORN){ if(p.fornecedor_id) return false; }
+    else if(fF && p.fornecedor_id !== fF) return false;
     if(fO && p.obra_id !== fO && !(p.itens || []).some(i => i.obra_id === fO)) return false;
     if(fE && p.equipamento_id !== fE && !(p.itens || []).some(i => i.equipamento_id === fE)) return false;
     if(fM && String(p.data_pedido || "").slice(0, 7) !== fM) return false;
@@ -3174,17 +3177,23 @@ function cmpCampoFornecedor(idSelect, placeholder){
     inp.style.display = texto ? "none" : ""; inp.disabled = sel.disabled;
   }
   const escolher = id => { sel.value = id || ""; inp.value = ""; fechar(); sel.dispatchEvent(new Event("change", { bubbles: true })); atualizar(); if(!id) inp.focus(); };
-  inp.addEventListener("input", debounce(() => {
+
+  const temSem = () => [...sel.options].some(o => o.value === CMP_SEM_FORN);
+  const itemSem = `<div class="resultado-item" data-id="${esc(CMP_SEM_FORN)}"><strong>Sem fornecedor</strong> <span class="meta">pedidos sem fornecedor</span></div>`;
+  function buscar(){
     const t = cmpNorm(inp.value.trim()), dig = t.replace(/\D/g, "");
-    if(t.length < 2){ fechar(); return; }
-    const res = _cmpForns.filter(f => cmpNorm(f.razao_social).includes(t) || cmpNorm(f.nome_fantasia).includes(t)
+    const comSem = temSem() && (t.length < 2 ? "sem".startsWith(t) : cmpNorm("sem fornecedor").includes(t));
+    if(t.length < 2 && !comSem){ fechar(); return; }
+    const res = t.length < 2 ? [] : _cmpForns.filter(f => cmpNorm(f.razao_social).includes(t) || cmpNorm(f.nome_fantasia).includes(t)
       || (dig.length >= 3 && String(f.cpf_cnpj || "").replace(/\D/g, "").includes(dig))).slice(0, 25);
-    lista.innerHTML = res.length
+    lista.innerHTML = (comSem ? itemSem : "") + (res.length
       ? res.map(f => `<div class="resultado-item" data-id="${esc(f.id)}"><strong>${esc(f.razao_social)}</strong>${f.nome_fantasia && f.nome_fantasia !== f.razao_social ? ` <span class="meta">${esc(f.nome_fantasia)}</span>` : ""}<span class="meta" style="float:right;">${esc([f.cpf_cnpj, f.cidade].filter(Boolean).join(" · "))}</span></div>`).join("")
-      : `<div class="resultado-item vazio">Nenhum fornecedor com esse nome ou CNPJ. Cadastre em Fornecedores.</div>`;
+      : (comSem ? "" : `<div class="resultado-item vazio">Nenhum fornecedor com esse nome ou CNPJ. Cadastre em Fornecedores.</div>`));
     lista.style.display = "";
     lista.querySelectorAll(".resultado-item[data-id]").forEach(d => d.addEventListener("mousedown", ev => { ev.preventDefault(); escolher(d.dataset.id); }));
-  }, 150));
+  }
+  inp.addEventListener("input", debounce(buscar, 150));
+  inp.addEventListener("focus", () => { if(temSem()) buscar(); });
   inp.addEventListener("keydown", ev => {
     if(ev.key === "Enter"){ const d = lista.querySelector(".resultado-item[data-id]"); if(d){ ev.preventDefault(); escolher(d.dataset.id); } }
     if(ev.key === "Escape") fechar();

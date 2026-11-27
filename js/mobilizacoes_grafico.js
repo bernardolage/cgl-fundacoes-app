@@ -260,6 +260,20 @@ async function mgrCarregar(){
 }
 
 
+
+function mgrBarrasNaJanela(barras){
+  const jan = mgrJanela(_mgrEscala, hojeISO(), _mgrDesloc), jFim = jan.ini + jan.dias - 1;
+  const porEq = new Map();
+  (barras || []).forEach(b => {
+    if(!b || b.tipo_barra === "manutencao") return;
+    if(mgrDia(b.inicio) > jFim || (!b.aberta && mgrDia(b.fim) < jan.ini)) return;
+    if(!porEq.has(b.equipamento_id)) porEq.set(b.equipamento_id, []);
+    porEq.get(b.equipamento_id).push(b);
+  });
+  return porEq;
+}
+
+
 function renderGraficoMob(){
   const cont = $("mob-conteudo");
   if(!cont) return;
@@ -268,12 +282,12 @@ function renderGraficoMob(){
     mgrCarregar().then(() => { if(_mobView === "grafico") renderGraficoMob(); });
     return;
   }
-  const linhas = mcrFiltradas();
-  const grupos = mcrGrupos(linhas);
   const barras = _mgrBarras.map(b => mgrNormalizar(b, _mcrPrevObra)).filter(Boolean);
+  const linhas = mcrFiltradas({ barrasPorEq: mgrBarrasNaJanela(barras) });
+  const grupos = mcrGrupos(linhas);
   const semData = _mgrBarras.filter(b => !b.inicio && linhas.some(l => l.equipamento_id === b.equipamento_id)).length;
   const lay = mgrLayout({ grupos, barras, escala: _mgrEscala, hoje: hojeISO(), desloc: _mgrDesloc });
-  const metodos = MCR_ORDEM.filter(m => _mcrLinhas.some(l => l.metodologia === m));
+  const op = mcrOpcoesFiltro();
   const opt = (v, rot, sel) => `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(rot)}</option>`;
 
   cont.innerHTML = `
@@ -284,7 +298,8 @@ function renderGraficoMob(){
       <button type="button" class="btn-sec btn-sm" id="btn-mgr-hoje" title="Volta a janela para hoje">Hoje</button>
       <button type="button" class="btn-sec btn-sm" id="btn-mgr-prox" title="Próximo período" aria-label="Próximo período">›</button>
       <span class="meta">${esc(dataBR(lay.janela.ini))} a ${esc(dataBR(lay.janela.fim))}</span>
-      <select id="mgr-f-metodo" aria-label="Metodologia"><option value="">Todas as metodologias</option>${metodos.map(m => opt(m, MCR_METODO[m], _mcrFiltro.metodo)).join("")}</select>
+      <select id="mgr-f-metodo" aria-label="Metodologia"><option value="">Todas as metodologias</option>${op.metodos.map(m => opt(m, MCR_METODO[m], _mcrFiltro.metodo)).join("")}</select>
+      ${  mcrSelectsFiltro("mgr", op)}
       <span class="contador">${linhas.length} de ${_mcrLinhas.length} máquinas</span>
       ${semData ? `<span class="meta mcr-aviso" title="Mobilização prevista sem nenhuma data: não aparece no gráfico. Informe a data na ficha da mobilização.">${semData} prevista(s) sem data</span>` : ""}
       <button type="button" class="btn-sec btn-sm" id="btn-mgr-imprimir" style="margin-left:auto;" title="Abre o gráfico numa janela para imprimir em A3 paisagem">Imprimir A3</button>
@@ -336,7 +351,8 @@ function mgrLigar(cont){
   $("btn-mgr-ant")?.addEventListener("click", () => { _mgrDesloc--; renderGraficoMob(); });
   $("btn-mgr-prox")?.addEventListener("click", () => { _mgrDesloc++; renderGraficoMob(); });
   $("btn-mgr-hoje")?.addEventListener("click", () => { _mgrDesloc = 0; renderGraficoMob(); });
-  $("mgr-f-metodo")?.addEventListener("change", () => { _mcrFiltro.metodo = $("mgr-f-metodo").value || ""; renderGraficoMob(); });
+  const muda = (id, campo) => $(id)?.addEventListener("change", () => { _mcrFiltro[campo] = $(id).value || ""; renderGraficoMob(); });
+  muda("mgr-f-metodo", "metodo"); muda("mgr-f-cliente", "cliente"); muda("mgr-f-situacao", "situacao"); muda("mgr-f-obra", "obra");
   $("btn-mgr-imprimir")?.addEventListener("click", mgrImprimir);
 }
 

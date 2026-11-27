@@ -16,7 +16,7 @@ let _mcrPrevObra  = {};
 let _mcrCarregado = false;
 let _mcrOrcs      = null;
 let _mcrRes       = null;
-const _mcrFiltro  = { metodo: "", cliente: "", situacao: "", livreAte: "" };
+const _mcrFiltro  = { metodo: "", cliente: "", situacao: "", livreAte: "", obra: "" };
 
 
 const MCR_CARGOS_EDITAM = ["diretor", "admin", "engenheiro", "assistente_engenharia", "comercial", "encarregado", "logistica"];
@@ -73,12 +73,42 @@ function mcrProximaTexto(l){
 }
 
 
-function mcrFiltradas(){
+
+function mcrBarrasObra(){
+  const barras = typeof _mgrBarras !== "undefined" && Array.isArray(_mgrBarras) ? _mgrBarras : [];
+  return barras.filter(b => b && b.tipo_barra !== "manutencao");
+}
+
+
+function mcrOpcoesFiltro(){
+  const barras = mcrBarrasObra();
+  const metodos = MCR_ORDEM.filter(m => _mcrLinhas.some(l => l.metodologia === m));
+  const clientes = [...new Set([..._mcrLinhas.flatMap(l => [l.cliente, l.prox_cliente]), ...barras.map(b => b.cliente)].filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const obras = new Map();
+  const poe = (id, cod, nome) => { if(id && !obras.has(id)) obras.set(id, { id, codigo: cod || "", rotulo: [cod, nome].filter(Boolean).join(" · ") || "Obra" }); };
+  _mcrLinhas.forEach(l => { poe(l.obra_id, l.obra_codigo, l.obra_nome); poe(l.prox_obra_id, l.prox_obra_codigo, l.prox_obra_nome); });
+  barras.forEach(b => poe(b.obra_id, b.obra_codigo, b.obra_nome));
+  return { metodos, clientes, obras: [...obras.values()].sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), "pt-BR", { numeric: true })) };
+}
+
+function mcrSelectsFiltro(prefixo, op){
+  const opt = (v, rot, sel) => `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(rot)}</option>`;
+  return `<select id="${esc(prefixo)}-f-cliente" aria-label="Cliente"><option value="">Todos os clientes</option>${op.clientes.map(c => opt(c, c, _mcrFiltro.cliente)).join("")}</select>
+      <select id="${esc(prefixo)}-f-situacao" aria-label="Situação"><option value="">Qualquer situação</option>${Object.keys(MCR_SITUACAO).map(s => opt(s, MCR_SITUACAO[s], _mcrFiltro.situacao)).join("")}</select>
+      <select id="${esc(prefixo)}-f-obra" aria-label="Obra"><option value="">Todas as obras</option>${op.obras.map(o => opt(o.id, o.rotulo, _mcrFiltro.obra)).join("")}</select>`;
+}
+
+
+function mcrFiltradas(opcoes){
   const termo = ($("mob-busca")?.value || "").trim().toLowerCase();
   const f = _mcrFiltro;
+  const porEq = opcoes && opcoes.barrasPorEq;
+  const daMaquina = l => (porEq && porEq.get(l.equipamento_id)) || [];
   return _mcrLinhas.filter(l => {
     if(f.metodo && (l.metodologia || "") !== f.metodo) return false;
-    if(f.cliente && l.cliente !== f.cliente && l.prox_cliente !== f.cliente) return false;
+    if(f.cliente && l.cliente !== f.cliente && l.prox_cliente !== f.cliente && !daMaquina(l).some(b => b.cliente === f.cliente)) return false;
+    if(f.obra && (porEq ? !daMaquina(l).some(b => b.obra_id === f.obra) : (l.obra_id !== f.obra && l.prox_obra_id !== f.obra))) return false;
     if(f.situacao === "livre" ? !mcrLivre(l) : (f.situacao && mcrSituacao(l) !== f.situacao)) return false;
     if(f.livreAte){ const d = mcrLivreEm(l); if(!d || d > f.livreAte) return false; }
     if(termo && !`${l.codigo} ${l.nome || ""} ${l.obra_codigo || ""} ${l.obra_nome || ""} ${l.cliente || ""} ${l.operadores || ""} ${mcrProximaTexto(l)}`.toLowerCase().includes(termo)) return false;
@@ -110,17 +140,15 @@ function renderCronogramaMob(){
   const pode = mcrPodeEditar();
   const linhas = mcrFiltradas();
   const grupos = mcrGrupos(linhas);
-  const clientes = [...new Set(_mcrLinhas.flatMap(l => [l.cliente, l.prox_cliente]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  const metodos = MCR_ORDEM.filter(m => _mcrLinhas.some(l => l.metodologia === m));
+  const op = mcrOpcoesFiltro();
   const opt = (v, rot, sel) => `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(rot)}</option>`;
   const semDesmob = _mcrLinhas.filter(l => l.mob_id && !l.data_desmob_prev && !l.termino).length;
 
   cont.innerHTML = `
     <p class="meta">Cronograma de equipamentos (RG 11.15) tirado das mobilizações: uma linha por máquina, a obra atual, até quando fica e a próxima obra. A previsão de término muda a desmobilização prevista da mobilização e fica registrada na conversa dela. Status e localização continuam pela ficha da mobilização.</p>
     <div class="mcr-filtros">
-      <select id="mcr-f-metodo" aria-label="Metodologia"><option value="">Todas as metodologias</option>${metodos.map(m => opt(m, MCR_METODO[m], _mcrFiltro.metodo)).join("")}</select>
-      <select id="mcr-f-cliente" aria-label="Cliente"><option value="">Todos os clientes</option>${clientes.map(c => opt(c, c, _mcrFiltro.cliente)).join("")}</select>
-      <select id="mcr-f-situacao" aria-label="Situação"><option value="">Qualquer situação</option>${Object.keys(MCR_SITUACAO).map(s => opt(s, MCR_SITUACAO[s], _mcrFiltro.situacao)).join("")}</select>
+      <select id="mcr-f-metodo" aria-label="Metodologia"><option value="">Todas as metodologias</option>${op.metodos.map(m => opt(m, MCR_METODO[m], _mcrFiltro.metodo)).join("")}</select>
+      ${  mcrSelectsFiltro("mcr", op)}
       <label title="Máquinas que ficam livres até esta data (fim da obra atual ou já livres no pátio)">Livre até <input type="date" id="mcr-f-livre" value="${esc(_mcrFiltro.livreAte)}" /></label>
       <span class="contador" id="mcr-contador">${linhas.length} de ${_mcrLinhas.length} máquinas</span>
       ${semDesmob ? `<span class="meta mcr-aviso" title="Mobilização em obra sem desmobilização prevista: o término mostrado é a previsão da obra. Informe a data na coluna Previsão de término.">${semDesmob} sem desmobilização prevista</span>` : ""}
@@ -172,7 +200,7 @@ function mcrLinhaHTML(l, pode){
 
 function mcrLigar(cont){
   const muda = (id, campo) => $(id)?.addEventListener("change", () => { _mcrFiltro[campo] = $(id).value || ""; renderCronogramaMob(); });
-  muda("mcr-f-metodo", "metodo"); muda("mcr-f-cliente", "cliente"); muda("mcr-f-situacao", "situacao"); muda("mcr-f-livre", "livreAte");
+  muda("mcr-f-metodo", "metodo"); muda("mcr-f-cliente", "cliente"); muda("mcr-f-situacao", "situacao"); muda("mcr-f-obra", "obra"); muda("mcr-f-livre", "livreAte");
   $("btn-mcr-xlsx")?.addEventListener("click", () => mcrExportarXlsx(mcrFiltradas()));
   cont.querySelectorAll("a[data-mcr-mob]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); abrirMobilizacao(a.dataset.mcrMob); }));
   cont.querySelectorAll("input[data-mcr-termino]").forEach(inp => inp.addEventListener("change", () => mcrPreverTermino(inp)));
