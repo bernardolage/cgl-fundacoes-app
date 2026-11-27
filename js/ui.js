@@ -307,12 +307,46 @@ function uiProgresso(feito, total, rotulo, opcoes){
 
 
 
+
+
+function uiModalFaltando(d){
+  let primeiro = null;
+  d.querySelectorAll(".ui-modal-corpo [required]").forEach(el => {
+    if(el.disabled) return;
+    const vazio = el.type === "checkbox" ? !el.checked : !String(el.value ?? "").trim();
+    const caixa = el.closest(".ui-campo");
+    const id = el.id + "-erro";
+    let msg = caixa ? caixa.querySelector(".ui-campo-erro") : null;
+    if(vazio){
+      el.setAttribute("aria-invalid", "true");
+      if(caixa && !msg){
+        msg = document.createElement("p");
+        msg.className = "ui-campo-erro"; msg.id = id; msg.setAttribute("role", "alert"); msg.textContent = "Preencha este campo.";
+        caixa.appendChild(msg); caixa.classList.add("com-erro");
+        el.setAttribute("aria-describedby", [el.getAttribute("aria-describedby"), id].filter(Boolean).join(" "));
+      }
+      if(!primeiro) primeiro = el;
+    }
+  });
+  return primeiro;
+}
+function uiModalLimparErro(el){
+  const caixa = el && el.closest(".ui-campo.com-erro");
+  if(!caixa || !String(el.value ?? "").trim()) return;
+  el.removeAttribute("aria-invalid");
+  const msg = caixa.querySelector(".ui-campo-erro");
+  if(msg){
+    el.setAttribute("aria-describedby", (el.getAttribute("aria-describedby") || "").split(" ").filter(x => x && x !== msg.id).join(" "));
+    msg.remove();
+  }
+  caixa.classList.remove("com-erro");
+}
 function uiModalHTML(cfg){
   const c = cfg || {};
   const larg = ["p", "m", "g"].includes(c.largura) ? c.largura : "m";
   const corpo = c.erro ? uiErro(c.erro) : c.corpoHTML ?   c.corpoHTML : c.texto ? `<p>${esc(c.texto)}</p>` : uiVazio("Nada a mostrar.");
   const acoes = (c.acoes && c.acoes.length ? c.acoes : [{ id: "fechar", texto: "Fechar" }]).map(a =>
-    `<button type="button" class="ui-btn${a.primaria ? " ui-btn-prim" : ""}${a.perigo ? " ui-btn-perigo" : ""}" data-acao="${esc(a.id)}">${esc(a.texto)}</button>`).join("");
+    `<button type="button" class="ui-btn${a.primaria ? " ui-btn-prim" : ""}${a.perigo ? " ui-btn-perigo" : ""}" data-acao="${esc(a.id)}"${a.valida ? ' data-valida="1"' : ""}>${esc(a.texto)}</button>`).join("");
   return `<div class="ui-modal-caixa ${esc(larg)}"><header class="ui-modal-cab"><h2>${esc(c.titulo || "")}</h2><button type="button" class="ui-modal-x" data-acao="" aria-label="Fechar">×</button></header><div class="ui-modal-corpo">${  corpo}</div><footer class="ui-modal-acoes">${  acoes}</footer></div>`;
 }
 function uiModal(cfg){
@@ -324,7 +358,13 @@ function uiModal(cfg){
     let res = null;
     d.addEventListener("click", ev => {
       const b = ev.target.closest("[data-acao]");
-      if(b){ res = b.dataset.acao || null; d.close(); }
+      if(b){
+        if(b.dataset.valida){
+          const falta = uiModalFaltando(d);
+          if(falta){ falta.focus(); return; }
+        }
+        res = b.dataset.acao || null; d.close();
+      }
       else if(ev.target === d){ d.close(); }
     });
     const comValores = !!(cfg && cfg.comValores);
@@ -334,6 +374,8 @@ function uiModal(cfg){
         const prim = d.querySelector(".ui-modal-acoes .ui-btn-prim");
         if(prim){ ev.preventDefault(); prim.click(); }
       });
+      d.addEventListener("input", ev => uiModalLimparErro(ev.target));
+      d.addEventListener("change", ev => uiModalLimparErro(ev.target));
     }
     d.addEventListener("close", () => {
       let valores = null;
@@ -363,6 +405,7 @@ function uiConfirmar(cfg){
 
 
 
+
 function uiPedirValoresHTML(cfg){
   const c = cfg || {};
   const campos = (c.campos || []).map(f => uiCampo(Object.assign({}, f, { id: "uipv-" + uiId(f.id) }))).join("");
@@ -372,7 +415,7 @@ function uiPedirValores(cfg){
   const c = cfg || {};
   return uiModal({ titulo: c.titulo || "Informar", corpoHTML: uiPedirValoresHTML(c), largura: "p", comValores: true, acoes: [
     { id: "nao", texto: c.cancelar || "Cancelar" },
-    { id: "sim", texto: c.confirmar || "Confirmar", primaria: true }
+    { id: "sim", texto: c.confirmar || "Confirmar", primaria: true, valida: true }
   ] }).then(r => {
     if(!r || r.acao !== "sim") return null;
     const out = {};
