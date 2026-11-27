@@ -413,10 +413,16 @@ async function encerrarSessoesUsr(){
 
 async function encerrarTodasSessoes(){
   if(usuarioAtual?.cargo !== "diretor"){ aviso("app-aviso", "Só a diretoria encerra todas as sessões.", "erro"); return; }
-  const motivo = prompt("Encerrar TODAS as sessões (todos os usuários, em todos os aparelhos). Esta é a emergência da diretoria.\n\nMotivo (fica no histórico):");
-  if(motivo === null) return;
+  const v1 = await uiPedirValores({ titulo: "Encerrar todas as sessões", confirmar: "Continuar",
+    texto: "Encerrar TODAS as sessões (todos os usuários, em todos os aparelhos). Esta é a emergência da diretoria.",
+    campos: [{ id: "motivo", rotulo: "Motivo (fica no histórico)", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+  if(v1 === null) return;
+  const motivo = v1.motivo || "";
   if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo.", "erro"); return; }
-  const conf = prompt("Segunda confirmação: digite ENCERRAR para derrubar todo mundo (a sua sessão nesta aba continua).");
+  const v2 = await uiPedirValores({ titulo: "Segunda confirmação", confirmar: "Encerrar todas",
+    texto: "Digite ENCERRAR para derrubar todo mundo (a sua sessão nesta aba continua).",
+    campos: [{ id: "conf", rotulo: "Digite ENCERRAR", obrigatorio: true }] });
+  const conf = v2 ? v2.conf : null;
   if((conf || "").trim().toUpperCase() !== "ENCERRAR"){ aviso("app-aviso", "Cancelado: a confirmação não foi digitada.", "aviso"); return; }
   const { data, error } = await sb.rpc("sessoes_encerrar_todas", { p_motivo: motivo.trim() });
   if(error){ aviso("app-aviso", "Não foi possível encerrar as sessões: " + error.message, "erro"); return; }

@@ -2504,7 +2504,8 @@ function habilitarDragKanban(opts){
       if(!id || !novoStatus || novoStatus === origem) return;
 
       if(opts.confirmar){
-        if(!confirm(`Mover este card para "${novoStatus}"?`)) return;
+
+        if(!(await uiConfirmar({ titulo: "Mover card", texto: `Mover este card para "${novoStatus}"?`, confirmar: "Mover" }))) return;
       }
 
       const { error } = await sb.from(tabela).update({ [coluna]: novoStatus, updated_at: new Date().toISOString() }).eq("id", id);

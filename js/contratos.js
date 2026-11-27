@@ -647,7 +647,7 @@ async function excluirContrato(){
   if(_conAtual && conObrasDe(_conAtual).length && _conAtual.natureza === "cliente"){
     aviso("app-aviso","Contrato ligado a obra: o vínculo é desfeito na ficha da obra.","erro"); return;
   }
-  if(!confirm("Excluir este contrato? Os anexos enviados também serão removidos.")) return;
+  if(!await uiConfirmar({ titulo: "Excluir contrato", texto: "Excluir este contrato? Os anexos enviados também serão removidos.", confirmar: "Excluir", perigo: true })) return;
 
   const { data: docs } = await sb.from("contratos_documentos")
     .select("storage_path").eq("contrato_id", conEditId);
@@ -888,7 +888,7 @@ async function baixarDocumentoContrato(path, nome){
 }
 
 async function excluirDocumentoContrato(id, path, contratoId, opts){
-  if(!confirm("Excluir este anexo?")) return;
+  if(!await uiConfirmar({ titulo: "Excluir anexo", texto: "Excluir este anexo?", confirmar: "Excluir", perigo: true })) return;
 
 
   const { data: apagadas, error } = await sb.from("contratos_documentos").delete().eq("id", id).select("id");
@@ -1058,7 +1058,7 @@ async function enviarAssinaturaD4S(){
 }
 
 async function atualizarStatusAssinatura(contratoId, conf){
-  if(!confirm("Consultar o status na D4Sign agora? Isso usa 1 requisição da cota (o normal é o status chegar sozinho pelo webhook).")) return;
+  if(!await uiConfirmar({ titulo: "Consultar D4Sign", texto: "Consultar o status na D4Sign agora? Isso usa 1 requisição da cota (o normal é o status chegar sozinho pelo webhook).", confirmar: "Consultar" })) return;
   const { data, error } = await sb.functions.invoke("d4sign-api", {
     body: { acao: "status", contrato_id: contratoId }
   });

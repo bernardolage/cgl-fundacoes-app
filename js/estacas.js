@@ -380,7 +380,10 @@ async function alterarTipoEmLote(tipo){
   const rot = $("est-lote-tipo")?.selectedOptions?.[0]?.textContent?.replace(/^→\s*/, "") || tipo;
   if(!alvo.length){ aviso("app-aviso", "Nenhuma estaca do filtro precisa mudar para " + rot + ".", "aviso"); if(sel) sel.value = ""; return; }
   const filtroAtivo = ($("est-f-status")?.value || $("est-f-tipo")?.value || $("est-f-local")?.value || ($("est-busca")?.value || "").trim());
-  if(!confirm(`Mudar o tipo de ${alvo.length} estaca(s)${filtroAtivo ? " (as que aparecem no filtro atual)" : " — TODAS as estacas da obra"} para ${rot}?`)){ if(sel) sel.value = ""; return; }
+  const idObra = obraEditId;
+  const okTipo = await uiConfirmar({ titulo: "Mudar tipo em lote", confirmar: "Mudar tipo",
+    texto: `Mudar o tipo de ${alvo.length} estaca(s)${filtroAtivo ? " (as que aparecem no filtro atual)" : " — TODAS as estacas da obra"} para ${rot}?` });
+  if(!okTipo || obraEditId !== idObra){ if(sel) sel.value = ""; return; }
   for(let i = 0; i < alvo.length; i += 200){
     const { error } = await sb.from("estacas").update({ tipo }).in("id", alvo.slice(i, i + 200).map(e => e.id));
     if(error){ aviso("app-aviso", "Erro ao alterar tipo: " + error.message, "erro"); if(sel) sel.value = ""; return; }
@@ -987,7 +990,10 @@ async function salvarEstaca(){
     const chave = (e) => [(e.local || "").trim().toUpperCase(), (e.bloco || "").trim().toUpperCase(), (e.numero || "").trim().toUpperCase()].join("|");
     const outra = (_estacas || []).find(e => e.id !== _estacaEdit.id && chave(e) === chave(reg));
     if(outra){
-      if(!confirm(`Já existe a estaca ${outra.numero} neste local e bloco: juntar?\n\nAs execuções desta estaca vão para a ${outra.numero} e esta estaca sai da lista. O resto do que foi mudado aqui não é gravado.`)) return;
+      const editando = _estacaEdit;
+      if(!(await uiConfirmar({ titulo: "Juntar estacas", confirmar: "Juntar", perigo: true,
+        texto: `Já existe a estaca ${outra.numero} neste local e bloco: juntar? As execuções desta estaca vão para a ${outra.numero} e esta estaca sai da lista. O resto do que foi mudado aqui não é gravado.` }))) return;
+      if(_estacaEdit !== editando) return;
       const { error: eJ } = await sb.rpc("estaca_juntar", { p_origem: _estacaEdit.id, p_destino: outra.id, p_motivo: "Editar estaca: mesmo nome, local e bloco" });
       if(eJ){ aviso("app-aviso", "Não foi possível juntar: " + eJ.message, "erro"); return; }
       aviso("app-aviso", `Estaca juntada na ${outra.numero}.`, "ok");
@@ -1017,7 +1023,7 @@ async function salvarEstaca(){
 }
 
 async function excluirEstaca(id){
-  if(!confirm("Excluir esta estaca? A ação não pode ser desfeita.")) return;
+  if(!(await uiConfirmar({ titulo: "Excluir estaca", texto: "Excluir esta estaca? A ação não pode ser desfeita.", confirmar: "Excluir", perigo: true }))) return;
   const { error } = await sb.from("estacas").delete().eq("id", id);
 
   if(error){ aviso("app-aviso","Não foi possível excluir: "+error.message,"erro"); return; }
@@ -1261,7 +1267,8 @@ function limparAvisoImport(){
 async function confirmarImportEstacas(){
   if(!_importPreview.length){ avisoImport("Nada a importar.","erro"); return; }
   if(!obraEditId){ avisoImport("Obra não identificada.","erro"); return; }
-  if(!confirm(`Importar ${_importPreview.length} estacas pra esta obra?`)) return;
+  if(!(await uiConfirmar({ titulo: "Importar estacas", confirmar: "Importar", texto: `Importar ${_importPreview.length} estacas pra esta obra?` }))) return;
+  if(!_importPreview.length || !obraEditId) return;
 
   const regs = _importPreview
     .filter(e => e.numero)
@@ -1305,7 +1312,8 @@ async function confirmarImportEstacas(){
     avisoImport(`Todas as ${regs.length} estacas já existem nesta obra no mesmo local e ${rotuloAgrupamento().toLowerCase()} — nada foi importado. Se são de outro local/projeto ou de outro ${rotuloAgrupamento().toLowerCase()}, preencha as colunas Local/${rotuloAgrupamento()} no preview.`, "erro");
     return;
   }
-  if(repetidos.length && !confirm(`${repetidos.length} estaca(s) já existem no mesmo local/${rotuloAgrupamento().toLowerCase()} e ${epjAtualiza ? "não entram de novo: só a profundidade de projeto delas é atualizada, com a prévia a seguir" : "serão ignoradas"} (${repetidos.slice(0,8).map(r => [r.bloco, r.numero].filter(Boolean).join(" ")).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?`)) return;
+  if(repetidos.length && !(await uiConfirmar({ titulo: "Estacas repetidas", confirmar: "Importar as outras",
+    texto: `${repetidos.length} estaca(s) já existem no mesmo local/${rotuloAgrupamento().toLowerCase()} e ${epjAtualiza ? "não entram de novo: só a profundidade de projeto delas é atualizada, com a prévia a seguir" : "serão ignoradas"} (${repetidos.slice(0,8).map(r => [r.bloco, r.numero].filter(Boolean).join(" ")).join(", ")}${repetidos.length > 8 ? "…" : ""}). Importar as outras ${novos.length}?` }))) return;
   regs.length = 0; novos.forEach(r => regs.push(r));
 
 
@@ -2881,10 +2889,13 @@ async function estDiametroPadrao(tipo, rotulo){
   const { data, error } = await sb.rpc("obra_diametros_servico", { p_obra: obraEditId, p_tipo: tipo || null });
   const diams = error ? [] : (data || []).map(Number).filter(d => d > 0);
   if(diams.length === 1) return diams[0];
-  const resp = prompt(`${rotulo} sem diâmetro. O Ø precifica a estaca na medição: informe o Ø em mm` +
-    (diams.length ? ` (serviço da obra: ${diams.join(", ")})` : "") +
-    `.\nDeixe em branco para gravar sem Ø (a obra fica em "Para regularizar"); Cancelar não grava.`, "");
-  if(resp === null) return undefined;
+  const r = await uiPedirValores({ titulo: "Estacas sem diâmetro", confirmar: "Gravar",
+    texto: `${rotulo} sem diâmetro. O Ø precifica a estaca na medição: informe o Ø em mm` +
+      (diams.length ? ` (serviço da obra: ${diams.join(", ")})` : "") +
+      `. Deixe em branco para gravar sem Ø (a obra fica em "Para regularizar"); Cancelar não grava.`,
+    campos: [{ id: "diametro", rotulo: "Ø (mm)", tipo: "number", valor: "" }] });
+  if(r === null) return undefined;
+  const resp = r.diametro ?? "";
   if(String(resp).trim() === "") return null;
   const d = Number(String(resp).replace(",", "."));
   if(!(d > 0)){ aviso("app-aviso", "Diâmetro inválido: informe em mm (ex.: 400).", "erro"); return undefined; }
@@ -2938,7 +2949,9 @@ async function criarPrevistaDaOrfa(orfaId, numero, profundidade){
 
 async function criarTodasPrevistasFaltantes(){
   if(!_recOrfas.length){ aviso("app-aviso","Sem órfãs.","erro"); return; }
-  if(!confirm(`Criar ${_recOrfas.length} estacas previstas a partir das execuções e vincular todas? Tipo default: hélice contínua.`)) return;
+  if(!(await uiConfirmar({ titulo: "Criar estacas previstas", confirmar: "Criar e vincular",
+    texto: `Criar ${_recOrfas.length} estacas previstas a partir das execuções e vincular todas? Tipo default: hélice contínua.` }))) return;
+  if(!_recOrfas.length) return;
 
 
   let diamPadrao = null;
@@ -3043,7 +3056,10 @@ function destacarConflitosVinculacao(){
 async function moverExecucoesPraOutraObra(){
   const novaObraId = $("conf-mover-obra")?.value;
   if(!novaObraId){ aviso("app-aviso","Escolha a obra de destino.","erro"); return; }
-  if(!confirm(`Mover todos os RDOs (e execuções) desta obra pra "${mapaObras[novaObraId]}"?\n\nVai recasar estacas automaticamente após o move.`)) return;
+  const idObra = obraEditId;
+  if(!(await uiConfirmar({ titulo: "Mover RDOs", confirmar: "Mover",
+    texto: `Mover todos os RDOs (e execuções) desta obra pra "${mapaObras[novaObraId]}"? Vai recasar estacas automaticamente após o move.` }))) return;
+  if(obraEditId !== idObra) return;
 
 
   const obraOrigem = obraEditId;
@@ -3179,7 +3195,8 @@ async function realocarExecucao(execId, estacaOrigId){
 
   const orig = _recPrevs.find(p => p.id === estacaOrigId);
   const dest = _recPrevs.find(p => p.id === novaEstacaId);
-  if(!confirm(`Realocar esta execução de "${orig?.numero||"?"}" pra "${dest?.numero||"?"}"? A estaca antiga ficará só com as execuções restantes.`)) return;
+  if(!(await uiConfirmar({ titulo: "Realocar execução", confirmar: "Realocar",
+    texto: `Realocar esta execução de "${orig?.numero||"?"}" pra "${dest?.numero||"?"}"? A estaca antiga ficará só com as execuções restantes.` }))) return;
 
   const { error } = await sb.from("rdo_execucao_estaca")
     .update({ estaca_id: novaEstacaId })
@@ -3200,7 +3217,8 @@ async function realocarExecucao(execId, estacaOrigId){
 }
 
 async function marcarComoRefuro(execId){
-  if(!confirm("Marcar esta execução como REFURO? Os dados da estaca pai não serão sobrescritos por ela.")) return;
+  if(!(await uiConfirmar({ titulo: "Marcar como refuro", confirmar: "Marcar refuro",
+    texto: "Marcar esta execução como REFURO? Os dados da estaca pai não serão sobrescritos por ela." }))) return;
 
   const { data: execData } = await sb.from("rdo_execucao_estaca").select("estaca_id").eq("id", execId).single();
   const { error } = await sb.from("rdo_execucao_estaca")
@@ -3275,7 +3293,9 @@ function renderizarDuplicadas(){
 }
 
 async function renomearEstacaDuplicada(id, numAtual){
-  const novo = prompt(`Renomear estaca "${numAtual}" para:`, numAtual + "-2");
+  const v = await uiPedirValores({ titulo: "Renomear estaca", confirmar: "Renomear",
+    campos: [{ id: "numero", rotulo: `Renomear estaca "${numAtual}" para`, valor: numAtual + "-2", obrigatorio: true }] });
+  const novo = v ? v.numero : null;
   if(!novo || novo.trim() === numAtual) return;
   const novoNorm = normalizarNumeroEstacaEstacas(novo);
   const { error } = await sb.from("estacas").update({ numero: novoNorm }).eq("id", id);
@@ -3293,7 +3313,8 @@ async function renomearEstacaDuplicada(id, numAtual){
 
 async function excluirEstacaDuplicada(id, num){
 
-  if(!confirm(`Excluir esta estaca "${num}"? A ação não pode ser desfeita.\n(Estaca com execução ligada não se exclui: descarte ou realoque a execução antes).`)) return;
+  if(!(await uiConfirmar({ titulo: "Excluir estaca", confirmar: "Excluir", perigo: true,
+    texto: `Excluir esta estaca "${num}"? A ação não pode ser desfeita. (Estaca com execução ligada não se exclui: descarte ou realoque a execução antes.)` }))) return;
   const { error } = await sb.from("estacas").delete().eq("id", id);
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   aviso("app-aviso","Estaca excluída.","ok");
@@ -3502,7 +3523,10 @@ async function criarSubstitutaRefurada(idOriginal, numOriginal){
   const original = _confRefuradas.find(e => e.id === idOriginal);
   if(!original) return;
   const sugestao = numOriginal + "-S";
-  const novoNum = prompt(`Número da estaca substituta (a refurada "${numOriginal}" continua no histórico):`, sugestao);
+  const v = await uiPedirValores({ titulo: "Estaca substituta", confirmar: "Criar substituta",
+    texto: `A refurada "${numOriginal}" continua no histórico.`,
+    campos: [{ id: "numero", rotulo: "Número da estaca substituta", valor: sugestao, obrigatorio: true }] });
+  const novoNum = v ? v.numero : null;
   if(!novoNum) return;
   const novoNorm = normalizarNumeroEstacaEstacas(novoNum);
   const reg = {
@@ -3531,7 +3555,8 @@ async function criarSubstitutaRefurada(idOriginal, numOriginal){
 }
 
 async function restaurarRefurada(id){
-  if(!confirm("Restaurar esta estaca para status 'prevista'? Use só se a refuração foi marcada por engano.")) return;
+  if(!(await uiConfirmar({ titulo: "Restaurar estaca", confirmar: "Restaurar", perigo: true,
+    texto: "Restaurar esta estaca para status 'prevista'? Use só se a refuração foi marcada por engano." }))) return;
   const { error } = await sb.from("estacas").update({
     status: "prevista",
     data_execucao: null,
@@ -3553,15 +3578,15 @@ async function confirmarReconciliacao(){
 
   const conflitos = contarConflitosVinculacao();
   if(conflitos > 0){
-    const ok = confirm(
-      `⚠️ ATENÇÃO: ${conflitos} execuções estão competindo pela mesma estaca (linhas em vermelho na tabela).\n\n` +
-      `Se confirmar assim, algumas estacas receberão MAIS DE UMA execução (anomalia de cadastro).\n\n` +
-      `Recomendado: cancelar, ajustar manualmente cada linha em vermelho, depois confirmar.\n\n` +
-      `Deseja confirmar mesmo assim?`
-    );
+    const ok = await uiConfirmar({ titulo: "Execuções na mesma estaca", confirmar: "Confirmar mesmo assim", perigo: true,
+      texto: `⚠️ ATENÇÃO: ${conflitos} execuções estão competindo pela mesma estaca (linhas em vermelho na tabela). ` +
+        `Se confirmar assim, algumas estacas receberão MAIS DE UMA execução (anomalia de cadastro). ` +
+        `Recomendado: cancelar, ajustar manualmente cada linha em vermelho, depois confirmar. ` +
+        `Deseja confirmar mesmo assim?` });
     if(!ok) return;
   }
-  if(!confirm(`Vincular ${escolhidos.length} execução(ões) às estacas escolhidas? Isso atualiza status pra 'executada' e profundidade.`)) return;
+  if(!(await uiConfirmar({ titulo: "Vincular execuções", confirmar: "Vincular",
+    texto: `Vincular ${escolhidos.length} execução(ões) às estacas escolhidas? Isso atualiza status pra 'executada' e profundidade.` }))) return;
 
 
   const btn = $("btn-est-rec-confirmar");
@@ -3911,11 +3936,13 @@ function estvRender(){
 
 
 function estvLigarSelOutra(sel){
-  sel.addEventListener("change", () => {
+  sel.addEventListener("change", async () => {
     if(sel.value !== "__outra") return;
-    const nome = prompt("Nº da estaca do projeto (como está no cadastro):");
     sel.value = "";
-    if(!nome) return;
+    const v = await uiPedirValores({ titulo: "Outra estaca do projeto", confirmar: "Escolher",
+      campos: [{ id: "numero", rotulo: "Nº da estaca do projeto (como está no cadastro)", obrigatorio: true }] });
+    const nome = v ? v.numero : null;
+    if(!nome || !sel.isConnected) return;
     const cands = _estvEstacas.filter(p => estvNorm(p.numero) === estvNorm(nome));
     if(cands.length !== 1){ aviso("app-aviso", cands.length ? `"${nome}" existe em mais de um local/bloco nesta obra.` : `Não há estaca "${nome}" nesta obra.`, "erro"); return; }
     const opt = document.createElement("option");
@@ -3991,12 +4018,16 @@ async function estvVincular(execId, estacaId, motivo){
   const troca = !!(atual && estacaId && atual.id !== estacaId);
   const verbo = troca ? "Trocar" : estacaId ? "Vincular" : "Desvincular";
   const medida = (alvo && _estvMedidas.has(alvo.id)) || (atual && _estvMedidas.has(atual.id));
-  if(medida && !confirm(`A estaca ${(alvo || atual).numero} já entrou em medição. ${verbo} mesmo assim? Fica registrado no histórico.`)) return;
-  if(!medida && !estacaId && !confirm(`Tirar o vínculo da execução "${x.estaca_numero}"${atual ? " com " + atual.numero : ""}? Ela volta para "Sem vínculo" e não é religada sozinha pelo nome.`)) return;
-  if(!medida && troca && !confirm(`Trocar o vínculo da execução "${x.estaca_numero}" (${dataBR(x.rdo.data)}): ${atual.numero} → ${alvo ? alvo.numero : "estaca escolhida"}?`)) return;
+  if(medida && !(await uiConfirmar({ titulo: `${verbo} estaca medida`, confirmar: verbo, perigo: true,
+    texto: `A estaca ${(alvo || atual).numero} já entrou em medição. ${verbo} mesmo assim? Fica registrado no histórico.` }))) return;
+  if(!medida && !estacaId && !(await uiConfirmar({ titulo: "Desvincular execução", confirmar: "Desvincular", perigo: true,
+    texto: `Tirar o vínculo da execução "${x.estaca_numero}"${atual ? " com " + atual.numero : ""}? Ela volta para "Sem vínculo" e não é religada sozinha pelo nome.` }))) return;
+  if(!medida && troca && !(await uiConfirmar({ titulo: "Trocar vínculo", confirmar: "Trocar",
+    texto: `Trocar o vínculo da execução "${x.estaca_numero}" (${dataBR(x.rdo.data)}): ${atual.numero} → ${alvo ? alvo.numero : "estaca escolhida"}?` }))) return;
   const irmas = estvIrmas(x);
   let lista = [x];
-  if(irmas.length && confirm(`"${x.estaca_numero}" aparece em mais ${irmas.length} dia(s) ${atual ? "vinculada a " + atual.numero : "sem vínculo"} (${irmas.map(i => dataBR(i.rdo.data)).join(", ")}). ${verbo} esses também?\n\nOK = todos os ${irmas.length + 1} dias · Cancelar = só ${dataBR(x.rdo.data)}`)) lista = lista.concat(irmas);
+  if(irmas.length && await uiConfirmar({ titulo: `${verbo} outros dias`, confirmar: `Todos os ${irmas.length + 1} dias`, cancelar: `Só ${dataBR(x.rdo.data)}`,
+    texto: `"${x.estaca_numero}" aparece em mais ${irmas.length} dia(s) ${atual ? "vinculada a " + atual.numero : "sem vínculo"} (${irmas.map(i => dataBR(i.rdo.data)).join(", ")}). ${verbo} esses também?` })) lista = lista.concat(irmas);
   let n = 0;
   for(const e of lista){
     const { error } = await estvGravarVinculo(e.id, estacaId, motivo);
@@ -4014,7 +4045,8 @@ async function estvVincular(execId, estacaId, motivo){
 async function estvNovaDoCampo(execId){
   const x = _estvExecs.find(e => e.id === execId);
   if(!x) return;
-  if(!confirm(`Criar a estaca "${x.estaca_numero}" no cadastro desta obra como estaca nova do campo (profundidade de projeto a confirmar) e vincular esta execução?`)) return;
+  if(!(await uiConfirmar({ titulo: "Criar estaca do campo", confirmar: "Criar e vincular",
+    texto: `Criar a estaca "${x.estaca_numero}" no cadastro desta obra como estaca nova do campo (profundidade de projeto a confirmar) e vincular esta execução?` }))) return;
   const { error } = await sb.rpc("estaca_criar_do_campo", { p_exec: execId });
   if(error){ aviso("app-aviso", "Não foi possível criar: " + error.message, "erro"); return; }
   aviso("app-aviso", `Estaca ${x.estaca_numero} criada (projeto a confirmar) e vinculada.`, "ok");
@@ -4022,7 +4054,8 @@ async function estvNovaDoCampo(execId){
 }
 async function estvVincularLote(pares, descricao){
   const medidas = pares.filter(pr => _estvMedidas.has(pr.p.id)).length;
-  if(!confirm(`${descricao}${medidas ? `\n${medidas} delas apontam estacas já medidas.` : ""}\nCada vínculo fica em registros_log como correção em lote.`)) return;
+  if(!(await uiConfirmar({ titulo: "Vincular em lote", confirmar: "Vincular",
+    texto: `${descricao}${medidas ? ` ${medidas} delas apontam estacas já medidas.` : ""} Cada vínculo fica em registros_log como correção em lote.` }))) return;
   let n = 0;
   for(const pr of pares){
     const { error } = await estvGravarVinculo(pr.x.id, pr.p.id, "correcao_lote");
@@ -4316,9 +4349,10 @@ function ligarEstacas(){
   $("btn-exec-fechar")?.addEventListener("click", fecharModalExecucao);
   $("btn-exec-salvar")?.addEventListener("click", () => comBotaoTravado("btn-exec-salvar", () => salvarExecucao()));
   $("btn-exec-iniciar")?.addEventListener("click", () => salvarExecucao("em_execucao"));
-  $("btn-exec-concluir")?.addEventListener("click", () => {
+  $("btn-exec-concluir")?.addEventListener("click", async () => {
     if(!$("exec-profundidade").value){
-      if(!confirm("Sem profundidade real informada. Marcar como executada mesmo assim?")) return;
+      if(!(await uiConfirmar({ titulo: "Concluir sem profundidade", confirmar: "Marcar executada",
+        texto: "Sem profundidade real informada. Marcar como executada mesmo assim?" }))) return;
     }
     salvarExecucao("executada");
   });

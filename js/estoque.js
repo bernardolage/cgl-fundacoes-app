@@ -182,8 +182,10 @@ async function estPendAcao(acao, id){
   const e = _estPend.find(x => x.id === id); if(!e) return;
   const p = e.produto || {};
   if(acao === "contar"){
-    const v = prompt(`Quantidade contada de ${prodTxt(p)} (${p.unidade || "un"}). Saldo no app: ${num(p.estoque_atual || 0)}.`);
-    if(v === null) return;
+    const r = await uiPedirValores({ titulo: "Lançar contagem", texto: `Quantidade contada de ${prodTxt(p)} (${p.unidade || "un"}). Saldo no app: ${num(p.estoque_atual || 0)}.`, confirmar: "Lançar contagem",
+      campos: [{ id: "qtd", rotulo: `Quantidade contada (${p.unidade || "un"})`, tipo: "number", obrigatorio: true }] });
+    if(!r) return;
+    const v = r.qtd;
     const n = Number(String(v).replace(",", "."));
     if(String(v).trim() === "" || isNaN(n) || n < 0){ aviso("app-aviso", "Informe a quantidade contada.", "erro"); return; }
     const { data, error } = await sb.rpc("estoque_ajustar", { p_produto: p.id, p_contada: n, p_documento: "Inventário" });
@@ -192,7 +194,11 @@ async function estPendAcao(acao, id){
   } else {
     const aprovar = acao === "aprovar";
     let motivo = null;
-    if(!aprovar){ motivo = prompt("Motivo da recusa (opcional):"); if(motivo === null) return; }
+    if(!aprovar){
+      const r = await uiPedirValores({ titulo: "Recusar", confirmar: "Recusar", campos: [{ id: "motivo", rotulo: "Motivo da recusa (opcional)", tipo: "textarea", linhas: 2 }] });
+      if(!r) return;
+      motivo = r.motivo;
+    }
     const { error } = await sb.rpc("estoque_pendencia_decidir", { p_id: id, p_aprovar: aprovar, p_motivo: motivo || null });
     if(error){ aviso("app-aviso", "Não foi possível decidir: " + error.message, "erro"); return; }
     aviso("app-aviso", !aprovar ? "Recusado: o estoque não mudou e a decisão ficou registrada."
@@ -740,7 +746,7 @@ function renderSaidasHoje(){
       aoConcluir: () => carregarSaidasHoje() });
   }));
   cont.querySelectorAll(".bal-desfazer").forEach(b => b.addEventListener("click", () => comBotaoTravado(b, async () => {
-    if(!confirm("Desfazer esta saída? O material volta ao estoque e o custo sai do destino.")) return;
+    if(!await uiConfirmar({ titulo: "Desfazer saída", texto: "Desfazer esta saída? O material volta ao estoque e o custo sai do destino.", confirmar: "Desfazer", perigo: true })) return;
     const { error } = await sb.rpc("estoque_saida_desfazer", { p_id: b.dataset.id });
     if(error){ aviso("app-aviso", "Não foi possível desfazer: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
     aviso("app-aviso", "Saída desfeita: material de volta ao estoque.", "ok");
@@ -1012,7 +1018,8 @@ async function registrarEntrada(){
 }
 
 async function criarNovoFornecedorRapido(){
-  const nome = prompt("Razão social do novo fornecedor:");
+  const r = await uiPedirValores({ titulo: "Novo fornecedor", confirmar: "Criar fornecedor", campos: [{ id: "nome", rotulo: "Razão social do novo fornecedor", obrigatorio: true }] });
+  const nome = r ? String(r.nome || "").trim() : "";
   if(!nome) return;
   const { error } = await sb.from("fornecedores").insert({ razao_social: nome.trim() });
   if(error){ aviso("app-aviso", "Erro ao criar fornecedor: " + error.message, "erro"); return; }
@@ -1089,7 +1096,7 @@ function renderReposicao(){
   cont.querySelectorAll("button[data-mov]").forEach(b => b.addEventListener("click", async () => {
     const p = _estRep.find(x => x.id === b.dataset.id); if(!p) return;
     if(b.dataset.mov === "tirar"){
-      if(!confirm(`Tirar ${p.codigo} da lista de reposição? O produto continua no cadastro.`)) return;
+      if(!await uiConfirmar({ titulo: "Tirar da reposição", texto: `Tirar ${p.codigo} da lista de reposição? O produto continua no cadastro.`, confirmar: "Tirar da lista", perigo: true })) return;
       const { error } = await sb.from("produtos").update({ controle_reposicao: false }).eq("id", p.id);
       if(error){ aviso("app-aviso", "Não foi possível: " + error.message, "erro"); return; }
       await carregarReposicao(); return;

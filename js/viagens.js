@@ -428,7 +428,7 @@ async function vgConcluir(){
   } else aviso("app-aviso", "Viagem concluída.", "ok");
 }
 async function vgCancelar(){
-  if(!confirm("Cancelar esta viagem? O custo dela sai do rateio das obras; as notas continuam ligadas para consulta.")) return;
+  if(!await uiConfirmar({ titulo: "Cancelar viagem", texto: "Cancelar esta viagem? O custo dela sai do rateio das obras; as notas continuam ligadas para consulta.", confirmar: "Cancelar viagem", cancelar: "Voltar", perigo: true })) return;
   const id = await salvarViagem({ status: "cancelada" }, true);
   if(id) aviso("app-aviso", "Viagem cancelada.", "ok");
 }
@@ -440,7 +440,7 @@ async function excluirViagem(){
   const v = _vgAtual; if(!v?.id) return;
   if(_vgMovs.length || _vgMdfes.length){ aviso("app-aviso", "A viagem tem nota ou MDF-e ligado: cancele em vez de excluir.", "erro"); return; }
   if(v.frete_status === "exportado"){ aviso("app-aviso", "O título do frete já foi exportado ao financeiro: cancele a viagem em vez de excluir (ajuste em Contas a pagar).", "erro"); return; }
-  if(!confirm(`Excluir a viagem ${v.numero}?${vgEhFrete(v) ? " O frete, o título a pagar não exportado e os anexos vão junto." : ""}`)) return;
+  if(!await uiConfirmar({ titulo: "Excluir viagem", texto: `Excluir a viagem ${v.numero}?${vgEhFrete(v) ? " O frete, o título a pagar não exportado e os anexos vão junto." : ""}`, confirmar: "Excluir", perigo: true })) return;
   const { error } = await sb.from("viagens").delete().eq("id", v.id);
   if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
   aviso("app-aviso", "Viagem excluída.", "ok");
@@ -775,7 +775,7 @@ async function vgBaixarAnexo(id){
 }
 async function vgRemoverAnexo(id){
   const a = _vgAnexos.find(x => x.id === id); if(!a) return;
-  if(!confirm(`Remover o anexo "${a.nome}"?`)) return;
+  if(!await uiConfirmar({ titulo: "Remover anexo", texto: `Remover o anexo "${a.nome}"?`, confirmar: "Remover", perigo: true })) return;
   const { error, count } = await sb.from("viagem_anexos").delete({ count: "exact" }).eq("id", id);
   if(error || !count){ aviso("app-aviso", "Não foi possível remover: " + (error?.message || "seu perfil não altera anexos da viagem"), "erro"); return; }
   await sb.storage.from(VG_ANEXO_BUCKET).remove([a.storage_path]);
@@ -925,7 +925,7 @@ async function vgNovaNota(tipo){
   if(error){ aviso("app-aviso", "Não foi possível criar a nota: " + error.message, "erro"); return; }
 
   const interna = _vgMovs.find(m => m.interna);
-  if(interna && (interna.itens || []).length && confirm(`Levar os ${interna.itens.length} item(ns) lançados na viagem para esta nota?`)){
+  if(interna && (interna.itens || []).length && await uiConfirmar({ titulo: "Levar itens para a nota", texto: `Levar os ${interna.itens.length} item(ns) lançados na viagem para esta nota?`, confirmar: "Levar itens" })){
     const { error: e2 } = await sb.from("movimentacao_itens").update({ movimentacao_id: mov.id }).eq("movimentacao_id", interna.id);
     if(e2) aviso("app-aviso", "A nota foi criada, mas os itens não foram movidos: " + e2.message, "erro");
     else await sb.from("movimentacoes_ativos").delete().eq("id", interna.id);
@@ -959,7 +959,7 @@ async function vgMostrarVincular(){
   }));
 }
 async function vgDesvincularNota(id){
-  if(!confirm("Tirar esta nota da viagem? Ela continua existindo, sem viagem (aparece em Documentos de Logística).")) return;
+  if(!await uiConfirmar({ titulo: "Tirar nota da viagem", texto: "Tirar esta nota da viagem? Ela continua existindo, sem viagem (aparece em Documentos de Logística).", confirmar: "Tirar", perigo: true })) return;
   const { error } = await sb.from("movimentacoes_ativos").update({ viagem_id: null }).eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível desvincular: " + error.message, "erro"); return; }
   _frotaViagens.chave = null; _frotaDocs = null; _vgTab = "documentos";
@@ -1012,7 +1012,7 @@ async function vgMdfeStatus(id, status){
     if(!/^\d{44}$/.test(chave)){ aviso("app-aviso", "Informe a chave de acesso (44 dígitos) do MDF-e emitido no UniNFe.", "erro"); return; }
     await vgMdfeSalvar(id);
   }
-  if(status === "cancelado" && !confirm("Cancelar este MDF-e? As notas ficam sem manifesto.")) return;
+  if(status === "cancelado" && !await uiConfirmar({ titulo: "Cancelar MDF-e", texto: "Cancelar este MDF-e? As notas ficam sem manifesto.", confirmar: "Cancelar MDF-e", cancelar: "Voltar", perigo: true })) return;
   const upd = { status };
   if(status === "encerrado") upd.data_encerramento = hojeISO();
   const { error } = await sb.from("manifestos_mdfe").update(upd).eq("id", id);

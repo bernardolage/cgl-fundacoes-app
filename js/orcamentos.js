@@ -1379,7 +1379,7 @@ async function criarNovaRevisaoOrc(){
   const { data: irmas } = await sb.from("orcamentos").select("numero_revisao").eq("numero", atual.numero);
   const revAtual = Math.max(parseInt(atual.numero_revisao, 10) || 0, ...(irmas || []).map(r => parseInt(r.numero_revisao, 10) || 0));
   const novaRev  = String(revAtual + 1).padStart(2, "0");
-  if(!confirm(`Criar nova revisão ${novaRev} a partir da atual (Rev ${atual.numero_revisao || "00"})?\n\nVai copiar todos os itens. Status inicial: rascunho.`)) return;
+  if(!await uiConfirmar({ titulo: "Criar nova revisão", texto: `Criar nova revisão ${novaRev} a partir da atual (Rev ${atual.numero_revisao || "00"})? Vai copiar todos os itens. Status inicial: rascunho.`, confirmar: "Criar revisão" })) return;
 
 
   const novo = { ...atual };
@@ -1424,13 +1424,17 @@ async function criarObraDoOrcamento(){
 
   const pNum = orcNumeroPartes(orc.numero, orc.data_orcamento);
   const sugCodigo = pNum.num ? `${pNum.num}-${pNum.ano}` : orc.numero.replace(/^ORC-/i, "OB-");
-  const codigo = prompt(`Código da obra (sugestão: ${sugCodigo}):`, sugCodigo);
-  if(!codigo) return;
   const sugNome = `${mapaClientes[orc.cliente_id] || "Obra"} — ${orc.numero}`;
-  const nome = prompt("Nome da obra:", sugNome);
-  if(!nome) return;
 
-  const nomeProjeto = prompt("Nome do projeto (como o cliente chama o empreendimento; deixe em branco se não houver):", String(orc.concorrencia || "").trim());
+  const vals = await uiPedirValores({ titulo: "Criar obra", confirmar: "Criar obra", campos: [
+    { id: "codigo", rotulo: `Código da obra (sugestão: ${sugCodigo})`, valor: sugCodigo, obrigatorio: true },
+    { id: "nome", rotulo: "Nome da obra", valor: sugNome, obrigatorio: true },
+    { id: "projeto", rotulo: "Nome do projeto (como o cliente chama o empreendimento; deixe em branco se não houver)", valor: String(orc.concorrencia || "").trim() }
+  ] });
+  if(!vals) return;
+  const codigo = vals.codigo, nome = vals.nome, nomeProjeto = vals.projeto;
+  if(!codigo.trim()){ aviso("app-aviso", "Informe o código da obra.", "erro"); return; }
+  if(!nome.trim()){ aviso("app-aviso", "Informe o nome da obra.", "erro"); return; }
 
   const origem = `orçamento ${orc.numero} Rev${orc.numero_revisao || "00"}`;
 
@@ -2185,7 +2189,7 @@ async function salvarOrcamento(novoStatus){
 async function excluirOrcamento(){
   if(!orcPodeEditar()) return;
   if(!orcEditId) return;
-  if(!confirm("Excluir este orçamento e seus itens?")) return;
+  if(!await uiConfirmar({ titulo: "Excluir orçamento", texto: "Excluir este orçamento e seus itens?", confirmar: "Excluir", perigo: true })) return;
   await sb.from("orcamento_itens").delete().eq("orcamento_id", orcEditId);
   const { error } = await sb.from("orcamentos").delete().eq("id", orcEditId);
   if(error){ aviso("app-aviso","Não foi possível excluir: "+error.message,"erro"); return; }

@@ -461,7 +461,7 @@ async function rhdBaixar(path, nome){
 }
 
 async function rhdExcluir(doc){
-  if(!confirm(`Excluir "${doc.descricao || doc.tipo}"? O PDF sai do arquivo do funcionário.`)) return;
+  if(!(await uiConfirmar({ titulo: "Excluir documento", texto: `Excluir "${doc.descricao || doc.tipo}"? O PDF sai do arquivo do funcionário.`, confirmar: "Excluir", perigo: true }))) return;
   if(doc.storage_path) await sb.storage.from("rh-documentos").remove([doc.storage_path]).catch(() => null);
   if(doc.arquivo_assinado_path) await sb.storage.from("rh-documentos").remove([doc.arquivo_assinado_path]).catch(() => null);
   const { error } = await sb.from("funcionario_documentos").delete().eq("id", doc.id);
@@ -649,7 +649,8 @@ async function rhdEnviarAssinatura(){
 }
 
 async function rhdAtualizarStatus(docId){
-  if(!confirm("Consultar o status na D4Sign agora? Isso usa 1 requisição da cota (o normal é o status chegar sozinho pelo webhook).")) return;
+  if(!(await uiConfirmar({ titulo: "Consultar status na D4Sign", confirmar: "Consultar",
+    texto: "Consultar o status na D4Sign agora? Isso usa 1 requisição da cota (o normal é o status chegar sozinho pelo webhook)." }))) return;
   const { data, error } = await sb.functions.invoke("d4sign-api", { body: { acao: "status_rh", documento_id: docId } });
   if(error){
     let msg = error.message || "erro";

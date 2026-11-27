@@ -470,8 +470,11 @@ async function vbEnviarContrato(venda, file){
   if(error){ await sb.storage.from(VB_BUCKET).remove([caminho]); throw error; }
 }
 async function vbCancelarVenda(v, e){
-  const motivo = prompt(`Cancelar a venda ${v.numero}? O bem ${e.codigo} volta ao cadastro como estava antes da venda (status, ativo e plano preventivo) e a venda fica no histórico.\n\nMotivo do cancelamento:`);
-  if(motivo === null) return;
+  const r = await uiPedirValores({ titulo: "Cancelar venda", confirmar: "Cancelar venda", cancelar: "Voltar",
+    texto: `Cancelar a venda ${v.numero}? O bem ${e.codigo} volta ao cadastro como estava antes da venda (status, ativo e plano preventivo) e a venda fica no histórico.`,
+    campos: [{ id: "motivo", rotulo: "Motivo do cancelamento", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+  if(!r) return;
+  const motivo = r.motivo || "";
   if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo do cancelamento.", "erro"); return; }
   const { error } = await sb.from("vendas_bens").update({ status: "cancelada", cancelamento_motivo: motivo.trim() }).eq("id", v.id);
   if(error){ aviso("app-aviso", "Não foi possível cancelar: " + vbMsgErro(error), "erro"); return; }
@@ -479,7 +482,7 @@ async function vbCancelarVenda(v, e){
   await vbAposGravar(e.id);
 }
 async function vbApagarVenda(v, e){
-  if(!confirm(`Apagar a venda ${v.numero}? Use só para lançamento errado: o bem ${e.codigo} volta ao cadastro e a venda some (com recebimento confirmado, cancele em vez de apagar).`)) return;
+  if(!await uiConfirmar({ titulo: "Apagar venda", texto: `Apagar a venda ${v.numero}? Use só para lançamento errado: o bem ${e.codigo} volta ao cadastro e a venda some (com recebimento confirmado, cancele em vez de apagar).`, confirmar: "Apagar", perigo: true })) return;
   const { error } = await sb.from("vendas_bens").delete().eq("id", v.id);
   if(error){ aviso("app-aviso", "Não foi possível apagar: " + vbMsgErro(error), "erro"); return; }
   aviso("app-aviso", `Venda ${v.numero} apagada.`, "ok");
@@ -536,7 +539,7 @@ async function vbSalvarParcela(){
     if(!data){ vbAvisoModal("vb-parc-aviso", "Informe a data do recebimento.", "erro"); return; }
     if(valor < 0 || enc < 0){ vbAvisoModal("vb-parc-aviso", "Valores não podem ser negativos.", "erro"); return; }
     const saldo = vbR2(Number(p.valor) - Number(p.valor_recebido));
-    if(valor > saldo + 0.005 && !confirm(`Valor ${brl(valor)} acima do saldo da parcela (${brl(saldo)}). O excedente de juros e multa vai no campo "juros/multa". Confirmar assim mesmo?`)) return;
+    if(valor > saldo + 0.005 && !await uiConfirmar({ titulo: "Valor acima do saldo", texto: `Valor ${brl(valor)} acima do saldo da parcela (${brl(saldo)}). O excedente de juros e multa vai no campo "juros/multa". Confirmar assim mesmo?`, confirmar: "Confirmar" })) return;
     const reg = { valor_recebido: vbR2(Number(p.valor_recebido) + valor), encargos: vbR2(Number(p.encargos) + enc), recebido_em: data,
       forma_recebimento: $("vb-pr-forma").value || "transferencia", banco: $("vb-pr-banco").value.trim() || null, observacao: $("vb-pr-obs").value.trim() || null };
     const { data: ok, error } = await sb.from("vendas_bens_parcelas").update(reg).eq("id", p.id).select("id");
@@ -561,14 +564,14 @@ async function vbSalvarParcela(){
 }
 async function vbEstornar(p){
   if(!p) return;
-  if(!confirm(`Estornar o recebimento de ${brl(p.valor_recebido)}${Number(p.encargos) > 0 ? ` + ${brl(p.encargos)} de juros/multa` : ""} (${p.numero === 0 ? "entrada" : "parcela " + p.numero})? A parcela volta a aberta.`)) return;
+  if(!await uiConfirmar({ titulo: "Estornar recebimento", texto: `Estornar o recebimento de ${brl(p.valor_recebido)}${Number(p.encargos) > 0 ? ` + ${brl(p.encargos)} de juros/multa` : ""} (${p.numero === 0 ? "entrada" : "parcela " + p.numero})? A parcela volta a aberta.`, confirmar: "Estornar", perigo: true })) return;
   const { data, error } = await sb.from("vendas_bens_parcelas").update({ valor_recebido: 0, encargos: 0 }).eq("id", p.id).select("id");
   if(error || !data?.length){ aviso("app-aviso", "Não foi possível estornar: " + (error ? vbMsgErro(error) : "sem permissão"), "erro"); return; }
   aviso("app-aviso", "Recebimento estornado.", "ok");
   await vbAposGravar(_vbAlvo?.equipId || _vbVendaAtual?.equipamento_id);
 }
 async function vbApagarParcela(p){
-  if(!p || !confirm(`Apagar ${p.numero === 0 ? "a entrada" : "a parcela " + p.numero} de ${brl(p.valor)} (vencimento ${dataBR(p.vencimento)})?`)) return;
+  if(!p || !await uiConfirmar({ titulo: "Apagar parcela", texto: `Apagar ${p.numero === 0 ? "a entrada" : "a parcela " + p.numero} de ${brl(p.valor)} (vencimento ${dataBR(p.vencimento)})?`, confirmar: "Apagar", perigo: true })) return;
   const { data, error } = await sb.from("vendas_bens_parcelas").delete().eq("id", p.id).select("id");
   if(error || !data?.length){ aviso("app-aviso", "Não foi possível apagar: " + (error ? vbMsgErro(error) : "sem permissão"), "erro"); return; }
   aviso("app-aviso", "Parcela apagada.", "ok");
@@ -734,7 +737,7 @@ async function vbSalvarRegistro(){
   if(!(await vbConferirCnpjCliente(reg))) return;
   if(ed){
     const mudaPlano = VB_CAMPOS_PLANO.some(k => !vbIgual(reg[k], ed[k]));
-    if(mudaPlano && ed.n_parcelas_geradas > 0 && !confirm("Mudar valor, entrada ou plano refaz as parcelas pelo novo plano (as editadas uma a uma voltam ao plano). Com parcela já recebida o banco recusa: aí ajuste as parcelas uma a uma. Continuar?")) return;
+    if(mudaPlano && ed.n_parcelas_geradas > 0 && !await uiConfirmar({ titulo: "Refazer parcelas", texto: "Mudar valor, entrada ou plano refaz as parcelas pelo novo plano (as editadas uma a uma voltam ao plano). Com parcela já recebida o banco recusa: aí ajuste as parcelas uma a uma. Continuar?", confirmar: "Continuar", perigo: true })) return;
     const { data, error } = await sb.from("vendas_bens").update(reg).eq("id", ed.id).select("id");
     if(error){ vbAvisoModal("vb-aviso", "Não foi possível salvar: " + vbMsgErro(error), "erro"); return; }
     if(!data || !data.length){ vbAvisoModal("vb-aviso", "Seu perfil não altera esta venda.", "erro"); return; }

@@ -111,7 +111,7 @@ function clsCandidatosLote(){
 async function clsConsultarLote(){
   const cands = clsCandidatosLote();
   if(!cands.length){ aviso("app-aviso", "Nenhum cliente com CNPJ e endereço, fantasia ou IBGE vazios.", "info"); return; }
-  if(!confirm(`Consultar ${cands.length} CNPJ(s) na Receita, um a um (cerca de ${Math.ceil(cands.length * CLS_PAUSA_MS / 60000)} min)? Nada é gravado antes da prévia.`)) return;
+  if(!await uiConfirmar({ titulo: "Consultar na Receita", texto: `Consultar ${cands.length} CNPJ(s) na Receita, um a um (cerca de ${Math.ceil(cands.length * CLS_PAUSA_MS / 60000)} min)? Nada é gravado antes da prévia.`, confirmar: "Consultar" })) return;
   _clsLote = { itens: [], parar: false, feitos: 0, total: cands.length, erros: [] };
   clsRenderLote();
   for(const c of cands){
@@ -206,7 +206,7 @@ async function clsConfirmarJuntar(){
   const fica = $("cls-fica").value, sai = $("cls-sai").value;
   const f = cliPorId(fica), s = cliPorId(sai);
   if(!f || !s || fica === sai) return;
-  if(!confirm(`Juntar "${s.nome}" em "${f.nome}"?\n\nTudo o que está ligado ao primeiro passa para o segundo e o primeiro fica inativo.`)) return;
+  if(!await uiConfirmar({ titulo: "Juntar clientes", texto: `Juntar "${s.nome}" em "${f.nome}"? Tudo o que está ligado ao primeiro passa para o segundo e o primeiro fica inativo.`, confirmar: "Juntar", perigo: true })) return;
   const { data, error } = await sb.rpc("clientes_juntar", { p_manter: fica, p_apagar: sai });
   if(error){ aviso("app-aviso", "Junção não feita: " + error.message, "erro"); return; }
   clsFecharJuntar();

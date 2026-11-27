@@ -232,10 +232,13 @@ async function epiFichaClique(e){
 }
 async function epiDevolver(r){
   if(!r || !epiPodeOperar()) return;
-  const data = prompt(`Devolução de ${r.produto_nome}: data (AAAA-MM-DD)`, hojeISO());
-  if(data === null) return;
+  const v = await uiPedirValores({ titulo: "Registrar devolução", texto: `Devolução de ${r.produto_nome}.`, confirmar: "Registrar devolução",
+    campos: [{ id: "data", rotulo: "Data da devolução", tipo: "date", valor: hojeISO(), obrigatorio: true },
+             { id: "obs", rotulo: "Observação (opcional)", tipo: "textarea", linhas: 2, placeholder: "Ex.: desgaste, troca, demissão" }] });
+  if(!v) return;
+  const data = String(v.data || "");
   if(!/^\d{4}-\d{2}-\d{2}$/.test(data.trim())){ aviso("func-epi-aviso", "Data inválida: use AAAA-MM-DD.", "erro"); return; }
-  const obs = prompt("Observação da devolução (opcional): ex.: desgaste, troca, demissão", "") || "";
+  const obs = String(v.obs || "");
   const { error } = await sb.rpc("epi_registrar_devolucao", { p_id: r.id, p_data: data.trim(), p_obs: obs.trim() || null });
   if(error){ aviso("func-epi-aviso", "Devolução não registrada: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   aviso("func-epi-aviso", "Devolução registrada.", "ok");
@@ -729,7 +732,7 @@ async function epiInformarRetirante(i, alvoId){
   _epiRel.dados = null; await epiRelCarregar(alvoId);
 }
 async function epiAplicarSugestoes(alvoId){
-  if(!confirm("Marcar como EPI ou Uniforme, pela sugestão do nome, todos os produtos da lista que ainda não têm categoria? Quem já tem categoria escolhida não muda.")) return;
+  if(!await uiConfirmar({ titulo: "Aplicar sugestões", texto: "Marcar como EPI ou Uniforme, pela sugestão do nome, todos os produtos da lista que ainda não têm categoria? Quem já tem categoria escolhida não muda.", confirmar: "Marcar" })) return;
   const { data, error } = await sb.rpc("epi_aplicar_sugestoes");
   if(error){ aviso("app-aviso", "Não foi possível aplicar: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   aviso("app-aviso", `${data || 0} produto(s) marcado(s). Confira os que ficaram diferentes da sugestão.`, "ok");

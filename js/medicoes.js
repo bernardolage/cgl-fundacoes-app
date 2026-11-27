@@ -853,7 +853,8 @@ async function calcularFatMinimoMedicao(){
     return;
   }
 
-  if(!confirm(`Adicionar Faturamento Mínimo ao acréscimo?\n\n${r.descricao}\n\nValor: ${brl(r.valor_total)}\n\nDias detectados sem produção:\n${(r.datas||[]).map(d => new Date(d+"T00:00:00").toLocaleDateString("pt-BR")).join(", ")}`)) return;
+  if(!await uiConfirmar({ titulo: "Adicionar Faturamento Mínimo", confirmar: "Adicionar",
+    texto: `Adicionar Faturamento Mínimo ao acréscimo? ${r.descricao}. Valor: ${brl(r.valor_total)}. Dias detectados sem produção: ${(r.datas||[]).map(d => new Date(d+"T00:00:00").toLocaleDateString("pt-BR")).join(", ")}.` })) return;
 
   const atual = parseFloat($("med-acrescimo").value) || 0;
   const novo  = atual + Number(r.valor_total);
@@ -887,7 +888,7 @@ function ajustarUISinalContratual(){
 async function comporMedicaoSinal(){
   const obraId = $("med-obra").value;
   if(!obraId){ aviso("app-aviso","Selecione a obra primeiro (aba Geral).","erro"); ativarTabMed("geral"); return; }
-  if(_medItens.length && !confirm(`Substituir os ${_medItens.length} item(ns) existentes pelos itens do orçamento?`)) return;
+  if(_medItens.length && !await uiConfirmar({ titulo: "Substituir itens", texto: `Substituir os ${_medItens.length} item(ns) existentes pelos itens do orçamento?`, confirmar: "Substituir", perigo: true })) return;
 
   const btn = $("btn-med-compor-sinal");
   if(btn){ btn.disabled = true; btn.textContent = "Compondo..."; }
@@ -928,7 +929,7 @@ async function sugerirItensMedicao(){
   if(!obraId){ aviso("app-aviso","Selecione a obra primeiro (aba Geral).","erro"); ativarTabMed("geral"); return; }
   if(!inicio || !fim){ aviso("app-aviso","Defina o período (início e fim) na aba Geral.","erro"); ativarTabMed("geral"); return; }
 
-  if(_medItens.length && !confirm(`Já existem ${_medItens.length} item(ns) na medição. Substituir pelos sugeridos?`)) return;
+  if(_medItens.length && !await uiConfirmar({ titulo: "Substituir itens", texto: `Já existem ${_medItens.length} item(ns) na medição. Substituir pelos sugeridos?`, confirmar: "Substituir", perigo: true })) return;
 
   const btn = $("btn-med-sugerir");
   if(btn){ btn.disabled = true; btn.textContent = "Carregando..."; }
@@ -1639,7 +1640,7 @@ function rodape(cli){
 
 async function excluirMedicao(){
   if(!medEditId) return;
-  if(!confirm("Excluir esta medição?")) return;
+  if(!await uiConfirmar({ titulo: "Excluir medição", texto: "Excluir esta medição?", confirmar: "Excluir", perigo: true })) return;
   const { error } = await sb.from("medicoes").delete().eq("id", medEditId);
   if(error){
     aviso("app-aviso","Não foi possível excluir: "+error.message,"erro");
@@ -1754,8 +1755,8 @@ async function abrirImportBoletimPDF(obraId){
   }
   await medImpCarregarContextoObra();
 }
-function fecharImportBoletimPDF(){
-  if(_medImp && _medImp.atual && _medImp.atual.status === "lendo" && !confirm("Há um boletim sendo lido. Fechar mesmo assim?")) return;
+async function fecharImportBoletimPDF(){
+  if(_medImp && _medImp.atual && _medImp.atual.status === "lendo" && !await uiConfirmar({ titulo: "Fechar importação", texto: "Há um boletim sendo lido. Fechar mesmo assim?", confirmar: "Fechar", perigo: true })) return;
   $("med-imp-modal").style.display = "none";
   _medImp = null;
 }
@@ -2205,13 +2206,13 @@ async function medImpConfirmar(){
   const semDesc = st.itens.filter(it => !it.removido && !it.descricao).length;
   if(semDesc){ aviso("med-imp-aviso", `${semDesc} item(ns) sem descrição.`, "erro"); return; }
   const naoConf = st.itens.filter(it => !it.removido && !it.conferido).length;
-  if(naoConf && !confirm(`${naoConf} item(ns) ainda sem o ✓ de conferido. Gravar a medição mesmo assim?`)) return;
+  if(naoConf && !await uiConfirmar({ titulo: "Gravar medição", texto: `${naoConf} item(ns) ainda sem o ✓ de conferido. Gravar a medição mesmo assim?`, confirmar: "Gravar" })) return;
   const o = st.obra || {};
   const valorObra = Number(o.financeiro?.valor_contratado) || 0;
   const tipo = $("med-imp-h-tipo")?.value || "quinzenal";
   const dataMed = $("med-imp-h-data")?.value || hojeISO();
   const ini = $("med-imp-h-ini")?.value || null, fim = $("med-imp-h-fim")?.value || null;
-  if(tipo !== "sinal_contratual" && (!ini || !fim) && !confirm("Medição sem período (início e fim). Gravar assim mesmo?")) return;
+  if(tipo !== "sinal_contratual" && (!ini || !fim) && !await uiConfirmar({ titulo: "Gravar medição", texto: "Medição sem período (início e fim). Gravar assim mesmo?", confirmar: "Gravar" })) return;
 
   medImpLimparAviso();
 
@@ -2872,7 +2873,7 @@ async function medCauSalvar(c, pref, extra){
     ...(extra || {})
   };
   if(reg.valor_devolvido > 0 && !reg.data_devolucao){ aviso("app-aviso", "Informe a data da devolução.", "erro"); return false; }
-  if(reg.valor_devolvido > Number(c.valor_retido) + 0.005 && !confirm(`Devolvido ${brl(reg.valor_devolvido)} acima do retido ${brl(c.valor_retido)}. A diferença não é juros? Gravar assim mesmo?`)) return false;
+  if(reg.valor_devolvido > Number(c.valor_retido) + 0.005 && !await uiConfirmar({ titulo: "Gravar devolução", texto: `Devolvido ${brl(reg.valor_devolvido)} acima do retido ${brl(c.valor_retido)}. A diferença não é juros? Gravar assim mesmo?`, confirmar: "Gravar" })) return false;
   const { error } = await sb.from("caucoes").update(reg).eq("id", c.id);
   if(error){ aviso("app-aviso", "Não foi possível gravar a caução: " + error.message, "erro"); return false; }
   aviso("app-aviso", extra && extra.motivo_baixa ? "Caução baixada." : (extra && "motivo_baixa" in extra ? "Caução reaberta." : "Devolução registrada. O status e a medição foram atualizados no banco."), "ok");
@@ -2882,8 +2883,11 @@ async function medCauSalvar(c, pref, extra){
 function medCauLigarForm(c, pref, depois){
   $(pref + "-salvar")?.addEventListener("click", () => comBotaoTravado(pref + "-salvar", async () => { if(await medCauSalvar(c, pref)) await depois(); }));
   $(pref + "-baixar")?.addEventListener("click", () => comBotaoTravado(pref + "-baixar", async () => {
-    const motivo = prompt("Motivo da baixa (ex.: não é caução, glosa, não precisa cobrar):", c.motivo_baixa || "");
-    if(motivo == null || !motivo.trim()) return;
+    const v = await uiPedirValores({ titulo: "Baixar caução", confirmar: "Baixar",
+      campos: [{ id: "motivo", rotulo: "Motivo da baixa (ex.: não é caução, glosa, não precisa cobrar)", tipo: "textarea", linhas: 2, valor: c.motivo_baixa || "", obrigatorio: true }] });
+    const motivo = v ? v.motivo : null;
+    if(motivo == null) return;
+    if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo da baixa.", "erro"); return; }
     if(await medCauSalvar(c, pref, { motivo_baixa: motivo.trim() })) await depois();
   }));
   $(pref + "-reabrir")?.addEventListener("click", () => comBotaoTravado(pref + "-reabrir", async () => { if(await medCauSalvar(c, pref, { motivo_baixa: null })) await depois(); }));
@@ -3543,8 +3547,11 @@ async function medPmRecarregar(p, aba){ _medPmRegistros = null; await medPmCarre
 
 async function medPmNova(){
   if(!medPmPodeOperar()) return;
-  const nome = prompt("Cliente da permuta (como o financeiro chama, ex.: SAGA):");
-  if(nome == null || !nome.trim()) return;
+  const v = await uiPedirValores({ titulo: "Nova permuta", confirmar: "Criar permuta",
+    campos: [{ id: "nome", rotulo: "Cliente da permuta (como o financeiro chama, ex.: SAGA)", obrigatorio: true }] });
+  const nome = v ? v.nome : null;
+  if(nome == null) return;
+  if(!nome.trim()){ aviso("app-aviso", "Informe o cliente da permuta.", "erro"); return; }
   const { data, error } = await sb.from("permutas").insert({ cliente_nome: nome.trim(), numero: "", instrumento_assinado: false }).select("id").single();
   if(error){ aviso("app-aviso", "Não foi possível criar a permuta: " + error.message, "erro"); return; }
   aviso("app-aviso", "Permuta criada. Complete o imóvel, o teto e os contratos.", "ok");
@@ -3576,7 +3583,7 @@ async function medPmSalvar(p){
   await medPmRecarregar(p, "geral");
 }
 async function medPmExcluir(p){
-  if(!confirm(`Excluir a permuta ${p.numero}? Só vale para lançamento errado (sem contratos nem lançamentos).`)) return;
+  if(!await uiConfirmar({ titulo: "Excluir permuta", texto: `Excluir a permuta ${p.numero}? Só vale para lançamento errado (sem contratos nem lançamentos).`, confirmar: "Excluir", perigo: true })) return;
   const { error } = await sb.from("permutas").delete().eq("id", p.id);
   if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
   aviso("app-aviso", `Permuta ${p.numero} excluída.`, "ok");
@@ -3604,7 +3611,7 @@ async function medPmLancar(p){
 }
 async function medPmApagarLanc(p, id){
   const l = _medPmLanc.find(x => x.id === id);
-  if(!l || !confirm(`Apagar o lançamento histórico de ${brl(l.credito)} (${l.contrato_numero || "sem contrato"} · ${l.medicao || "—"})?`)) return;
+  if(!l || !await uiConfirmar({ titulo: "Apagar lançamento", texto: `Apagar o lançamento histórico de ${brl(l.credito)} (${l.contrato_numero || "sem contrato"} · ${l.medicao || "—"})?`, confirmar: "Apagar", perigo: true })) return;
   const { error } = await sb.from("permuta_lancamentos").delete().eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível apagar: " + error.message, "erro"); return; }
   await medPmRecarregar(p, "lancamentos");
@@ -3626,13 +3633,13 @@ async function medPmAplicarPctNasMedicoes(obraId, pct){
   if(!obraId || pct == null) return;
   const { data } = await sb.from("medicoes").select("id").eq("obra_id", obraId).is("permuta_percentual", null);
   if(!data || !data.length) return;
-  if(!confirm(`A obra tem ${data.length} medição(ões) sem % de permuta. Aplicar ${num(pct)}% a elas agora? (o crédito e o recebimento em permuta nascem no banco)`)) return;
+  if(!await uiConfirmar({ titulo: "Aplicar % de permuta", texto: `A obra tem ${data.length} medição(ões) sem % de permuta. Aplicar ${num(pct)}% a elas agora? (o crédito e o recebimento em permuta nascem no banco)`, confirmar: "Aplicar" })) return;
   const { error } = await sb.from("medicoes").update({ permuta_percentual: pct }).eq("obra_id", obraId).is("permuta_percentual", null);
   if(error) aviso("app-aviso", "Contrato ligado, mas o % não foi aplicado às medições: " + error.message, "erro");
 }
 async function medPmDesligarContrato(p, id){
   const c = _medPmContratos.find(x => x.id === id);
-  if(!c || !confirm(`Desligar o contrato ${c.contrato_numero} da permuta? As medições já lançadas mantêm o % gravado (mude na medição, se for o caso).`)) return;
+  if(!c || !await uiConfirmar({ titulo: "Desligar contrato", texto: `Desligar o contrato ${c.contrato_numero} da permuta? As medições já lançadas mantêm o % gravado (mude na medição, se for o caso).`, confirmar: "Desligar", perigo: true })) return;
   const { error } = await sb.from("permuta_contratos").delete().eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível desligar: " + error.message, "erro"); return; }
   await medPmRecarregar(p, "contratos");
@@ -3640,8 +3647,11 @@ async function medPmDesligarContrato(p, id){
 async function medPmPctContrato(p, id){
   const c = _medPmContratos.find(x => x.id === id);
   if(!c) return;
-  const v = prompt(`% em permuta do contrato ${c.contrato_numero} (vazio = padrão da permuta). Vale para as medições novas; as já lançadas mudam na própria medição.`, c.percentual ?? "");
-  if(v === null) return;
+  const r = await uiPedirValores({ titulo: "% em permuta", confirmar: "Gravar",
+    texto: `% em permuta do contrato ${c.contrato_numero} (vazio = padrão da permuta). Vale para as medições novas; as já lançadas mudam na própria medição.`,
+    campos: [{ id: "pct", rotulo: "% em permuta", tipo: "number", valor: c.percentual ?? "" }] });
+  if(r === null) return;
+  const v = String(r.pct ?? "");
   const pct = v.trim() === "" ? null : Number(v.replace(",", "."));
   if(pct != null && !(pct >= 0 && pct <= 100)){ aviso("app-aviso", "% entre 0 e 100.", "erro"); return; }
   const { error } = await sb.from("permuta_contratos").update({ percentual: pct }).eq("id", id);
@@ -4099,7 +4109,7 @@ async function medNfseEmitir(){
     corpo: medNfseResumoHtml(d),
     botao: prod ? "🧾 Emitir em PRODUÇÃO" : "🧾 Emitir em homologação",
     onOk: (d.pendencias || []).length ? null : async () => {
-      if(prod && !confirm("Emitir a NFS-e em PRODUÇÃO, com valor fiscal na prefeitura?")) return;
+      if(prod && !await uiConfirmar({ titulo: "Emitir em produção", texto: "Emitir a NFS-e em PRODUÇÃO, com valor fiscal na prefeitura?", confirmar: "Emitir em produção", perigo: true })) return;
       const r = await fiscalChamarFocus("emitir_nfse", { medicao_id: med.id });
       medNfseModalFechar();
       if(r.erro){
@@ -4132,7 +4142,7 @@ async function medNfseSubstituir(){
         return;
       }
       const prod = d.ambiente === "producao";
-      if(!confirm(`Enviar a NFS-e substituta em ${prod ? "PRODUÇÃO" : "homologação"}? Valor ${brl(d.resumo?.valor)}.`)) return;
+      if(!await uiConfirmar({ titulo: "Enviar NFS-e substituta", texto: `Enviar a NFS-e substituta em ${prod ? "PRODUÇÃO" : "homologação"}? Valor ${brl(d.resumo?.valor)}.`, confirmar: "Enviar" })) return;
       const r = await fiscalChamarFocus("substituir_nfse", { medicao_id: med.id, ...extra });
       medNfseModalFechar();
       if(r.erro) aviso("app-aviso", "Substituição: " + r.erro + ((r.corpo?.pendencias || []).length ? " " + r.corpo.pendencias.join(" ") : ""), "erro");

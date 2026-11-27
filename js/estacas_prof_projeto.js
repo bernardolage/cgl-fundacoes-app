@@ -435,9 +435,12 @@ async function epjGravar(){
   if(!p || p.obra !== epjObra()) return;
   const trocadas = Number(p.resp.trocadas) || 0, execs = Number(p.resp.execucoes_sem_profundidade) || 0;
   if(p.modo === "todas" && trocadas > 0
-     && !confirm(`${epjInt(trocadas)} ${epjPl(trocadas, "estaca que já tem profundidade de projeto vai ter o valor trocado", "estacas que já têm profundidade de projeto vão ter o valor trocado")} para ${epjMetros(p.prof)}. Trocar?`)) return;
+     && !(await uiConfirmar({ titulo: "Trocar profundidade de projeto", confirmar: "Trocar", perigo: true,
+       texto: `${epjInt(trocadas)} ${epjPl(trocadas, "estaca que já tem profundidade de projeto vai ter o valor trocado", "estacas que já têm profundidade de projeto vão ter o valor trocado")} para ${epjMetros(p.prof)}. Trocar?` }))) return;
   if(execs > EPJ_AVISO_EXECUCOES
-     && !confirm(`${epjInt(execs)} execuções sem profundidade executada passam a contar esta profundidade na prévia da medição. A diretoria precisa saber antes. Gravar mesmo assim?`)) return;
+     && !(await uiConfirmar({ titulo: "Gravar profundidade de projeto", confirmar: "Gravar",
+       texto: `${epjInt(execs)} execuções sem profundidade executada passam a contar esta profundidade na prévia da medição. A diretoria precisa saber antes. Gravar mesmo assim?` }))) return;
+  if(_epj.previa !== p || p.obra !== epjObra()) return;
   const { data, error } = await sb.rpc("estacas_definir_profundidade_projeto", { p_obra: p.obra, p_filtro: p.filtro, p_profundidade: p.prof, p_modo: p.modo, p_previa: false });
   if(error){ epjAviso(epjErroTexto(error), "erro"); return; }
   const n = Number(data && data.afetadas) || 0;
@@ -511,7 +514,8 @@ async function epjImportGravar(){
   if(previa.error) return { ok: false, msg: "A profundidade de projeto das estacas que já existem não foi atualizada. " + epjErroTexto(previa.error) };
   const n = Number(previa.data.afetadas) || 0;
   if(!n) return { ok: true, msg: "Nenhuma estaca que já existe precisou de profundidade de projeto." };
-  if(!confirm("Atualizar a profundidade de projeto das estacas que já existem?\n\n" + epjListaFrases(previa.data).join("\n")))
+  if(!(await uiConfirmar({ titulo: "Atualizar profundidade de projeto", confirmar: "Atualizar",
+    texto: "Atualizar a profundidade de projeto das estacas que já existem? " + epjListaFrases(previa.data).join(" ") })))
     return { ok: false, msg: "A profundidade de projeto das estacas que já existem não foi alterada." };
   const r = await epjImportChamar(c.itens, false);
   if(r.error){

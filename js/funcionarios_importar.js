@@ -379,7 +379,8 @@ async function funcImpGravarLinha(l){
 async function funcImpGravar(){
   const alvo = _funcImp.linhas.filter(l => l.marcado && !l.resultado && (l.situacao === "novo" || l.situacao === "homonimo"));
   if(!alvo.length) return;
-  if(!confirm(`Cadastrar ${alvo.length} funcionário(s) com os dados da planilha?`)) return;
+  if(!(await uiConfirmar({ titulo: "Cadastrar funcionários", texto: `Cadastrar ${alvo.length} funcionário(s) com os dados da planilha?`, confirmar: "Cadastrar" }))) return;
+  if(_funcImp.gravando) return;
   _funcImp.gravando = true; funcImpRender();
   let ok = 0;
   for(const l of alvo){

@@ -261,7 +261,7 @@ async function salvarLancamentoEcc(){
   await eccRecarregar({ entrada: "entradas", relatorio: "relatorios", prestacao: "prestacoes" }[tipo]);
 }
 async function excluirLancamentoEcc(tipo, id){
-  if(!eccPodeGravar() || !confirm(`Excluir este lançamento (${ECC_TITULO[tipo].toLowerCase()})? Ele ainda está aberto; depois de fechado não se apaga.`)) return;
+  if(!eccPodeGravar() || !await uiConfirmar({ titulo: "Excluir lançamento", texto: `Excluir este lançamento (${ECC_TITULO[tipo].toLowerCase()})? Ele ainda está aberto; depois de fechado não se apaga.`, confirmar: "Excluir", perigo: true })) return;
   const { data, error } = await sb.from(ECC_TABELA[tipo]).delete().eq("id", id).select("id");
   if(error){ aviso("app-aviso", "Erro ao excluir: " + error.message, "erro"); return; }
   if(!(data || []).length){ aviso("app-aviso", "Não foi possível excluir: sem permissão.", "erro"); return; }
@@ -295,8 +295,11 @@ async function confirmarFecharCaixaEcc(){
 }
 async function desfazerFechamentoEcc(id){
   if(!eccPodeDesfazer()) return;
-  const motivo = prompt("Motivo para desfazer o fechamento (fica no histórico do funcionário):");
-  if(motivo === null) return;
+  const v = await uiPedirValores({ titulo: "Desfazer fechamento", confirmar: "Desfazer",
+    texto: "O motivo fica no histórico do funcionário.",
+    campos: [{ id: "motivo", rotulo: "Motivo para desfazer o fechamento", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+  if(!v) return;
+  const motivo = v.motivo || "";
   if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo.", "erro"); return; }
   const { error } = await sb.rpc("ec_desfazer_fechamento", { p_fechamento: id, p_motivo: motivo.trim() });
   if(error){ aviso("app-aviso", error.message, "erro"); return; }

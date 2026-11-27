@@ -511,7 +511,9 @@ async function ssoMudarStatus(novo){
 }
 async function excluirSsoOcorrencia(){
   if(!_ssoAtual || !ssoPodeOperar()) return;
-  if(!confirm(`Excluir a ocorrência ${_ssoAtual.numero}? Só ocorrência ainda "registrada" pode ser excluída; envolvidos, ações e saúde vão junto.`)) return;
+  if(!(await uiConfirmar({ titulo: "Excluir ocorrência", confirmar: "Excluir", perigo: true,
+    texto: `Excluir a ocorrência ${_ssoAtual.numero}? Só ocorrência ainda "registrada" pode ser excluída; envolvidos, ações e saúde vão junto.` }))) return;
+  if(!_ssoAtual) return;
   const { error } = await sb.from("sst_ocorrencias").delete().eq("id", _ssoAtual.id);
   if(error){ ssoAviso(ssoMsgErro(error, "Não foi possível excluir"), "erro"); return; }
   ssoAviso("Ocorrência excluída.", "ok");
@@ -550,7 +552,7 @@ async function ssoAdicionarEnvolvido(){
   if(_ssoSaude !== null) ssoCarregarSaude();
 }
 async function ssoRemoverEnvolvido(id){
-  if(!confirm("Remover este envolvido? Os dados de saúde dele nesta ocorrência vão junto.")) return;
+  if(!(await uiConfirmar({ titulo: "Remover envolvido", texto: "Remover este envolvido? Os dados de saúde dele nesta ocorrência vão junto.", confirmar: "Remover", perigo: true }))) return;
   const { error } = await sb.from("sst_ocorrencia_envolvidos").delete().eq("id", id);
   if(error){ ssoAviso(ssoMsgErro(error, "Não foi possível remover"), "erro"); return; }
   await ssoCarregarEnvolvidos();
@@ -614,7 +616,7 @@ async function ssoAtualizarAcao(id, campos){
   await ssoCarregarAcoes();
 }
 async function ssoRemoverAcao(id){
-  if(!confirm("Remover esta ação do plano?")) return;
+  if(!(await uiConfirmar({ titulo: "Remover ação", texto: "Remover esta ação do plano?", confirmar: "Remover", perigo: true }))) return;
   const { error } = await sb.from("sst_ocorrencia_acoes").delete().eq("id", id);
   if(error){ ssoAviso(ssoMsgErro(error, "Não foi possível remover"), "erro"); return; }
   await ssoCarregarAcoes();
@@ -711,7 +713,8 @@ async function ssoCarregarAnexos(){
     window.open(u.signedUrl, "_blank", "noopener");
   }));
   $("sso-anexos-lista").querySelectorAll("[data-anexo-rem]").forEach(b => b.addEventListener("click", async () => {
-    if(!confirm("Excluir este anexo?")) return;
+    if(!(await uiConfirmar({ titulo: "Excluir anexo", texto: "Excluir este anexo?", confirmar: "Excluir", perigo: true }))) return;
+    if(!_ssoAtual) return;
     const { error: e3 } = await sb.storage.from("sst-ocorrencias").remove([`${_ssoAtual.id}/${b.dataset.anexoRem}`]);
     if(e3){ ssoAviso(ssoMsgErro(e3, "Não foi possível excluir"), "erro"); return; }
     ssoCarregarAnexos();

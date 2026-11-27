@@ -186,8 +186,10 @@ document.addEventListener("click", async (ev) => {
   if(d.parRemover){
     const p = (OP.snap.paradas || []).find(x => x.id === d.parRemover);
     if(!p) return;
-    const motivo = prompt(`Remover a parada ${hhmm(p.periodo_inicio)}–${hhmm(p.periodo_fim)}? Escreva o motivo:`);
-    if(motivo == null) return;
+    const r = await uiPedirValores({ titulo: "Remover parada", texto: `Remover a parada ${hhmm(p.periodo_inicio)}–${hhmm(p.periodo_fim)}? Escreva o motivo:`, confirmar: "Remover",
+      campos: [{ id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+    if(!r) return;
+    const motivo = r.motivo || "";
     if(motivo.trim().length < 5){ avisar("O motivo precisa ter pelo menos 5 letras.", "aviso"); return; }
     OP.snap.paradas = OP.snap.paradas.filter(x => x.id !== p.id);
     await enfileirar("rdo_campo_parada_remover", { p_rdo: OP.rdoId, p_id: p.id, p_motivo: motivo.trim() }, { rotulo: "Remover parada " + hhmm(p.periodo_inicio), linha_id: p.id });

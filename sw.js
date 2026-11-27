@@ -2,11 +2,11 @@
 
 
 
-const VERSAO = "c231022";
+const VERSAO = "5074dc1";
 const CACHE = "cgl-campo-" + VERSAO;
 const ARQUIVOS = [
   "operador.html", "manifest.webmanifest", "css/estilo.css", "js/tema.js", "vendor/supabase-js-2.118.0.min.js",
-  "js/op_core.js", "js/op_dia.js", "js/op_equipe.js", "js/op_estacas.js", "js/op_parada.js", "js/op_foto.js", "js/op_init.js",
+  "js/op_core.js", "js/ui.js", "js/op_dia.js", "js/op_equipe.js", "js/op_estacas.js", "js/op_parada.js", "js/op_foto.js", "js/op_init.js",
   "img/icone-cgl.png", "img/logo-cgl.png"
 ];
 

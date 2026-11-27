@@ -834,7 +834,10 @@ async function obrAtualizarConcluir(obra){
 async function obrConcluirObra(){
   if(!obraEditId) return;
   const fim = $("obr-fim-real").value || hojeISO();
-  if(!confirm(`Marcar a obra como concluída em ${dataBR(fim)}?\n\nO financeiro só altera o status e a data de término; fica registrado quem concluiu e quando.`)) return;
+  const idObra = obraEditId;
+  if(!(await uiConfirmar({ titulo: "Concluir obra", confirmar: "Concluir",
+    texto: `Marcar a obra como concluída em ${dataBR(fim)}? O financeiro só altera o status e a data de término; fica registrado quem concluiu e quando.` }))) return;
+  if(obraEditId !== idObra) return;
   const { data, error } = await sb.from("obras").update({ status: "concluida", data_fim_real: fim })
     .eq("id", obraEditId).select("id,status,data_fim_real").maybeSingle();
   if(error || !data){
@@ -1190,7 +1193,9 @@ async function salvarObra(novoStatus){
 
 async function excluirObra(){
   if(!obraEditId) return;
-  if(!confirm("Excluir esta obra? Esta ação não pode ser desfeita.")) return;
+  const idObra = obraEditId;
+  if(!(await uiConfirmar({ titulo: "Excluir obra", texto: "Excluir esta obra? Esta ação não pode ser desfeita.", confirmar: "Excluir", perigo: true }))) return;
+  if(obraEditId !== idObra) return;
   const { error } = await sb.from("obras").delete().eq("id", obraEditId);
   if(error){
     aviso("app-aviso","Não foi possível excluir: "+error.message,"erro");

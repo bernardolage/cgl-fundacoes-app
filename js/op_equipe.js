@@ -112,7 +112,7 @@ async function saidaDaEquipe(){
   const hora = horaAgora(1);
   const abertos = (OP.snap.equipe || []).filter(e => e.hora_entrada && !e.hora_saida && !e.liberado);
   if(!abertos.length){ avisar("Ninguém com entrada e sem saída.", "aviso"); return; }
-  if(!confirm(`Marcar saída às ${hora} para ${abertos.length} pessoa(s)? Dentro da tolerância, a saída fica no horário da jornada.`)) return;
+  if(!await uiConfirmar({ titulo: "Saída da equipe", texto: `Marcar saída às ${hora} para ${abertos.length} pessoa(s)? Dentro da tolerância, a saída fica no horário da jornada.`, confirmar: "Marcar saída" })) return;
   for(const e of abertos) await equipeGravar(e, { saida_real: hora });
   renderTelaAtual();
 }
@@ -206,13 +206,13 @@ document.addEventListener("click", async (ev) => {
   if(d.eqSai){ await equipeGravar(linha(d.eqSai), { saida_real: horaAgora(1) }); renderTelaAtual(); return; }
   if(d.eqRemover){
     const l = linha(d.eqRemover);
-    if(!l || !confirm(`Remover ${l.nome || "esta pessoa"} da equipe de hoje?`)) return;
+    if(!l || !await uiConfirmar({ titulo: "Remover da equipe", texto: `Remover ${l.nome || "esta pessoa"} da equipe de hoje?`, confirmar: "Remover", perigo: true })) return;
     OP.snap.equipe = OP.snap.equipe.filter(e => e.id !== l.id);
     await enfileirar("rdo_campo_equipe_remover", { p_rdo: OP.rdoId, p_id: l.id }, { rotulo: "Remover da equipe: " + (l.nome || ""), linha_id: l.id });
     renderTelaAtual(); return;
   }
   if(d.abRemover){
-    if(!confirm("Remover este lançamento?")) return;
+    if(!await uiConfirmar({ titulo: "Remover lançamento", texto: "Remover este lançamento?", confirmar: "Remover", perigo: true })) return;
     OP.snap.abastecimentos = (OP.snap.abastecimentos || []).filter(a => a.id !== d.abRemover);
     await enfileirar("rdo_campo_abastecimento_remover", { p_rdo: OP.rdoId, p_id: d.abRemover }, { rotulo: "Remover abastecimento", linha_id: d.abRemover });
     renderTelaAtual(); return;

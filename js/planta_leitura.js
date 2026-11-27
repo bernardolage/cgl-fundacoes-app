@@ -443,7 +443,9 @@ async function pplLeiGravar(){
 async function pplLeiDesfazer(){
   const s = _ppl.sessao, st = _ppjPos;
   if(!s || _ppl.ocupado || !ppjPodeEditar()) return;
-  if(!confirm("Desfazer a leitura desta folha? As estacas criadas por ela que continuam previstas e sem execução são apagadas, as posições gravadas saem da folha e as trocas de pilar voltam.")) return;
+  if(!(await uiConfirmar({ titulo: "Desfazer leitura", confirmar: "Desfazer", perigo: true,
+    texto: "Desfazer a leitura desta folha? As estacas criadas por ela que continuam previstas e sem execução são apagadas, as posições gravadas saem da folha e as trocas de pilar voltam." }))) return;
+  if(_ppl.sessao !== s || _ppl.ocupado) return;
   _ppl.ocupado = true; _ppl.fase = "Desfazendo a leitura…"; pplLeiRepintar();
   let ficaram = 0;
   try {
@@ -497,7 +499,10 @@ function pplLeiClique(ev){
   if(acao === "desfazer") return void pplLeiDesfazer();
   if(acao === "filtro"){ _ppl.soConferir = !_ppl.soConferir; return void pplLeiRepintar(); }
   if(acao === "conferir-todas"){
-    if(confirm(`Marcar como conferidas as ${[..._ppl.conferir].length} posições lidas desta folha?`)) pplLeiConferir([..._ppl.conferir]);
+    uiConfirmar({ titulo: "Conferir posições", confirmar: "Marcar conferidas",
+      texto: `Marcar como conferidas as ${[..._ppl.conferir].length} posições lidas desta folha?` })
+      .then(ok => { if(ok) return pplLeiConferir([..._ppl.conferir]); })
+      .catch(err => aviso("app-aviso", err.message, "erro"));
     return;
   }
   if(acao === "conferir-uma") return void pplLeiConferir([b.dataset.pplId]);

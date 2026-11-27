@@ -799,7 +799,8 @@ function fecharPerdaAcessorios(){ $("ace-perda-modal").style.display = "none"; }
 async function salvarPerdaAcessorios(){
   const motivo = $("ace-pd-motivo").value.trim();
   if(!motivo){ aviso("app-aviso", "Informe o motivo da perda.", "erro"); return; }
-  if(!confirm(`Registrar perda de ${_aceAcaoIds.length} peça(s)? Elas saem do estoque e ficam no histórico como perdidas.`)) return;
+  if(!(await uiConfirmar({ titulo: "Registrar perda", confirmar: "Registrar perda", perigo: true,
+    texto: `Registrar perda de ${_aceAcaoIds.length} peça(s)? Elas saem do estoque e ficam no histórico como perdidas.` }))) return;
   const { data, error } = await sb.rpc("acessorios_perda", { p_ids: _aceAcaoIds, p_motivo: motivo, p_obs: $("ace-pd-obs").value.trim() || null, p_data: aceDataISOparaTS($("ace-pd-data").value) });
   if(error){ aviso("app-aviso", "Erro ao registrar perda: " + error.message, "erro"); return; }
   aviso("app-aviso", `${data} peça(s) registrada(s) como perdida(s).`, "ok");
@@ -832,7 +833,8 @@ function aceCdInfo(){
 function fecharCondicaoAcessorios(){ $("ace-cond-modal").style.display = "none"; }
 async function salvarCondicaoAcessorios(){
   const cond = $("ace-cd-cond").value;
-  if(cond === "baixado" && !confirm(`Baixar ${_aceAcaoIds.length} peça(s)? Elas saem do cadastro ativo (continuam no histórico).`)) return;
+  if(cond === "baixado" && !(await uiConfirmar({ titulo: "Baixar peças", confirmar: "Baixar", perigo: true,
+    texto: `Baixar ${_aceAcaoIds.length} peça(s)? Elas saem do cadastro ativo (continuam no histórico).` }))) return;
   const { data, error } = await sb.rpc("acessorios_condicao", { p_ids: _aceAcaoIds, p_condicao: cond, p_motivo: $("ace-cd-motivo").value.trim() || null, p_data: aceDataISOparaTS($("ace-cd-data").value) });
   if(error){ aviso("app-aviso", "Erro ao mudar a condição: " + error.message, "erro"); return; }
   aviso("app-aviso", `${data} peça(s) agora em "${aceLbl("acessorio", cond)}".`, "ok");
@@ -922,7 +924,7 @@ async function aceRenderFotos(a){
     aceRenderFotos(a);
   }));
   c.querySelectorAll("[data-ft-del]").forEach(b => b.addEventListener("click", async () => {
-    if(!confirm("Excluir esta foto?")) return;
+    if(!(await uiConfirmar({ titulo: "Excluir foto", texto: "Excluir esta foto?", confirmar: "Excluir", perigo: true }))) return;
     const { error } = await sb.from("acessorio_fotos").delete().eq("id", b.dataset.ftDel);
     if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
     await sb.storage.from(ACE_FOTO_BUCKET).remove([b.dataset.path]);
@@ -1237,9 +1239,9 @@ function aceRenderReparos(reps, err){
       ${pode ? `<td style="white-space:nowrap;">${r.status === "aberto" ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="em_execucao">Iniciar</button> ` : ""}${["aberto","em_execucao"].includes(r.status) ? `<button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="concluido">Concluir</button> <button type="button" class="btn-sec btn-sm" data-rep="${esc(r.id)}" data-st="cancelado" style="color:var(--perigo-txt);">Cancelar</button>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`
     : `<p class="vazio">Nenhum reparo registrado para esta peça.</p>`);
   $("btn-ace-rep-novo")?.addEventListener("click", () => abrirReparoAcessorios([_aceAtual.id]));
-  c.querySelectorAll("button[data-rep]").forEach(b => b.addEventListener("click", () => {
+  c.querySelectorAll("button[data-rep]").forEach(b => b.addEventListener("click", async () => {
     const st = b.dataset.st;
-    if(st === "cancelado" && !confirm("Cancelar este reparo?")) return;
+    if(st === "cancelado" && !(await uiConfirmar({ titulo: "Cancelar reparo", texto: "Cancelar este reparo?", confirmar: "Cancelar reparo", cancelar: "Voltar", perigo: true }))) return;
     aceMudarStatusReparo(b.dataset.rep, st);
   }));
 }
@@ -1338,7 +1340,9 @@ async function salvarAcessorio(){
 
 async function excluirAcessorio(){
   if(!acessorioEditId || !["admin","diretor"].includes(usuarioAtual?.cargo)) return;
-  if(!confirm("Excluir esta peça e todo o seu histórico? Se ela existiu de verdade, prefira baixar (condição = Baixado).")) return;
+  if(!(await uiConfirmar({ titulo: "Excluir peça", confirmar: "Excluir", perigo: true,
+    texto: "Excluir esta peça e todo o seu histórico? Se ela existiu de verdade, prefira baixar (condição = Baixado)." }))) return;
+  if(!acessorioEditId) return;
   const { error } = await sb.from("acessorios").delete().eq("id", acessorioEditId);
   if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
   const id = acessorioEditId;

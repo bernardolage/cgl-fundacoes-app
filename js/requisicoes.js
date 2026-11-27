@@ -330,9 +330,14 @@ async function salvarRequisicao(){
 async function reqMudarStatus(status){
   const r = _reqAtual; if(!r) return;
   const upd = { status };
-  if(status === "rejeitada"){ const m = prompt("Motivo da rejeição (vai para quem pediu):"); if(m === null) return; upd.motivo_rejeicao = m.trim() || null; }
-  if(status === "cancelada" && !confirm(`Cancelar a requisição ${r.numero}?`)) return;
-  if(status === "separada" && !confirm(`Marcar ${r.numero} como atendida pelo estoque sem separação? Use só quando o material já saiu pelo balcão (Estoque › Saída); para o almoxarifado separar, use "Aprovar".`)) return;
+  if(status === "rejeitada"){
+    const v = await uiPedirValores({ titulo: "Rejeitar requisição", texto: `Rejeitar a requisição ${r.numero}?`, confirmar: "Rejeitar",
+      campos: [{ id: "motivo", rotulo: "Motivo da rejeição (vai para quem pediu)", tipo: "textarea", linhas: 2 }] });
+    if(!v) return;
+    upd.motivo_rejeicao = String(v.motivo || "").trim() || null;
+  }
+  if(status === "cancelada" && !await uiConfirmar({ titulo: "Cancelar requisição", texto: `Cancelar a requisição ${r.numero}?`, confirmar: "Cancelar requisição", cancelar: "Voltar", perigo: true })) return;
+  if(status === "separada" && !await uiConfirmar({ titulo: "Atendida pelo estoque", texto: `Marcar ${r.numero} como atendida pelo estoque sem separação? Use só quando o material já saiu pelo balcão (Estoque › Saída); para o almoxarifado separar, use "Aprovar".`, confirmar: "Marcar como atendida" })) return;
   const { error } = await sb.from("requisicoes").update(upd).eq("id", r.id);
   if(error){ aviso("app-aviso", "Não foi possível: " + error.message, "erro"); return; }
   aviso("app-aviso", `Requisição ${r.numero}: ${(REQ_STATUS[status] || [status])[0].toLowerCase()}.`, "ok");
@@ -409,8 +414,10 @@ async function reqConfirmarAprovar(){
 
 async function reqConferir(){
   const r = _reqAtual; if(!r) return;
-  const obs = prompt(`Conferir o material recebido da requisição ${r.numero}.\nObservação (opcional; diga aqui se faltou algo ou veio com defeito):`, "");
-  if(obs === null) return;
+  const v = await uiPedirValores({ titulo: "Conferir material", texto: `Conferir o material recebido da requisição ${r.numero}.`, confirmar: "Conferir",
+    campos: [{ id: "obs", rotulo: "Observação (opcional; diga aqui se faltou algo ou veio com defeito)", tipo: "textarea", linhas: 2, valor: "" }] });
+  if(!v) return;
+  const obs = String(v.obs || "");
   const { data, error } = await sb.rpc("requisicao_conferir", { p_requisicao: r.id, p_obs: obs || null });
   if(error){ aviso("app-aviso", "Conferência não registrada: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   aviso("app-aviso", `Conferência registrada (${data} recebimento(s)). Obrigado.`, "ok");
@@ -423,7 +430,7 @@ async function reqCriarDaReposicao(){
   if(!reqPodePedir()){ aviso("app-aviso", "Seu perfil não abre requisições.", "erro"); return; }
   const faltam = (typeof _estRep === "object" ? _estRep : []).filter(p => typeof estAComprar === "function" && estAComprar(p) > 0);
   if(!faltam.length){ aviso("app-aviso", "Nada abaixo do ideal na lista de reposição.", "ok"); return; }
-  if(!confirm(`Abrir uma requisição de reposição com ${faltam.length} item(ns) abaixo do ideal?`)) return;
+  if(!await uiConfirmar({ titulo: "Requisitar reposição", texto: `Abrir uma requisição de reposição com ${faltam.length} item(ns) abaixo do ideal?`, confirmar: "Abrir requisição" })) return;
   const { data: r, error } = await sb.from("requisicoes").insert({ status: "pendente", prioridade: "normal", justificativa: "Reposição do estoque: itens abaixo do ideal na lista de reposição" }).select("id,numero").single();
   if(error){ aviso("app-aviso", "Não foi possível abrir a requisição: " + error.message, "erro"); return; }
   const { error: eIt } = await sb.from("requisicao_itens").insert(faltam.map(p => ({ requisicao_id: r.id, produto_id: p.id, unidade: p.unidade || "un", quantidade_solicitada: estAComprar(p) })));

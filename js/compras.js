@@ -492,19 +492,19 @@ function cmpDestCabSincronizar(){
   cmpDestCabDefinir(v);
 }
 
-function cmpDestCabMudou(){
+async function cmpDestCabMudou(){
   const v = $("cmp-dest-custo").value;
 
   if(v === "varios" && cmpEditavel()){ cmpDestCabDefinir("varios"); cmpRdAbrir("pedido"); return; }
   if(_cmpRatPed.length){
-    if(!confirm("O pedido está rateado entre obras e destinos. Tirar o rateio do pedido? Os itens que seguiam o rateio ficam com o destino escolhido agora.")){ cmpDestCabDefinir("varios"); return; }
+    if(!await uiConfirmar({ titulo: "Tirar o rateio", texto: "O pedido está rateado entre obras e destinos. Tirar o rateio do pedido? Os itens que seguiam o rateio ficam com o destino escolhido agora.", confirmar: "Tirar o rateio", perigo: true })){ cmpDestCabDefinir("varios"); return; }
     cmpRatPedAplicar([]);
   }
   const ad = _cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta");
   let alvo = ad.filter(i => !i.destino);
   if(v && v !== "varios"){
     const outros = ad.filter(i => i.destino && cmpCustoChave(i) !== v);
-    if(outros.length && confirm(`Levar também ${outros.length} item(ns) de aplicação direta que já têm destino para ${cmpCustoChaveTxt(v)}?\n\nCancelar preenche só os itens sem destino e os novos.`)) alvo = alvo.concat(outros);
+    if(outros.length && await uiConfirmar({ titulo: "Destino dos itens", texto: `Levar também ${outros.length} item(ns) de aplicação direta que já têm destino para ${cmpCustoChaveTxt(v)}? "Só os sem destino" preenche só os itens sem destino e os novos.`, confirmar: "Levar todos", cancelar: "Só os sem destino" })) alvo = alvo.concat(outros);
   }
   cmpDestCabDefinir(v);
   if(v && v !== "varios"){
@@ -567,13 +567,13 @@ async function cmpTipoCabMudou(){
     if(novo === "reposicao" && (!it.produto_id || cmpProdutoEhServico(it))) ficam.push(it); else muda.push(it);
   });
   if(muda.length || ficam.length){
-    const lista = l => l.slice(0, 12).map(it => "• " + String(semCodOdoo(it.descricao) || "").slice(0, 70)).join("\n") + (l.length > 12 ? `\n… e mais ${l.length - 12}` : "");
+    const lista = l => l.slice(0, 12).map(it => String(semCodOdoo(it.descricao) || "").slice(0, 70)).join("; ") + (l.length > 12 ? `; … e mais ${l.length - 12}` : "") + ".";
     const destino = novo === "reposicao" ? "destino almoxarifado; o custo aparece na saída do estoque"
       : ($("cmp-dest-custo").value && $("cmp-dest-custo").value !== "varios" ? "destino " + cmpCustoChaveTxt($("cmp-dest-custo").value) : "o destino de cada um fica para escolher");
     const msg = `Trocar o tipo do pedido para ${CMP_TIPO_LBL[novo]}?`
-      + (muda.length ? `\n\n${muda.length} item(ns) passam a ${CMP_TIPO_CURTO[novo]} (${destino}):\n${lista(muda)}` : "")
-      + (ficam.length ? `\n\n${ficam.length} item(ns) continuam aplicação direta, como exceção (serviço ou item sem produto do catálogo não entra no estoque):\n${lista(ficam)}` : "");
-    if(!confirm(msg)){ sel.value = ant; return; }
+      + (muda.length ? ` ${muda.length} item(ns) passam a ${CMP_TIPO_CURTO[novo]} (${destino}): ${lista(muda)}` : "")
+      + (ficam.length ? ` ${ficam.length} item(ns) continuam aplicação direta, como exceção (serviço ou item sem produto do catálogo não entra no estoque): ${lista(ficam)}` : "");
+    if(!await uiConfirmar({ titulo: "Trocar tipo do pedido", texto: msg, confirmar: "Trocar tipo" })){ sel.value = ant; return; }
   }
   if(novo === "aplicacao_direta" && !(await cmpConfirmarDiretoDeEstoque(muda))){ sel.value = ant; return; }
   sel.dataset.prev = novo;
@@ -881,7 +881,7 @@ async function cmpEnviarAnexosPedido(){
 }
 async function cmpExcluirAnexoPedido(id){
   const a = _cmpAnexos.find(x => x.id === id); if(!a || !cmpAnxPodeExcluir(a)) return;
-  if(!confirm(`Excluir o anexo "${a.nome}"?`)) return;
+  if(!await uiConfirmar({ titulo: "Excluir anexo", texto: `Excluir o anexo "${a.nome}"?`, confirmar: "Excluir", perigo: true })) return;
 
   const { error: eSt } = await sb.storage.from("compras-evidencias").remove([a.storage_path]);
   if(eSt){ aviso("app-aviso", "Não foi possível excluir o arquivo: " + eSt.message, "erro"); return; }
@@ -1585,12 +1585,16 @@ function cmpRascGravar(){
   if(txt === _cmpRascBase) rascunhoApagar(chave); else rascunhoGuardar(chave, JSON.parse(txt));
 }
 const cmpRascAgendar = debounce(cmpRascGravar, 400);
-function cmpRascOferecer(p){
+async function cmpRascOferecer(p){
   _cmpRascBase = null;
   if(!cmpEditavel()) return;
   const base = JSON.stringify(cmpRascEstado()), chave = cmpRascChave(p.id), r = p._dupDe ? null : rascunhoLer(chave);
   if(r){
-    if(confirm(rascunhoPergunta(r.em, p.updated_at, "deste pedido"))) cmpRascRestaurar(r.dados);
+
+    const txt = rascunhoPergunta(r.em, p.updated_at, "deste pedido").replace(/\s*OK: restaurar[\s\S]*$/, "").replace(/\s*\n+\s*/g, " ");
+    const restaurar = await uiConfirmar({ titulo: "Rascunho não salvo", texto: txt, confirmar: "Restaurar rascunho", cancelar: "Descartar" });
+    if(_cmpAtual !== p) return;
+    if(restaurar) cmpRascRestaurar(r.dados);
     else rascunhoApagar(chave);
   }
   _cmpRascBase = base;
@@ -1834,7 +1838,8 @@ async function cmpSalvarOs(){
   const p = _cmpAtual, sel = $("cmp-os"); if(!p?.id || !sel || sel.disabled || !cmpOsOn(p)) return;
   const v = sel.value || null;
   if(v === (p.manutencao_id || null)) return;
-  if(!v && !confirm("Desligar o pedido da OS? As peças e o serviço recebidos por este pedido saem da aba Materiais da OS (o custo da TAG não muda).")){ sel.value = p.manutencao_id || ""; return; }
+  if(!v && !await uiConfirmar({ titulo: "Desligar da OS", texto: "Desligar o pedido da OS? As peças e o serviço recebidos por este pedido saem da aba Materiais da OS (o custo da TAG não muda).", confirmar: "Desligar", perigo: true })){ sel.value = p.manutencao_id || ""; return; }
+  if(_cmpAtual !== p){ return; }
   const { error } = await sb.rpc("pedido_ligar_os", { p_pedido_id: p.id, p_manutencao_id: v });
   if(error){ aviso("app-aviso", "OS não ligada: " + cmpMsgErro(error), "erro"); sel.value = p.manutencao_id || ""; return; }
   aviso("app-aviso", v ? `Pedido ${p.numero} ligado à OS: o recebido na TAG entra na aba Materiais dela.` : `Pedido ${p.numero} desligado da OS.`, "ok");
@@ -1941,8 +1946,10 @@ function cmpAtualizarChipConferencia(){
 async function cmpConferirRecebimentos(){
   const pend = _cmpConfAtual.lista.filter(r => r.pendente);
   if(!pend.length || !_cmpConfAtual.pode){ aviso("app-aviso", "Nada a conferir neste pedido.", "erro"); return; }
-  const obs = prompt(`Conferir ${pend.length} recebimento(s) (${pend.map(r => r.nf_numero ? "NF " + r.nf_numero : dataBR(r.data_recebimento)).join(", ")}).\nObservação (opcional; diga aqui se faltou algo ou veio com defeito):`, "");
-  if(obs === null) return;
+  const v = await uiPedirValores({ titulo: "Recebi e conferi", texto: `Conferir ${pend.length} recebimento(s) (${pend.map(r => r.nf_numero ? "NF " + r.nf_numero : dataBR(r.data_recebimento)).join(", ")}).`, confirmar: "Conferir",
+    campos: [{ id: "obs", rotulo: "Observação (opcional; diga aqui se faltou algo ou veio com defeito)", tipo: "textarea", linhas: 2, valor: "" }] });
+  if(!v) return;
+  const obs = String(v.obs || "");
   for(const r of pend){
     const { error } = await sb.rpc("recebimento_conferir", { p_id: r.recebimento_id, p_obs: obs || null });
     if(error){ aviso("app-aviso", "Conferência não registrada: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); break; }
@@ -2284,7 +2291,7 @@ async function cmpSalvarCotacao(){
 }
 async function cmpExcluirCotacao(id){
   const c = _cmpCotacoes.find(x => x.id === id); if(!c || !cmpCotEditavel()) return;
-  if(!confirm(`Excluir a cotação de ${c.fornecedor?.razao_social || "?"}? A proposta anexada continua na aba Anexos.`)) return;
+  if(!await uiConfirmar({ titulo: "Excluir cotação", texto: `Excluir a cotação de ${c.fornecedor?.razao_social || "?"}? A proposta anexada continua na aba Anexos.`, confirmar: "Excluir", perigo: true })) return;
   const { error } = await sb.from("cotacoes").delete().eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
   aviso("app-aviso", "Cotação excluída.", "ok");
@@ -2294,7 +2301,7 @@ async function cmpFecharCotacao(id){
   const c = _cmpCotacoes.find(x => x.id === id); if(!c) return;
   const semPreco = _cmpItens.filter(it => it.id && cmpCotPreco(c, it.id) === null).length;
   const enviar = $("cmp-cot-enviar") ? !!$("cmp-cot-enviar").checked : _cmpCotEnviar;
-  if(!confirm(`Fechar o pedido com ${c.fornecedor?.razao_social || "este fornecedor"} (${brl(cmpCotTotal(c))})${enviar ? " e enviar para aprovação" : ""}?\nFornecedor, preços, IPI/ICMS, frete, prazo e condição da cotação vão para o pedido${semPreco ? `; ${semPreco} item(ns) sem preço nesta cotação ficam com o preço atual` : ""}. As outras cotações ficam descartadas.${enviar ? " O pedido segue para a aprovação (alçada e donos do custo)." : " O pedido volta a rascunho para você conferir."}`)) return;
+  if(!await uiConfirmar({ titulo: "Fechar com o fornecedor", confirmar: enviar ? "Fechar e enviar" : "Fechar pedido", texto: `Fechar o pedido com ${c.fornecedor?.razao_social || "este fornecedor"} (${brl(cmpCotTotal(c))})${enviar ? " e enviar para aprovação" : ""}? Fornecedor, preços, IPI/ICMS, frete, prazo e condição da cotação vão para o pedido${semPreco ? `; ${semPreco} item(ns) sem preço nesta cotação ficam com o preço atual` : ""}. As outras cotações ficam descartadas.${enviar ? " O pedido segue para a aprovação (alçada e donos do custo)." : " O pedido volta a rascunho para você conferir."}` })) return;
   const pedidoId = _cmpEditId;
   let { data, error } = await sb.rpc("cotacao_fechar", { p_id: id, p_enviar: enviar });
   if(error && /could not find the function|p_enviar/i.test(error.message || "")){ ({ data, error } = await sb.rpc("cotacao_fechar", { p_id: id })); }
@@ -2643,7 +2650,7 @@ function cmpLigarColaborador(inp){
 }
 
 
-function cmpSugerirDestinoNatureza(it){
+async function cmpSugerirDestinoNatureza(it){
   if(!it || cmpItemTipo(it) === "reposicao" || !it.natureza_id) return;
   const n = _cmpNatMap[it.natureza_id]; if(!n) return;
   const nomes = [n.odoo_nome, n.nome].filter(Boolean).map(x => String(x).trim().toUpperCase());
@@ -2651,7 +2658,8 @@ function cmpSugerirDestinoNatureza(it){
   if(!c || (it.destino === "centro_custo" && it.centro_custo_id === c.id)) return;
   const rotulo = `${CMP_CENTRO_TIPO[c.tipo] || "Centro"}: ${c.nome}`;
   if(it.destino && it.destino !== "estoque"){
-    if(!confirm(`A natureza "${n.nome}" costuma ir para o centro ${rotulo}.\n\nTrocar o destino deste item (hoje ${cmpDestinoTxt(it)}) para ${rotulo}? Cancelar mantém o destino atual.`)) return;
+    if(!await uiConfirmar({ titulo: "Destino sugerido pela natureza", texto: `A natureza "${n.nome}" costuma ir para o centro ${rotulo}. Trocar o destino deste item (hoje ${cmpDestinoTxt(it)}) para ${rotulo}? "Manter" deixa o destino atual.`, confirmar: "Trocar destino", cancelar: "Manter" })) return;
+    if(!_cmpItens.includes(it)) return;
   }
   const tinhaRateio = cmpTemRateio(it);
   Object.assign(it, cmpDestinoDoValor("cc:" + c.id));
@@ -3484,7 +3492,7 @@ async function cmpAcao(acao){
       if(!cmpTipoCab()){ aviso("app-aviso", "Escolha o tipo de compra no Cabeçalho.", "erro"); ativarTabPedido("cabecalho"); return; }
       if(cmpTipoCab() === "aplicacao_direta" && !$("cmp-dest-custo").value){ aviso("app-aviso", "Escolha o destino do custo no Cabeçalho (obra, TAG, setor ou Vários destinos, um por item).", "erro"); ativarTabPedido("cabecalho"); return; }
       const semNat = _cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta" && !i.natureza_id && !i.natureza).length;
-      if(semNat && !confirm(`${semNat} item(ns) de aplicação direta sem natureza do gasto. Enviar para aprovação assim mesmo?`)){ ativarTabPedido("itens"); return; }
+      if(semNat && !await uiConfirmar({ titulo: "Itens sem natureza", texto: `${semNat} item(ns) de aplicação direta sem natureza do gasto. Enviar para aprovação assim mesmo?`, confirmar: "Enviar assim mesmo" })){ ativarTabPedido("itens"); return; }
 
       if(!(await cmpConfirmarDiretoDeEstoque(_cmpItens.filter(i => cmpItemTipo(i) === "aplicacao_direta")))){ ativarTabPedido("itens"); return; }
 
@@ -3511,19 +3519,24 @@ async function cmpAcao(acao){
     } else if(acao === "rascunho"){
 
       const enviado = _cmpAtual?.status === "enviado";
-      if(enviado && !confirm(`O pedido ${_cmpAtual.numero} já foi enviado ao fornecedor. Ele volta a rascunho e, depois de corrigido, passa por nova aprovação.\n\nDepois de aprovado de novo, mande o PDF corrigido ao fornecedor.\n\nVoltar a rascunho?`)) return;
+      if(enviado && !await uiConfirmar({ titulo: "Voltar a rascunho", texto: `O pedido ${_cmpAtual.numero} já foi enviado ao fornecedor. Ele volta a rascunho e, depois de corrigido, passa por nova aprovação. Depois de aprovado de novo, mande o PDF corrigido ao fornecedor. Voltar a rascunho?`, confirmar: "Voltar a rascunho", perigo: true })) return;
       const { error } = await sb.rpc("pedido_mudar_status", { p_id: id, p_status: "rascunho" }); if(error) throw error;
       aviso("app-aviso", enviado ? "Pedido voltou para rascunho. Depois de corrigir e aprovar, mande o PDF novo ao fornecedor." : "Pedido voltou para rascunho.", "ok");
     } else if(acao === "reabrir"){
 
-      const motivo = prompt(`Reabrir o pedido ${_cmpAtual?.numero || ""} em rascunho, no mesmo número. Depois de corrigido ele passa por nova aprovação.\n\nMotivo da reabertura (fica no histórico):`);
-      if(motivo === null) return;
+      const v = await uiPedirValores({ titulo: "Reabrir pedido", texto: `Reabrir o pedido ${_cmpAtual?.numero || ""} em rascunho, no mesmo número. Depois de corrigido ele passa por nova aprovação.`, confirmar: "Reabrir",
+        campos: [{ id: "motivo", rotulo: "Motivo da reabertura (fica no histórico)", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+      if(!v) return;
+      const motivo = String(v.motivo || "");
       if(motivo.trim().length < 5){ aviso("app-aviso", "Informe o motivo da reabertura.", "erro"); return; }
       const { data, error } = await sb.rpc("pedido_reabrir", { p_id: id, p_motivo: motivo.trim() }); if(error) throw error;
       const av = data && data.aviso;
       aviso("app-aviso", `Pedido ${(data && data.numero) || ""} reaberto em rascunho: corrija e envie para aprovação de novo.` + (av ? " Atenção: " + av : ""), av ? "aviso" : "ok");
     } else if(acao === "cancelar"){
-      const motivo = prompt("Motivo do cancelamento:"); if(motivo === null) return;
+      const v = await uiPedirValores({ titulo: "Cancelar pedido", texto: `Cancelar o pedido ${_cmpAtual?.numero || ""}?`, confirmar: "Cancelar pedido", cancelar: "Voltar",
+        campos: [{ id: "motivo", rotulo: "Motivo do cancelamento", tipo: "textarea", linhas: 2 }] });
+      if(!v) return;
+      const motivo = String(v.motivo || "");
       const { error } = await sb.rpc("pedido_mudar_status", { p_id: id, p_status: "cancelado", p_motivo: motivo || null }); if(error) throw error;
       aviso("app-aviso", "Pedido cancelado.", "ok");
     }
@@ -3705,7 +3718,7 @@ async function cmpConfirmarLancarNf(){
     const difs = [];
     if(normNf(r.anot.nf) !== normNf(nf)) difs.push(`número: anotado ${r.anot.nf}, lançando ${nf}`);
     if(r.anot.total != null && dados.total_nf != null && Math.round(r.anot.total * 100) !== Math.round(dados.total_nf * 100)) difs.push(`total: anotado ${brl(r.anot.total)}, lançando ${brl(dados.total_nf)}`);
-    if(difs.length && !confirm(`A NF lançada difere do que foi anotado no recebimento:\n- ${difs.join("\n- ")}\n\nVale o que você está lançando e o histórico guarda os dois. Lançar assim mesmo?`)) return;
+    if(difs.length && !await uiConfirmar({ titulo: "NF diferente da anotada", texto: `A NF lançada difere do que foi anotado no recebimento: ${difs.join("; ")}. Vale o que você está lançando e o histórico guarda os dois. Lançar assim mesmo?`, confirmar: "Lançar assim mesmo" })) return;
   }
   const { data, error } = await sb.rpc("recebimento_lancar_nf", { p_id: r.recId, p_dados: dados });
   if(error){ aviso("app-aviso", "NF não lançada: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
@@ -3720,8 +3733,10 @@ async function cmpConfirmarLancarNf(){
 async function cmpEstornarRecebimento(recId){
   const r = (_cmpRecsAtual || []).find(x => x.id === recId); if(!r) return;
   const rot = r.nf_numero ? `NF ${r.nf_numero}` : `recebimento de ${dataBR(r.data_recebimento)}`;
-  const motivo = prompt(`Estornar o ${rot}?\nO estoque volta, os títulos ainda não exportados são apagados e o pedido volta a aguardar o recebimento.\n\nMotivo do estorno:`);
-  if(motivo === null) return;
+  const v = await uiPedirValores({ titulo: "Estornar recebimento", texto: `Estornar o ${rot}? O estoque volta, os títulos ainda não exportados são apagados e o pedido volta a aguardar o recebimento.`, confirmar: "Estornar",
+    campos: [{ id: "motivo", rotulo: "Motivo do estorno", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+  if(!v) return;
+  const motivo = String(v.motivo || "");
   if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo do estorno.", "erro"); return; }
   const { error } = await sb.rpc("recebimento_estornar", { p_id: recId, p_motivo: motivo.trim() });
   if(error){ aviso("app-aviso", "Recebimento não estornado: " + (error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
@@ -4080,12 +4095,12 @@ async function confirmarRecebimento(){
     if(it.destino === "estoque" && !it.produto_id){ aviso("app-aviso", `"${it.descricao}" é reposição de estoque e não tem produto do catálogo: case com um produto (campo abaixo do item) antes de confirmar.`, "erro"); return; }
     if(it.destino === "estoque" && cmpProdutoEhServico(it)){ aviso("app-aviso", `"${it.descricao}" é serviço consumido: não entra no estoque, informe obra, TAG ou setor.`, "erro"); return; }
     if(cmpDestinoIncompleto(it)){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
-    if(it.pendente != null && Number(it.quantidade_nf) > it.pendente * 1.1 && !confirm(`"${it.descricao}": a nota traz ${num(it.quantidade_nf)} e o pedido tem ${num(it.pendente)} pendente. Receber assim mesmo?`)) return;
+    if(it.pendente != null && Number(it.quantidade_nf) > it.pendente * 1.1 && !await uiConfirmar({ titulo: "Quantidade acima do pendente", texto: `"${it.descricao}": a nota traz ${num(it.quantidade_nf)} e o pedido tem ${num(it.pendente)} pendente. Receber assim mesmo?`, confirmar: "Receber assim mesmo" })) return;
   }
   if(await cmpTravaProdutoPendente(itens)) return;
 
   const zero = itens.filter(it => !(Number(it.valor_unitario_nf) > 0)).length;
-  if(zero && !confirm(`${zero} linha(s) com valor zero. Se o item não veio, zere a QUANTIDADE, não o valor. Confirmar mesmo assim?`)) return;
+  if(zero && !await uiConfirmar({ titulo: "Linhas com valor zero", texto: `${zero} linha(s) com valor zero. Se o item não veio, zere a QUANTIDADE, não o valor. Confirmar mesmo assim?`, confirmar: "Confirmar assim mesmo" })) return;
   const nfNum = $("cmp-rec-nf").value.trim() || null;
   if(material && !nfNum && ($("cmp-rec-emissao").value || Number($("cmp-rec-total").value || 0))){
     aviso("app-aviso", "Para anotar a nota, informe o número da NF (ou apague emissão e total).", "erro"); $("cmp-rec-nf").focus(); return;
@@ -4093,8 +4108,8 @@ async function confirmarRecebimento(){
   const venc = material ? null : ($("cmp-rec-venc").value || null);
   const dups = !material && Array.isArray(r.duplicatas) && r.duplicatas.length ? r.duplicatas : null;
   if(!material){
-    if(!nfNum && !r.pedido?.nf_informada && !confirm("Recebimento sem número de NF. Se a nota ainda não chegou, use \"📦 Receber material\": o financeiro lança a NF depois. Confirmar mesmo assim?")) return;
-    if(!venc && !dups && !confirm("Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?")) return;
+    if(!nfNum && !r.pedido?.nf_informada && !await uiConfirmar({ titulo: "Recebimento sem NF", texto: "Recebimento sem número de NF. Se a nota ainda não chegou, use \"📦 Receber material\": o financeiro lança a NF depois. Confirmar mesmo assim?", confirmar: "Confirmar assim mesmo" })) return;
+    if(!venc && !dups && !await uiConfirmar({ titulo: "Sem vencimento", texto: "Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?", confirmar: "Continuar assim mesmo" })) return;
   }
   const cab = {
     pedido_id: r.pedido?.id || null, fornecedor_id: forn, nf_numero: nfNum, nf_serie: material && !nfNum ? null : ($("cmp-rec-serie").value.trim() || null),
@@ -4170,7 +4185,7 @@ async function registrarCompraDireta(){
   if(!r.xml && (!nf || !files.length)){ aviso("app-aviso", "Compra direta exige a nota: importe o XML, ou informe o número da NF e anexe o PDF ou a foto. Sem nota, lance como custo avulso.", "erro"); return; }
   const venc = $("cmp-rec-venc").value || null;
   const dups = Array.isArray(r.duplicatas) && r.duplicatas.length ? r.duplicatas : null;
-  if(!venc && !dups && !confirm("Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?")) return;
+  if(!venc && !dups && !await uiConfirmar({ titulo: "Sem vencimento", texto: "Sem vencimento não é gerado título a pagar para o financeiro. Continuar mesmo assim?", confirmar: "Continuar assim mesmo" })) return;
   const recId = crypto.randomUUID();
   let anexos = [];
   try { anexos = await cmpEnviarAnexos(recId, files); } catch(e){ aviso("app-aviso", e.message || String(e), "erro"); return; }
@@ -4295,7 +4310,7 @@ async function confirmarServico(){
   for(const it of itens){
     if(it.destino === "estoque"){ aviso("app-aviso", `"${it.descricao}": serviço não entra no estoque. Escolha a obra, a TAG ou o setor.`, "erro"); return; }
     if(cmpDestinoIncompleto(it)){ aviso("app-aviso", `Destino incompleto em "${it.descricao}".`, "erro"); return; }
-    if(Number(it.quantidade) > it.pendente * 1.1 && !confirm(`"${it.descricao}": recebendo ${num(it.quantidade)} e o pedido tem ${num(it.pendente)} pendente. Continuar?`)) return;
+    if(Number(it.quantidade) > it.pendente * 1.1 && !await uiConfirmar({ titulo: "Quantidade acima do pendente", texto: `"${it.descricao}": recebendo ${num(it.quantidade)} e o pedido tem ${num(it.pendente)} pendente. Continuar?`, confirmar: "Continuar" })) return;
   }
   if(await cmpTravaProdutoPendente(itens)) return;
   const recId = crypto.randomUUID();

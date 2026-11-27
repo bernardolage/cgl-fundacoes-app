@@ -993,7 +993,9 @@ async function ppjAcaoFolha(id, acao, botao){
         if(alvo) alvo.ordem = m.ordem;
       }
     } else if(acao === "excluir"){
-      if(!confirm(`Excluir a folha "${ppjRotuloFolha(f)}"? As duas imagens dela e a posição das estacas marcadas nela são apagadas. O arquivo original continua nos Documentos da obra.`)) return;
+      if(!(await uiConfirmar({ titulo: "Excluir folha", confirmar: "Excluir", perigo: true,
+        texto: `Excluir a folha "${ppjRotuloFolha(f)}"? As duas imagens dela e a posição das estacas marcadas nela são apagadas. O arquivo original continua nos Documentos da obra.` }))) return;
+      if(!(_ppj.folhas || []).some(x => x.id === id)) return;
 
       const r = await sb.from("obras_plantas").delete().eq("id", id).select("id");
       if(r.error || !r.data || !r.data.length){ ppjAvisoJanela(r.error ? "Não foi possível excluir: " + r.error.message : "Seu cargo não exclui folhas do projeto nesta obra."); return; }

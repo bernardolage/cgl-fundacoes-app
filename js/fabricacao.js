@@ -315,7 +315,7 @@ async function fabAcao(acao){
     if(typeof carregarProdutos === "function") carregarProdutos();
     await abrirOrdemFabricacao(o.id); fabAtivarTab("custos"); return;
   }
-  if(acao === "cancelada" && !confirm(`Cancelar a ordem ${o.numero}?${_fabItens.some(i => i.movimentacao_estoque_id) ? "\nComponentes já consumidos não voltam ao estoque sozinhos (use Estoque › Devolução, se for o caso)." : ""}`)) return;
+  if(acao === "cancelada" && !await uiConfirmar({ titulo: "Cancelar ordem", texto: `Cancelar a ordem ${o.numero}?${_fabItens.some(i => i.movimentacao_estoque_id) ? " Componentes já consumidos não voltam ao estoque sozinhos (use Estoque › Devolução, se for o caso)." : ""}`, confirmar: "Cancelar ordem", cancelar: "Voltar", perigo: true })) return;
   const upd = { status: acao };
   if(acao === "em_producao" && !o.data_inicio) upd.data_inicio = hojeISO();
   const { error } = await sb.from("ordens_fabricacao").update(upd).eq("id", o.id);

@@ -303,7 +303,7 @@ async function carregarMaquinasDaObra(obraId){
   });
   cont.querySelectorAll("[data-maq-acao]").forEach(b => b.addEventListener("click", async () => {
     const id = b.dataset.maqId, acao = b.dataset.maqAcao;
-    if(acao === "excluir" && !confirm("Excluir este vínculo manual? O histórico fica no log da obra.")) return;
+    if(acao === "excluir" && !(await uiConfirmar({ titulo: "Excluir vínculo", texto: "Excluir este vínculo manual? O histórico fica no log da obra.", confirmar: "Excluir", perigo: true }))) return;
     const req = acao === "encerrar"
       ? sb.from("obra_equipamentos").update({ ate: hojeISO() }).eq("id", id)
       : sb.from("obra_equipamentos").delete().eq("id", id);
@@ -1071,7 +1071,7 @@ async function baixarDocumento(path, nome){
 }
 
 async function excluirDocumento(id, path, obraId){
-  if(!confirm("Excluir este documento?")) return;
+  if(!(await uiConfirmar({ titulo: "Excluir documento", texto: "Excluir este documento?", confirmar: "Excluir", perigo: true }))) return;
 
 
 
@@ -1556,8 +1556,11 @@ async function obrPmLigar(obraId){
   await obrPmCarregar(obraId);
 }
 async function obrPmMudarPct(obraId, pc, p){
-  const v = prompt(`% de cada medição desta obra paga em permuta (vazio = padrão da permuta, ${p.percentual_padrao != null ? num(p.percentual_padrao) + "%" : "sem padrão"}). Vale para as medições novas.`, pc.percentual ?? "");
-  if(v === null) return;
+  const r = await uiPedirValores({ titulo: "% em permuta", confirmar: "Gravar",
+    texto: `% de cada medição desta obra paga em permuta (vazio = padrão da permuta, ${p.percentual_padrao != null ? num(p.percentual_padrao) + "%" : "sem padrão"}). Vale para as medições novas.`,
+    campos: [{ id: "pct", rotulo: "% em permuta", tipo: "number", valor: pc.percentual ?? "" }] });
+  if(r === null) return;
+  const v = String(r.pct ?? "");
   const pct = v.trim() === "" ? null : Number(v.replace(",", "."));
   if(pct != null && !(pct >= 0 && pct <= 100)){ aviso("app-aviso", "% entre 0 e 100.", "erro"); return; }
   const { error } = await sb.from("permuta_contratos").update({ percentual: pct }).eq("id", pc.id);
@@ -1565,7 +1568,8 @@ async function obrPmMudarPct(obraId, pc, p){
   await obrPmCarregar(obraId);
 }
 async function obrPmDesligar(obraId, pc, p){
-  if(!confirm(`Desligar esta obra da permuta ${p.numero}? As medições novas deixam de gerar crédito; as já lançadas mantêm o % gravado.`)) return;
+  if(!(await uiConfirmar({ titulo: "Desligar da permuta", confirmar: "Desligar", perigo: true,
+    texto: `Desligar esta obra da permuta ${p.numero}? As medições novas deixam de gerar crédito; as já lançadas mantêm o % gravado.` }))) return;
   const { error } = await sb.from("permuta_contratos").delete().eq("id", pc.id);
   if(error){ aviso("app-aviso", "Não foi possível desligar: " + error.message, "erro"); return; }
   await obrPmCarregar(obraId);

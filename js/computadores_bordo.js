@@ -288,7 +288,9 @@ async function cpbSalvar(){
 }
 async function cpbMudarStatus(st){
   if(!_cpbEditId || !cpbPodeOperar() || !CPB_STATUS[st] || st === _cpbAtual?.status) return;
-  if(st === "baixado" && !confirm("Baixar este computador de bordo? Ele sai da sincronização (o histórico fica).")) return;
+  if(st === "baixado" && !(await uiConfirmar({ titulo: "Baixar computador de bordo", confirmar: "Baixar", perigo: true,
+    texto: "Baixar este computador de bordo? Ele sai da sincronização (o histórico fica)." }))) return;
+  if(!_cpbEditId) return;
   const { error } = await sb.from("computadores_bordo").update({ status: st }).eq("id", _cpbEditId);
   if(error){ aviso("app-aviso", "Não foi possível mudar o status: " + error.message, "erro"); return; }
   _cpbRegistros = null;
@@ -300,9 +302,10 @@ async function cpbIniciarVinculo(){
   if(!eq || !inicio){ aviso("app-aviso", "Escolha a máquina e a data de início.", "erro"); return; }
   const { error } = await sb.from("computador_bordo_vinculos").insert({ computador_id: _cpbEditId, equipamento_id: eq, inicio, motivo: motivo || null });
   if(error){ aviso("app-aviso", "Não foi possível vincular: " + error.message, "erro"); return; }
-  if(_cpbAtual?.status === "reserva" && confirm("A CPU estava como reserva. Marcar como ativa?")) await sb.from("computadores_bordo").update({ status: "ativo" }).eq("id", _cpbEditId);
+  const cpuId = _cpbEditId;
+  if(_cpbAtual?.status === "reserva" && await uiConfirmar({ titulo: "Marcar CPU como ativa", texto: "A CPU estava como reserva. Marcar como ativa?", confirmar: "Marcar ativa", cancelar: "Manter reserva" })) await sb.from("computadores_bordo").update({ status: "ativo" }).eq("id", cpuId);
   aviso("app-aviso", "Vínculo iniciado.", "ok");
-  _cpbRegistros = null; await cpbAbrir(_cpbEditId); cpbAtivarTab("vinculos");
+  _cpbRegistros = null; await cpbAbrir(cpuId); cpbAtivarTab("vinculos");
 }
 async function cpbEncerrarVinculo(){
   if(!_cpbEditId || !cpbPodeOperar()) return;
@@ -368,8 +371,11 @@ async function cpbDescobrir(){
   _cpbRegistros = null; renderEquipamentos();
 }
 async function cpbIgnorarImei(pasta, imei){
-  const motivo = prompt(`Ignorar o IMEI ${imei} (pasta ${pasta}) na lista do balde. Motivo (ex.: CPU antiga baixada, não é da CGL):`);
-  if(motivo == null) return;
+  const v = await uiPedirValores({ titulo: "Ignorar IMEI", confirmar: "Ignorar",
+    texto: `Ignorar o IMEI ${imei} (pasta ${pasta}) na lista do balde.`,
+    campos: [{ id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, placeholder: "ex.: CPU antiga baixada, não é da CGL" }] });
+  if(v == null) return;
+  const motivo = v.motivo || "";
   const { error } = await sb.rpc("geodigitus_imei_ignorar", { p_pasta: pasta, p_imei: imei, p_motivo: motivo });
   if(error){ aviso("app-aviso", "Não foi possível ignorar: " + error.message, "erro"); return; }
   _cpbRegistros = null; renderEquipamentos();

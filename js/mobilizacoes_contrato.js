@@ -716,7 +716,7 @@ async function mobEquipeAtualizar(id, campos, sel){
 }
 async function mobEquipeRemover(id){
   const e = _mobEquipe.find(x => x.id === id);
-  if(!confirm(`Tirar ${e ? mobNomeEq(e) : "esta pessoa"} da equipe desta máquina?`)) return;
+  if(!await uiConfirmar({ titulo: "Tirar da equipe", texto: `Tirar ${e ? mobNomeEq(e) : "esta pessoa"} da equipe desta máquina?`, confirmar: "Tirar", perigo: true })) return;
   const { data, error } = await sb.from("mobilizacao_equipe").delete().eq("id", id).select("id");
   if(error || !data?.length){ aviso("app-aviso", "Não foi possível tirar da equipe: " + (error ? error.message : "seu cargo não muda a equipe da mobilização."), "erro"); return; }
   _mobEquipe = _mobEquipe.filter(x => x.id !== id);

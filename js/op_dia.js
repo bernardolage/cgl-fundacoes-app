@@ -56,7 +56,7 @@ OP.telas.maquina = async function(){
 async function abrirDia(equipamentoId, confirmada){
   if(!navigator.onLine){ avisar("Abrir o dia precisa de sinal.", "aviso"); return; }
   const turno = document.querySelector(`input[name="turno-${CSS.escape(equipamentoId)}"]:checked`)?.value || "diurno";
-  if(!confirmada && !confirm("O dia abre mesmo assim, e a engenharia recebe o aviso de que a obra está diferente. Continuar?")) return;
+  if(!confirmada && !await uiConfirmar({ titulo: "Obra diferente", texto: "O dia abre mesmo assim, e a engenharia recebe o aviso de que a obra está diferente. Continuar?", confirmar: "Abrir o dia" })) return;
   const { data, error } = await sb.rpc("rdo_campo_abrir_dia", {
     p_equipamento: equipamentoId, p_data: dataLocalISO(), p_turno: turno, p_obra_confirmada: !!confirmada, p_agora_aparelho: new Date().toISOString()
   });
@@ -261,7 +261,7 @@ async function enviarDia(){
   const fim = $("op-fim-exp")?.value || _envPerg?.fim || null;
   const obs = $("op-enviar-obs")?.value ?? _envPerg?.obs ?? null;
   _envPerg = null;
-  if(!confirm("Enviar o dia para a engenharia conferir? Depois disso você só altera se a engenharia devolver.")){ renderTelaAtual(); return; }
+  if(!await uiConfirmar({ titulo: "Enviar o dia", texto: "Enviar o dia para a engenharia conferir? Depois disso você só altera se a engenharia devolver.", confirmar: "Enviar" })){ renderTelaAtual(); return; }
   await enfileirar("rdo_campo_enviar", { p_rdo: OP.rdoId, p_fim_expediente: fim || null, p_observacoes: obs || null }, { rotulo: "Enviar o dia", linha_id: OP.rdoId });
   avisar("Envio na fila. Sobe depois dos outros registros.", "ok");
   agendarDrenagem(0);
@@ -392,7 +392,7 @@ async function pendenciaTentar(seq, manter){
 async function pendenciaDescartar(seq){
   const o = (await lerFila()).find(x => x.seq === seq);
   if(!o) return;
-  if(!confirm(`Descartar "${o.rotulo}"? O que foi lançado nesta operação não vai para o diário.`)) return;
+  if(!await uiConfirmar({ titulo: "Descartar registro", texto: `Descartar "${o.rotulo}"? O que foi lançado nesta operação não vai para o diário.`, confirmar: "Descartar", perigo: true })) return;
   await idbDel("outbox", seq);
   if(o.rpc === "rdo_campo_foto_registrar"){
     const up = (await lerFila()).find(x => x.rpc === "upload_foto" && x.args?.foto_id === o.args.p_id);

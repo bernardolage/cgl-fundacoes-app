@@ -197,11 +197,13 @@ function manRenderCustoHora(){
   el.innerHTML = `Hora da oficina: <strong>${_manCfg.custo_hora_oficina ? brl(_manCfg.custo_hora_oficina) + "/h" : "não definida"}</strong> · atenção a <strong>${num(_manCfg.manutencao_atencao_h)} h</strong> / <strong>${num(_manCfg.manutencao_atencao_km)} km</strong>${pode ? ` <a href="#" id="man-cfg-ed">alterar</a>` : ""}`;
   $("man-cfg-ed")?.addEventListener("click", async e => {
     e.preventDefault();
-    const h = prompt("Limite de ATENÇÃO para itens por horímetro (horas antes de vencer):", _manCfg.manutencao_atencao_h);
-    if(h === null) return;
-    const k = prompt("Limite de ATENÇÃO para itens por quilometragem (km antes de vencer):", _manCfg.manutencao_atencao_km);
-    if(k === null) return;
-    const nh = Number(h), nk = Number(k);
+    const v = await uiPedirValores({ titulo: "Limites de atenção", confirmar: "Salvar",
+      campos: [
+        { id: "h", rotulo: "Limite de ATENÇÃO para itens por horímetro (horas antes de vencer)", tipo: "number", valor: _manCfg.manutencao_atencao_h ?? "", obrigatorio: true },
+        { id: "k", rotulo: "Limite de ATENÇÃO para itens por quilometragem (km antes de vencer)", tipo: "number", valor: _manCfg.manutencao_atencao_km ?? "", obrigatorio: true }
+      ] });
+    if(!v) return;
+    const nh = Number(v.h), nk = Number(v.k);
     if(!(nh > 0) || !(nk > 0)){ aviso("app-aviso", "Informe números maiores que zero.", "erro"); return; }
     const { error } = await sb.from("empresa_config").update({ manutencao_atencao_h: nh, manutencao_atencao_km: nk }).eq("id", 1);
     if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
@@ -342,7 +344,8 @@ async function manGerarPreventiva(eqId, itemIds){
   const ids = (vencendo || []).filter(i => itemIds ? itemIds.includes(i.item_id) : ["critico", "atencao"].includes(i.semaforo)).map(i => i.item_id);
   const { data: kits } = ids.length ? await sb.from("manutencao_plano_materiais").select("plano_item_id").in("plano_item_id", ids).not("produto_id", "is", null) : { data: [] };
   const comKit = new Set((kits || []).map(k => k.plano_item_id)).size;
-  if(!confirm(`Gerar a OS preventiva e a separação da TAG ${e ? e.codigo : ""}?\n\n${ids.length} item(ns) ${itemIds ? "escolhidos" : "vencidos e em atenção"}: ${comKit} com kit de peças e ${ids.length - comKit} sem kit.`)) return;
+  if(!(await uiConfirmar({ titulo: "Gerar OS preventiva", confirmar: "Gerar",
+    texto: `Gerar a OS preventiva e a separação da TAG ${e ? e.codigo : ""}? ${ids.length} item(ns) ${itemIds ? "escolhidos" : "vencidos e em atenção"}: ${comKit} com kit de peças e ${ids.length - comKit} sem kit.` }))) return;
   const { data, error } = await sb.rpc("manutencao_gerar_preventiva", { p_equipamento_id: eqId, p_item_ids: itemIds || null });
   if(error){ aviso("app-aviso", "Não foi possível gerar a OS: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   const { data: seps } = await sb.from("separacoes").select("id,numero").eq("manutencao_id", data).neq("status", "cancelada").limit(1);
@@ -373,7 +376,8 @@ async function manGerarPreventivaPedido(eqId){
   const ids = (vencendo || []).filter(i => ["critico", "atencao"].includes(i.semaforo)).map(i => i.item_id);
   const { data: kits } = ids.length ? await sb.from("manutencao_plano_materiais").select("plano_item_id").in("plano_item_id", ids).not("produto_id", "is", null) : { data: [] };
   const comKit = new Set((kits || []).map(k => k.plano_item_id)).size;
-  if(!confirm(`Gerar a OS preventiva e o pedido de compra da TAG ${e ? e.codigo : ""}?\n\n${ids.length} item(ns) vencidos e em atenção: ${comKit} com kit de peças e ${ids.length - comKit} sem kit.\nO kit vai para o pedido em rascunho (sem separação no almoxarifado). Ao concluir a OS, informe o km ou o horímetro.`)) return;
+  if(!(await uiConfirmar({ titulo: "Gerar OS e pedido", confirmar: "Gerar",
+    texto: `Gerar a OS preventiva e o pedido de compra da TAG ${e ? e.codigo : ""}? ${ids.length} item(ns) vencidos e em atenção: ${comKit} com kit de peças e ${ids.length - comKit} sem kit. O kit vai para o pedido em rascunho (sem separação no almoxarifado). Ao concluir a OS, informe o km ou o horímetro.` }))) return;
   const { data: osId, error } = await sb.rpc("manutencao_gerar_preventiva", { p_equipamento_id: eqId, p_item_ids: null, p_sem_kit: true });
   if(error){ aviso("app-aviso", "Não foi possível gerar a OS: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   const { data: pedId, error: eP } = await sb.rpc("manutencao_gerar_pedido", { p_manutencao_id: osId });
@@ -385,7 +389,8 @@ async function manGerarPreventivaPedido(eqId){
 async function manComprar(){
   const m = _manAtual; if(!m?.id || !manPodeComprar()) return;
   const vivos = manPedVivos();
-  if(vivos.length && !confirm(`A ${m.numero} já tem ${vivos.length} pedido(s) ligado(s) (${vivos.map(p => p.numero).join(", ")}). Gerar mais um? Ele só traz o kit que ainda não está em pedido.`)) return;
+  if(vivos.length && !(await uiConfirmar({ titulo: "Gerar outro pedido", confirmar: "Gerar",
+    texto: `A ${m.numero} já tem ${vivos.length} pedido(s) ligado(s) (${vivos.map(p => p.numero).join(", ")}). Gerar mais um? Ele só traz o kit que ainda não está em pedido.` }))) return;
   const { data, error } = await sb.rpc("manutencao_gerar_pedido", { p_manutencao_id: m.id });
   if(error){ aviso("app-aviso", "Pedido não gerado: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   await manAbrirPedido(data);
@@ -463,7 +468,7 @@ async function renderManPlano(){
   $("btn-man-item-novo")?.addEventListener("click", () => manItemAbrir(null));
   cont.querySelectorAll(".man-item-ed").forEach(b => b.addEventListener("click", () => manItemAbrir(_manPlanoItens.find(i => i.item_id === b.dataset.item))));
   cont.querySelectorAll(".man-item-rem").forEach(b => b.addEventListener("click", async () => {
-    if(!confirm("Remover este item do plano? O kit de peças dele vai junto.")) return;
+    if(!(await uiConfirmar({ titulo: "Remover item do plano", texto: "Remover este item do plano? O kit de peças dele vai junto.", confirmar: "Remover", perigo: true }))) return;
     const { error } = await sb.from("manutencao_plano_itens").delete().eq("id", b.dataset.item);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
     await manFetchPrev(); renderManPlano();
@@ -537,8 +542,9 @@ async function manItemSalvar(){
     ultima_execucao_h: u === "h" ? ult : null, ultima_execucao_km: u === "km" ? ult : null, ultima_execucao_data: $("man-i-ult-data").value || null, observacao: $("man-i-obs").value.trim() || null };
   if(!reg.componente){ aviso("app-aviso", "Informe o componente.", "erro"); return; }
   if(!(per > 0)){ aviso("app-aviso", "Informe a periodicidade.", "erro"); return; }
-  if(u === "dias" && !reg.ultima_execucao_data && !confirm("Item por dias sem a data da última execução fica SEM BASE no semáforo. Salvar assim?")) return;
-  if(u !== "dias" && ult == null && !confirm(`Sem a última execução (${u}) o item fica SEM BASE no semáforo. Salvar assim?`)) return;
+  if(u === "dias" && !reg.ultima_execucao_data && !(await uiConfirmar({ titulo: "Salvar sem base", texto: "Item por dias sem a data da última execução fica SEM BASE no semáforo. Salvar assim?", confirmar: "Salvar" }))) return;
+  if(u !== "dias" && ult == null && !(await uiConfirmar({ titulo: "Salvar sem base", texto: `Sem a última execução (${u}) o item fica SEM BASE no semáforo. Salvar assim?`, confirmar: "Salvar" }))) return;
+  if(!_manPlano) return;
   let r;
   if(_manItemEdit) r = await sb.from("manutencao_plano_itens").update(reg).eq("id", _manItemEdit.item_id).select("id").single();
   else r = await sb.from("manutencao_plano_itens").insert(reg).select("id").single();
@@ -719,9 +725,9 @@ function manCheckRender(){
     if(error){ aviso("app-aviso", "Não foi possível gerar a OS: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
     aviso("app-aviso", "OS corretiva com os itens não ok. Abra a OS para executar.", "ok");
     await manCheckAbrir(c.id);
-    if(confirm("Abrir a OS agora?")){ manCheckFechar(); if(irParaSecao("manutencao")) abrirManutencao(data); }
+    if(await uiConfirmar({ titulo: "Abrir OS", texto: "Abrir a OS agora?", confirmar: "Abrir", cancelar: "Agora não" })){ manCheckFechar(); if(irParaSecao("manutencao")) abrirManutencao(data); }
   }));
-  $("btn-man-ck-reprovar")?.addEventListener("click", async () => { if(!confirm("Reprovar o equipamento neste checklist? Só avisa na Sala de Comando, não bloqueia a mobilização.")) return; await upd({ resultado: "reprovado" }); manCheckAbrir(c.id); });
+  $("btn-man-ck-reprovar")?.addEventListener("click", async () => { if(!(await uiConfirmar({ titulo: "Reprovar equipamento", texto: "Reprovar o equipamento neste checklist? Só avisa na Sala de Comando, não bloqueia a mobilização.", confirmar: "Reprovar", perigo: true }))) return; await upd({ resultado: "reprovado" }); manCheckAbrir(c.id); });
   $("btn-man-ck-reabrir")?.addEventListener("click", async () => {
     const res = nok.length ? "com_pendencias" : semResp ? null : "aprovado";
     await upd({ resultado: res }); manCheckAbrir(c.id);
@@ -922,7 +928,9 @@ async function salvarManutencao(){
   if(!reg.equipamento_id){ aviso("app-aviso", "Escolha a TAG.", "erro"); manAtivarTab("geral"); return null; }
   if(!reg.descricao){ aviso("app-aviso", "Descreva o serviço da OS.", "erro"); manAtivarTab("geral"); return null; }
   const e = manEq(reg.equipamento_id);
-  if(reg.horimetro_km != null && e && e.horimetro != null && reg.horimetro_km < e.horimetro && !confirm(`O horímetro informado (${num(reg.horimetro_km)} h) é menor que o atual da máquina (${num(e.horimetro)} h). O horímetro da máquina não volta para trás ao concluir. Salvar assim mesmo?`)) return null;
+  if(reg.horimetro_km != null && e && e.horimetro != null && reg.horimetro_km < e.horimetro && !(await uiConfirmar({ titulo: "Horímetro menor que o atual", confirmar: "Salvar assim mesmo",
+    texto: `O horímetro informado (${num(reg.horimetro_km)} h) é menor que o atual da máquina (${num(e.horimetro)} h). O horímetro da máquina não volta para trás ao concluir. Salvar assim mesmo?` }))) return null;
+  if(!_manAtual) return null;
   let id = _manAtual.id, msg = "OS salva.", tipoMsg = "ok";
   if(id){ const { error } = await sb.from("manutencoes").update(reg).eq("id", id); if(error){ aviso("app-aviso", "Erro ao salvar: " + error.message, "erro"); return null; } }
   else {
@@ -949,18 +957,21 @@ async function manAcao(acao){
     if(typeof carregarProdutos === "function") carregarProdutos();
     return abrirManutencao(m.id);
   }
-  if(acao === "cancelada" && !confirm("Cancelar esta OS?")) return;
+  if(acao === "cancelada" && !(await uiConfirmar({ titulo: "Cancelar OS", texto: "Cancelar esta OS?", confirmar: "Cancelar OS", cancelar: "Voltar", perigo: true }))) return;
   const upd = { status: acao };
   if(acao === "em_andamento" && !m.data_inicio) upd.data_inicio = hojeISO();
   if(acao === "em_andamento" && m.status === "concluida"){ upd.data_conclusao = null; }
   if(acao === "concluida"){
     upd.data_conclusao = m.data_conclusao || hojeISO();
     const pendAt = _manAtivs.filter(a => a.situacao === "pendente").length;
-    if(pendAt && !confirm(`${pendAt} atividade(s) ainda pendente(s). Concluir assim mesmo? (os itens do plano só são marcados pelas atividades executadas)`)) return;
+    if(pendAt && !(await uiConfirmar({ titulo: "Concluir OS", confirmar: "Concluir assim mesmo",
+      texto: `${pendAt} atividade(s) ainda pendente(s). Concluir assim mesmo? (os itens do plano só são marcados pelas atividades executadas)` }))) return;
     const pend = _manMats.filter(manMatPendente).length;
-    if(pend && !confirm(`${pend} peça(s) consumida(s) ainda sem baixa no estoque. Concluir assim mesmo? (a baixa é do almoxarifado: a OS fica na fila dele até a baixa)`)) return;
+    if(pend && !(await uiConfirmar({ titulo: "Concluir OS", confirmar: "Concluir assim mesmo",
+      texto: `${pend} peça(s) consumida(s) ainda sem baixa no estoque. Concluir assim mesmo? (a baixa é do almoxarifado: a OS fica na fila dele até a baixa)` }))) return;
     const hor = $("man-hor").value === "" ? null : Number($("man-hor").value);
-    if(hor == null && !confirm("Sem horímetro na OS a máquina não ganha leitura e o plano usa o horímetro atual. Concluir assim mesmo?")) return;
+    if(hor == null && !(await uiConfirmar({ titulo: "Concluir OS", confirmar: "Concluir assim mesmo",
+      texto: "Sem horímetro na OS a máquina não ganha leitura e o plano usa o horímetro atual. Concluir assim mesmo?" }))) return;
     if(hor != null) upd.horimetro_km = hor;
     if($("man-km").value !== "") upd.km = Number($("man-km").value);
   }
@@ -1247,7 +1258,7 @@ async function manRenderAnexos(){
         <td class="meta">${esc(a.legenda || "")}</td><td class="meta">${a.created_at ? dataBR(String(a.created_at).slice(0, 10)) : ""}</td><td class="num meta">${a.tamanho_bytes ? num(Math.round(a.tamanho_bytes / 1024)) + " KB" : ""}</td>
         <td class="col-acao">${pode ? `<button type="button" class="btn-sec btn-sm txt-perigo man-anexo-rem" data-id="${esc(a.id)}" data-path="${esc(a.storage_path)}" title="remover">×</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
   box.querySelectorAll(".man-anexo-rem").forEach(b => b.addEventListener("click", async () => {
-    if(!confirm("Remover este anexo?")) return;
+    if(!(await uiConfirmar({ titulo: "Remover anexo", texto: "Remover este anexo?", confirmar: "Remover", perigo: true }))) return;
     const { error } = await sb.from("manutencao_anexos").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Não foi possível remover: " + error.message, "erro"); return; }
     await sb.storage.from(MAN_ANEXO_BUCKET).remove([b.dataset.path]);

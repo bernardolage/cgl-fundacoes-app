@@ -980,7 +980,7 @@ async function excluirAvaliacaoPat(){
   const ano = Number($("pat-aval-ano").value);
   const av = b ? patAvaliacoesDo(b).find(a => a.ano_referencia === ano) : null;
   if(!av) return;
-  if(!confirm(`Excluir a avaliação de ${ano} de ${b.tag || b.descricao}? A exclusão fica registrada no log.`)) return;
+  if(!await uiConfirmar({ titulo: "Excluir avaliação", texto: `Excluir a avaliação de ${ano} de ${b.tag || b.descricao}? A exclusão fica registrada no log.`, confirmar: "Excluir", perigo: true })) return;
   const r = await sb.from("patrimonio_avaliacoes").delete().eq("id", av.id).select("id");
   if(r.error || !r.data || !r.data.length){ aviso("app-aviso", "Não foi possível excluir: " + (r.error ? r.error.message : "sem permissão"), "erro"); return; }
   aviso("app-aviso", `Avaliação de ${ano} excluída.`, "ok");
@@ -993,7 +993,7 @@ async function retirarBemPat(){
   if(!patPodeEditar()) return;
   const b = patBemPorChave(patEditKey);
   if(!b || b.bem_tipo !== "bem") return;
-  if(!confirm(`Retirar "${b.descricao}" do patrimônio? Ele sai da avaliação e do total; o histórico fica guardado.`)) return;
+  if(!await uiConfirmar({ titulo: "Retirar do patrimônio", texto: `Retirar "${b.descricao}" do patrimônio? Ele sai da avaliação e do total; o histórico fica guardado.`, confirmar: "Retirar", perigo: true })) return;
   const r = await sb.from("patrimonio_bens").update({ ativo: false }).eq("id", b.bem_id).select("id");
   if(r.error || !r.data || !r.data.length){ aviso("app-aviso", "Não foi possível retirar: " + (r.error ? r.error.message : "sem permissão"), "erro"); return; }
   aviso("app-aviso", `"${b.descricao}" retirado do patrimônio.`, "ok");
@@ -1004,7 +1004,7 @@ async function retirarBemPat(){
 
 async function patDefinirTitularidade(equipId, tit, motivo, rotulo){
   if(!patPodeEditar()) return;
-  if(tit !== "propria" && !confirm(`Marcar ${rotulo || "o equipamento"} como ${PAT_TIT_EQUIP[tit].toLowerCase()}? Ele sai da avaliação, do total e da lista "sem valor" (a operação continua normal).`)) return;
+  if(tit !== "propria" && !await uiConfirmar({ titulo: "Mudar titularidade", texto: `Marcar ${rotulo || "o equipamento"} como ${PAT_TIT_EQUIP[tit].toLowerCase()}? Ele sai da avaliação, do total e da lista "sem valor" (a operação continua normal).`, confirmar: "Confirmar" })) return;
   const { error } = await sb.rpc("patrimonio_definir_titularidade", { p_equipamento_id: equipId, p_titularidade: tit, p_motivo: motivo || null });
   if(error){ aviso("app-aviso", "Não foi possível mudar a titularidade: " + error.message, "erro"); return; }
   aviso("app-aviso", `Titularidade de ${rotulo || "equipamento"}: ${PAT_TIT_EQUIP[tit]}.`, "ok");

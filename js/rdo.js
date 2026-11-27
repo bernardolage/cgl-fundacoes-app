@@ -1026,7 +1026,9 @@ async function rdoParExcluir(paradaId){
   const p = (_rdoCampo.paradas || []).find(x => x.id === paradaId), id = rdoEditId;
   if(!p || p.origem !== "manual" || !rdoParPodeEditar()) return;
   const hora = (t) => t ? String(t).slice(0, 5) : "—";
-  if(!confirm(`Excluir a parada de ${hora(p.periodo_inicio)} a ${hora(p.periodo_fim)} (${RDO_MOTIVO_PARADA[p.motivo] || "sem motivo"})? Não dá para desfazer.`)) return;
+  if(!(await uiConfirmar({ titulo: "Excluir parada", confirmar: "Excluir", perigo: true,
+    texto: `Excluir a parada de ${hora(p.periodo_inicio)} a ${hora(p.periodo_fim)} (${RDO_MOTIVO_PARADA[p.motivo] || "sem motivo"})? Não dá para desfazer.` }))) return;
+  if(rdoEditId !== id) return;
   const { data, error } = await sb.from("ocorrencias").delete().eq("id", paradaId).eq("origem", "manual").select("id");
   if(error || !data || !data.length){
     aviso("app-aviso", "Não foi possível excluir a parada: " + (error ? error.message : "o banco não aceitou a exclusão") + ".", "erro");
@@ -1077,8 +1079,12 @@ async function rdoAbrirPresetCampo(a){
 }
 async function rdoDevolverCampo(){
   if(!rdoEditId || !rdoPodeOperarFront()) return;
-  const motivo = prompt("Devolver este diário ao campo.\nO operador vê o motivo no app, corrige e envia de novo.\n\nMotivo (obrigatório):", "");
-  if(motivo === null) return;
+  const idRdo = rdoEditId;
+  const v = await uiPedirValores({ titulo: "Devolver ao campo", confirmar: "Devolver",
+    texto: "Devolver este diário ao campo. O operador vê o motivo no app, corrige e envia de novo.",
+    campos: [{ id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, obrigatorio: true, valor: "" }] });
+  if(v === null || rdoEditId !== idRdo) return;
+  const motivo = v.motivo || "";
   if(motivo.trim().length < 5){ aviso("app-aviso", "Escreva o motivo da devolução (pelo menos 5 letras).", "erro"); return; }
   const { error } = await sb.rpc("rdo_devolver", { p_rdo: rdoEditId, p_motivo: motivo.trim() });
   if(error){ aviso("app-aviso", "Não foi possível devolver: " + error.message, "erro"); return; }
@@ -1694,7 +1700,8 @@ async function calcularConcretoExecucoes(){
     aviso("app-aviso","A obra não tem tipo de concretagem cadastrado (Obra › Parâmetros). Calculando como usinado com os padrões (traço 750, perda 1,20).","erro");
   }
   const preenchidas = _rdoExecucoes.filter(e => e.volume_concreto_m3 != null).length;
-  const sobrescrever = preenchidas ? confirm(`${preenchidas} execução(ões) já têm volume. Sobrescrever também essas? (Cancelar = só preencher as vazias)`) : false;
+  const sobrescrever = preenchidas ? await uiConfirmar({ titulo: "Calcular concreto", confirmar: "Sobrescrever também", cancelar: "Só as vazias",
+    texto: `${preenchidas} execução(ões) já têm volume. Sobrescrever também essas? (Só as vazias = preenche só as que estão sem volume)` }) : false;
   let n = 0, semDados = 0;
   _rdoExecucoes.forEach(e => {
     if(e.volume_concreto_m3 != null && !sobrescrever) return;
@@ -2166,11 +2173,11 @@ async function importarEquipeCadastrada(){
     return;
   }
 
-  const lista = _rdoEquipes.map((e,i) => `${i+1}. ${e.nome}`).join("\n");
-  const escolha = prompt(`Digite o número da equipe a importar:\n\n${lista}`);
-  const idx = parseInt(escolha, 10) - 1;
-  if(isNaN(idx) || idx < 0 || idx >= _rdoEquipes.length) return;
-  const eq = _rdoEquipes[idx];
+  const escolha = await uiPedirValores({ titulo: "Importar equipe", confirmar: "Importar",
+    campos: [{ id: "equipe", rotulo: "Equipe a importar", tipo: "select", obrigatorio: true, opcoes: _rdoEquipes.map(e => [e.id, e.nome]) }] });
+  if(!escolha) return;
+  const eq = _rdoEquipes.find(e => String(e.id) === String(escolha.equipe));
+  if(!eq) return;
   const membros = (eq.equipe_membros || []).filter(m => m.ativo);
 
   const novos = [];
@@ -2216,11 +2223,14 @@ async function rdoGarantirDiametros(obraId, tipoServico, execs){
   const diams = await rdoDiametrosServico(obraId, tipoServico);
   if(diams.length === 1){ falta().forEach(e => { e.diametro_mm = diams[0]; }); return true; }
   const lista = falta().map(e => e.estaca_numero);
-  const resp = prompt(`${lista.length} estaca(s) sem diâmetro: ${lista.slice(0, 12).join(", ")}${lista.length > 12 ? "…" : ""}.\n` +
-    `O Ø precifica a estaca na medição. Informe o Ø em mm para elas` +
-    (diams.length ? ` (serviço da obra: ${diams.join(", ")})` : "") +
-    `.\nDeixe em branco para gravar sem Ø (a obra fica em "Para regularizar"); Cancelar não grava.`, "");
-  if(resp === null) return false;
+  const r = await uiPedirValores({ titulo: "Estacas sem diâmetro", confirmar: "Gravar",
+    texto: `${lista.length} estaca(s) sem diâmetro: ${lista.slice(0, 12).join(", ")}${lista.length > 12 ? "…" : ""}. ` +
+      `O Ø precifica a estaca na medição. Informe o Ø em mm para elas` +
+      (diams.length ? ` (serviço da obra: ${diams.join(", ")})` : "") +
+      `. Deixe em branco para gravar sem Ø (a obra fica em "Para regularizar"); Cancelar não grava.`,
+    campos: [{ id: "diametro", rotulo: "Ø (mm)", tipo: "number", valor: "" }] });
+  if(r === null) return false;
+  const resp = r.diametro ?? "";
   const d = Number(String(resp).replace(",", "."));
   if(String(resp).trim() !== ""){
     if(!(d > 0)){ aviso("app-aviso", "Diâmetro inválido: informe em mm (ex.: 400).", "erro"); return false; }
@@ -2284,7 +2294,8 @@ async function rdoSalvarAgora(novoStatus){
 
   if(rdoEditId && _rdoMaqOriginal && reg.equipamento_id && _rdoMaqOriginal !== reg.equipamento_id){
     const n = _rdoExecucoes.filter(e => e.equipamento_id === _rdoMaqOriginal).length;
-    if(n && confirm(`Trocar a máquina do diário também nas ${n} execução(ões) que estavam com a máquina anterior?`))
+    if(n && await uiConfirmar({ titulo: "Trocar máquina", confirmar: "Trocar",
+      texto: `Trocar a máquina do diário também nas ${n} execução(ões) que estavam com a máquina anterior?` }))
       _rdoExecucoes.forEach(e => { if(e.equipamento_id === _rdoMaqOriginal) e.equipamento_id = reg.equipamento_id; });
   }
 
@@ -2311,7 +2322,10 @@ async function rdoSalvarAgora(novoStatus){
     if(cf.mudou.length || dupEq.length){
       const oque = cf.mudou.length ? `mudou depois que você abriu a ficha (${cf.mudou.join(", ")})` : `ganhou ${dupEq.join(", ")} na equipe, que também está na sua tela`;
       aviso("app-aviso", `Nada foi gravado: este diário ${oque}, pelo app do campo, pela sync ou por outra pessoa. Reabra a ficha para ver o que está gravado e refaça a alteração.`, "erro");
-      if(confirm("Este diário mudou depois que você abriu a ficha. Reabrir agora?\nO que você alterou nesta tela e ainda não foi gravado se perde.")) await abrirRDO(rdoEditId);
+      const idRdo = rdoEditId;
+      if(await uiConfirmar({ titulo: "Reabrir diário", confirmar: "Reabrir", perigo: true,
+        texto: "Este diário mudou depois que você abriu a ficha. Reabrir agora? O que você alterou nesta tela e ainda não foi gravado se perde." })
+        && rdoEditId === idRdo) await abrirRDO(rdoEditId);
       return;
     }
 
@@ -2629,7 +2643,10 @@ async function rdoDividirPorMaquina(){
   const maqs = [...new Set(_rdoExecucoes.map(e => e.equipamento_id).filter(Boolean))]
     .map(id => (_rdoEquipsCache.find(q => q.id === id) || {}).codigo || "?");
   if(maqs.length < 2){ aviso("app-aviso", "Este diário tem execuções de uma máquina só.", "erro"); return; }
-  if(!confirm(`Dividir este diário em um por máquina (${maqs.join(", ")})?\nAs execuções de cada máquina vão para o diário dela; equipe, abastecimento, observações e atividades ficam no diário da máquina principal. Alterações não salvas desta tela são perdidas.`)) return;
+  const idRdo = rdoEditId;
+  if(!(await uiConfirmar({ titulo: "Dividir diário", confirmar: "Dividir",
+    texto: `Dividir este diário em um por máquina (${maqs.join(", ")})? As execuções de cada máquina vão para o diário dela; equipe, abastecimento, observações e atividades ficam no diário da máquina principal. Alterações não salvas desta tela são perdidas.` }))) return;
+  if(rdoEditId !== idRdo) return;
   const { data, error } = await sb.rpc("rdo_dividir_por_maquina", { p_rdo: rdoEditId });
   if(error){ aviso("app-aviso", "Não foi possível dividir: " + error.message, "erro"); return; }
   aviso("app-aviso", `${Number(data) || 0} diário(s) criado(s). Abra cada um pela lista para conferir.`, "ok");
@@ -2639,7 +2656,9 @@ async function rdoDividirPorMaquina(){
 
 async function excluirRDO(){
   if(!rdoEditId) return;
-  if(!confirm("Excluir este RDO? Esta ação não pode ser desfeita.")) return;
+  const idRdo = rdoEditId;
+  if(!(await uiConfirmar({ titulo: "Excluir RDO", texto: "Excluir este RDO? Esta ação não pode ser desfeita.", confirmar: "Excluir", perigo: true }))) return;
+  if(rdoEditId !== idRdo) return;
   const { error } = await sb.from("rdo").delete().eq("id", rdoEditId);
   if(error){ aviso("app-aviso","Erro: "+error.message,"erro"); return; }
   aviso("app-aviso","RDO excluído.","ok");
@@ -4469,7 +4488,8 @@ async function confirmarImportCSV(){
 
   const semMatch = _csvMaquinasSemMatch.filter(m => !_csvMapaManual[m]);
   if(semMatch.length){
-    if(!confirm(`Atenção: ${semMatch.length} máquina(s) sem equipamento vinculado (${semMatch.join(", ")}).\nElas serão importadas só com o código texto. Continuar mesmo assim?`)) return;
+    if(!(await uiConfirmar({ titulo: "Máquinas sem equipamento", confirmar: "Continuar",
+      texto: `Atenção: ${semMatch.length} máquina(s) sem equipamento vinculado (${semMatch.join(", ")}). Elas serão importadas só com o código texto. Continuar mesmo assim?` }))) return;
   }
 
 
@@ -4491,7 +4511,8 @@ async function confirmarImportCSV(){
       return;
     }
   }
-  if(!confirm(`Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}?\n${gruposPrev.length} diário(s), um por dia e máquina${semMaqPrev ? ` — ${semMaqPrev} sem máquina (vão para "Para regularizar")` : ""}.${noturnosNoDiurno ? `\n⚠️ ${noturnosNoDiurno} diário(s) noturno(s) da planilha entram no diurno do mesmo dia: a obra trabalha em um turno (Obra › Parâmetros).` : ""}`)) return;
+  if(!(await uiConfirmar({ titulo: "Importar diários", confirmar: "Importar",
+    texto: `Importar ${Object.values(_csvParsed).reduce((s,v) => s+v.length, 0)} estacas em ${diasImportacao().length} dia(s) como ${TIPO_SERVICO[tipo]?.label || tipo}? ${gruposPrev.length} diário(s), um por dia e máquina${semMaqPrev ? ` — ${semMaqPrev} sem máquina (vão para "Para regularizar")` : ""}.${noturnosNoDiurno ? ` ⚠️ ${noturnosNoDiurno} diário(s) noturno(s) da planilha entram no diurno do mesmo dia: a obra trabalha em um turno (Obra › Parâmetros).` : ""}` }))) return;
 
   const btn = $("btn-csv-confirmar");
   btn.disabled = true;

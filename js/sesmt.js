@@ -362,8 +362,13 @@ function renderSstGhe(){
   cont.querySelectorAll(".sst-ghe-del").forEach(b => b.addEventListener("click", () => sstGheDelFuncao(b.dataset.id)));
 }
 async function sstNovoGhe(){
-  const codigo = (prompt("Código do GHE (ex.: GHE-05):") || "").trim(); if(!codigo) return;
-  const nome = (prompt("Nome do GHE (ex.: Operação I):") || "").trim(); if(!nome) return;
+  const v = await uiPedirValores({ titulo: "Novo GHE", confirmar: "Criar GHE", campos: [
+    { id: "codigo", rotulo: "Código do GHE", placeholder: "ex.: GHE-05", obrigatorio: true },
+    { id: "nome", rotulo: "Nome do GHE", placeholder: "ex.: Operação I", obrigatorio: true }
+  ] });
+  if(!v) return;
+  const codigo = (v.codigo || "").trim(); if(!codigo) return;
+  const nome = (v.nome || "").trim(); if(!nome) return;
   const { error } = await sb.from("sst_ghe").insert({ codigo, nome });
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não grava GHE."), "erro"); return; }
   await carregarSesmt(true); aviso("app-aviso", "GHE criado.", "ok");
@@ -676,7 +681,9 @@ async function salvarSstRequisito(){
 async function excluirSstRequisito(){
   if(!sstReqEditId) return;
   if(_sstMatriz.some(m => m.requisito_id === sstReqEditId)){ aviso("app-aviso", "Tire o requisito da matriz antes de excluir; ou só desative.", "erro"); return; }
-  if(!confirm("Excluir este requisito? Se já houver documento ligado a ele, o banco recusa (use Inativo).")) return;
+  if(!(await uiConfirmar({ titulo: "Excluir requisito", confirmar: "Excluir", perigo: true,
+    texto: "Excluir este requisito? Se já houver documento ligado a ele, o banco recusa (use Inativo)." }))) return;
+  if(!sstReqEditId) return;
   const { error } = await sb.from("sst_requisitos").delete().eq("id", sstReqEditId);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não grava o catálogo."), "erro"); return; }
   aviso("app-aviso", "Requisito excluído.", "ok");
@@ -773,7 +780,8 @@ async function salvarSstPrograma(){
   if(typeof obraEditId !== "undefined" && obraEditId === reg.obra_id && $("obr-sst-programas")) sstObraProgramasRender(obraEditId);
 }
 async function excluirSstPrograma(){
-  if(!sstProgEditId || !confirm("Excluir este programa legal?")) return;
+  if(!sstProgEditId || !(await uiConfirmar({ titulo: "Excluir programa legal", texto: "Excluir este programa legal?", confirmar: "Excluir", perigo: true }))) return;
+  if(!sstProgEditId) return;
   const p = _sstProgramas.find(x => x.id === sstProgEditId);
   const { error } = await sb.from("sst_programas").delete().eq("id", sstProgEditId);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não grava programas legais."), "erro"); return; }
@@ -938,7 +946,7 @@ async function sstFichaFuncSalvarDoc(fid){
   if(typeof carregarDocsFuncionario === "function") carregarDocsFuncionario();
 }
 async function sstFichaFuncExcluirDoc(d){
-  if(!d || !confirm("Excluir este documento (e o arquivo)?")) return;
+  if(!d || !(await uiConfirmar({ titulo: "Excluir documento", texto: "Excluir este documento (e o arquivo)?", confirmar: "Excluir", perigo: true }))) return;
   const { error } = await sb.from("funcionario_documentos").delete().eq("id", d.id);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não exclui documento de segurança."), "erro"); return; }
   if(d.storage_path) await sb.storage.from(d.sensivel ? "sst-saude" : "sst-documentos").remove([d.storage_path]);

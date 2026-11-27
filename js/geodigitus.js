@@ -355,10 +355,12 @@ async function geoDefinirTipoGrupo(gr){
   if(e1 || !m){ aviso("app-aviso", "Não foi possível ler os serviços da máquina.", "erro"); return; }
   const ops = [...new Set([...(m.tipos_servico || []), m.tipo_servico_padrao].filter(Boolean))];
   const rot = (t) => (typeof TIPO_SERVICO === "object" && TIPO_SERVICO[t]?.label) || t;
-  const r = prompt(`Diário de ${ids.length} chegada(s) da ${gr.maquina || "máquina"}:\n\n${ops.map((t, i) => `${i + 1}. ${rot(t)}`).join("\n")}\n\nDigite o número:`);
+  const r = await uiPedirValores({ titulo: "Tipo de serviço do diário", confirmar: "Definir",
+    texto: `Diário de ${ids.length} chegada(s) da ${gr.maquina || "máquina"}.`,
+    campos: [{ id: "tipo", rotulo: "Tipo de serviço", tipo: "select", obrigatorio: true, opcoes: ops.map(t => [t, rot(t)]) }] });
   if(r === null) return;
-  const tipo = ops[parseInt(r, 10) - 1];
-  if(!tipo){ aviso("app-aviso", "Número fora da lista.", "erro"); return; }
+  const tipo = ops.includes(r.tipo) ? r.tipo : null;
+  if(!tipo){ aviso("app-aviso", "Escolha um tipo da lista.", "erro"); return; }
   const { data, error } = await sb.rpc("geodigitus_definir_tipo_servico", { p_geos: ids, p_tipo: tipo });
   if(error){ aviso("app-aviso", "Tipo não gravado: " + String(error.message || "").replace(/^(?:ERROR|ERRO|[0-9A-Z]{5})\s*:\s*/, ""), "erro"); return; }
   aviso("app-aviso", `${Number(data?.definidas || 0)} chegada(s) com diário de ${rot(tipo)}.`, "ok");
@@ -623,8 +625,11 @@ async function geoAcao(acao, id){
     aviso("app-aviso", `Situação: ${GEO_SITUACAO_LBL[data?.situacao] || data?.situacao || "—"}${data?.rdo_criado ? " (diário criado em rascunho)" : ""}${data?.turno === "noturno" ? " · diário noturno" : ""}.`, GEO_PENDENTES.includes(data?.situacao) || data?.situacao === "pendente_turno" ? "aviso" : "ok");
   }
   if(acao === "ignorar"){
-    const motivo = prompt(`Ignorar a estaca "${g.numero_txt || "?"}" do Geodigitus (ela não entra em diário). Motivo (ex.: estaca de teste, furo abortado):`);
-    if(motivo == null) return;
+    const v = await uiPedirValores({ titulo: "Ignorar estaca", confirmar: "Ignorar",
+      texto: `Ignorar a estaca "${g.numero_txt || "?"}" do Geodigitus (ela não entra em diário).`,
+      campos: [{ id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, placeholder: "Ex.: estaca de teste, furo abortado" }] });
+    if(v == null) return;
+    const motivo = v.motivo;
     const { error } = await sb.rpc("geodigitus_ignorar", { p_geo: id, p_motivo: motivo });
     if(error){ aviso("app-aviso", "Não foi possível ignorar: " + error.message, "erro"); return; }
     aviso("app-aviso", "Estaca ignorada.", "ok");
@@ -805,7 +810,8 @@ async function geoEmpresaSalvar(){
   if(reg.geodigitus_dias_retro == null || reg.geodigitus_max_req_rodada == null || reg.geodigitus_sobreconsumo_alerta_pct == null || reg.campo_turno_noturno_min_h == null){
     aviso("app-aviso", "Valores inválidos: dias retro de 0 a 30, teto de 5 a 2000 requisições, alerta de 0 a 500%, noturno acima de 0 a 12 horas.", "erro"); return;
   }
-  if(reg.geodigitus_sync_ativo && !confirm("Ligar a sincronização automática? Confirme antes: chaves e segredo do sync nos secrets da function e no vault, CPUs vinculadas às máquinas e o tipo de serviço das máquinas conferido. A partir daí o cron cria diários em rascunho.")) return;
+  if(reg.geodigitus_sync_ativo && !(await uiConfirmar({ titulo: "Ligar sincronização", confirmar: "Ligar",
+    texto: "Ligar a sincronização automática? Confirme antes: chaves e segredo do sync nos secrets da function e no vault, CPUs vinculadas às máquinas e o tipo de serviço das máquinas conferido. A partir daí o cron cria diários em rascunho." }))) return;
   const { error } = await sb.from("empresa_config").update(reg).eq("id", 1);
   if(error){ aviso("app-aviso", "Não foi possível salvar: " + error.message, "erro"); return; }
   aviso("app-aviso", "Parâmetros do Geodigitus salvos.", "ok");

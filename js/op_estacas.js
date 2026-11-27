@@ -145,7 +145,7 @@ async function salvarEstaca(){
   const refObs = refuro ? $("op-est-refuro-obs").value.trim() : "";
   if(refuro && !motivoRefuroValido(refObs)) return;
   if(!x && !refuro && (s.execucoes || []).some(e => e.modalidade_execucao !== "refuro" && String(e.estaca_numero).toUpperCase() === numero)){
-    if(!confirm(`A estaca ${numero} já está no dia. Atualizar a que existe?`)) return;
+    if(!await uiConfirmar({ titulo: "Estaca repetida", texto: `A estaca ${numero} já está no dia. Atualizar a que existe?`, confirmar: "Atualizar" })) return;
   }
   const lidos = {
     estaca_numero: numero,
@@ -201,7 +201,7 @@ async function estacaForaDoProjeto(execId){
   if(!navigator.onLine){ avisar("Criar a estaca no projeto precisa de sinal.", "aviso"); return; }
   if(estadoDaLinha(execId)){ avisar("Espere a estaca subir antes de criá-la no projeto.", "aviso"); return; }
   const x = (OP.snap.execucoes || []).find(e => e.id === execId);
-  if(!confirm(`Criar a estaca ${x?.estaca_numero || ""} no projeto da obra? O engenheiro confere depois.`)) return;
+  if(!await uiConfirmar({ titulo: "Criar no projeto", texto: `Criar a estaca ${x?.estaca_numero || ""} no projeto da obra? O engenheiro confere depois.`, confirmar: "Criar" })) return;
   const { error } = await sb.rpc("estaca_criar_do_campo", { p_exec: execId });
   if(error){ avisar(mensagemDoBanco(error), "erro"); return; }
   avisar("Estaca criada no projeto.", "ok");
@@ -286,7 +286,9 @@ async function guardarVouRefurar(){
 
 async function geoObservar(id){
   const x = (OP.snap.execucoes || []).find(e => e.id === id);
-  const t = prompt(`Observação da estaca ${x?.estaca_numero || ""}:`);
+  const r = await uiPedirValores({ titulo: "Observação", texto: `Observação da estaca ${x?.estaca_numero || ""}:`, confirmar: "Guardar",
+    campos: [{ id: "obs", rotulo: "Observação", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+  const t = r ? r.obs : null;
   if(t == null || !t.trim()) return;
   x.observacoes = (x.observacoes ? x.observacoes + "\n" : "") + "[campo] " + t.trim();
   await enfileirar("rdo_campo_execucao_observar", { p_rdo: OP.rdoId, p_id: id, p_texto: t.trim() }, { rotulo: "Observação da estaca " + (x?.estaca_numero || ""), linha_id: id });
@@ -294,10 +296,14 @@ async function geoObservar(id){
 }
 async function geoContestar(id){
   const x = (OP.snap.execucoes || []).find(e => e.id === id);
-  const op = prompt(`Contestar a estaca ${x?.estaca_numero || ""}. Digite 1, 2 ou 3:\n1 · ${ROTULO_CONTESTAR.nao_e_minha}\n2 · ${ROTULO_CONTESTAR.numero_errado}\n3 · ${ROTULO_CONTESTAR.outro}`);
-  const motivo = { "1": "nao_e_minha", "2": "numero_errado", "3": "outro" }[String(op || "").trim()];
+  const MOTIVOS = ["nao_e_minha", "numero_errado", "outro"];
+  const r = await uiPedirValores({ titulo: "Contestar estaca", texto: `Contestar a estaca ${x?.estaca_numero || ""}.`, confirmar: "Contestar",
+    campos: [
+      { id: "motivo", rotulo: "Motivo", tipo: "select", obrigatorio: true, opcoes: MOTIVOS.map(m => [m, ROTULO_CONTESTAR[m]]) },
+      { id: "texto", rotulo: "Explique em poucas palavras (opcional)", tipo: "textarea", linhas: 2 }] });
+  const motivo = r && MOTIVOS.includes(r.motivo) ? r.motivo : null;
   if(!motivo) return;
-  const texto = prompt("Explique em poucas palavras (opcional):") || "";
+  const texto = r.texto || "";
   await enfileirar("rdo_campo_execucao_contestar", { p_rdo: OP.rdoId, p_id: id, p_motivo: motivo, p_texto: texto.trim() || null },
     { rotulo: "Contestação da estaca " + (x?.estaca_numero || ""), linha_id: id });
   avisar("Contestação guardada: vai para o engenheiro.", "ok");
@@ -340,7 +346,7 @@ document.addEventListener("click", async (ev) => {
   }
   if(d.estRemover){
     const x = (OP.snap.execucoes || []).find(e => e.id === d.estRemover);
-    if(!x || !confirm(`Remover a estaca ${x.estaca_numero} do dia?`)) return;
+    if(!x || !await uiConfirmar({ titulo: "Remover estaca", texto: `Remover a estaca ${x.estaca_numero} do dia?`, confirmar: "Remover", perigo: true })) return;
     OP.snap.execucoes = OP.snap.execucoes.filter(e => e.id !== x.id);
     await enfileirar("rdo_campo_execucao_remover", { p_rdo: OP.rdoId, p_id: x.id }, { rotulo: "Remover estaca " + x.estaca_numero, linha_id: x.id });
     renderTelaAtual(); return;

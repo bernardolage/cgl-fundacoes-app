@@ -341,7 +341,7 @@ async function sepMarcar(itemId, cb){
     const { error } = await sb.rpc("separacao_marcar", { p_item_id: itemId, p_quantidade: i.acessorio_id ? null : q });
     if(error){ aviso("app-aviso", "Não marcado: " + error.message.replace(/^.*?: /, ""), "erro"); cb.checked = false; cb.disabled = false; return; }
   } else {
-    if(!confirm("Desmarcar estorna a baixa: o material volta ao estoque (ou a peça volta de onde saiu). Continuar?")){ cb.checked = true; cb.disabled = false; return; }
+    if(!await uiConfirmar({ titulo: "Desmarcar item", texto: "Desmarcar estorna a baixa: o material volta ao estoque (ou a peça volta de onde saiu). Continuar?", confirmar: "Desmarcar", perigo: true })){ cb.checked = true; cb.disabled = false; return; }
     const { error } = await sb.rpc("separacao_desmarcar", { p_item_id: itemId });
     if(error){ aviso("app-aviso", "Não desmarcado: " + error.message.replace(/^.*?: /, ""), "erro"); cb.checked = true; cb.disabled = false; return; }
   }
@@ -389,7 +389,7 @@ async function sepCasarItem(itemId, p){
 }
 async function sepRemoverItem(itemId){
   const i = _sepItens.find(x => x.id === itemId); if(!i || i.separado) return;
-  if(!confirm(`Tirar "${i.descricao}" da lista?`)) return;
+  if(!await uiConfirmar({ titulo: "Tirar da lista", texto: `Tirar "${i.descricao}" da lista?`, confirmar: "Tirar", perigo: true })) return;
   const { error } = await sb.from("separacao_itens").delete().eq("id", itemId);
   if(error){ aviso("app-aviso", "Não foi possível: " + error.message, "erro"); return; }
   await abrirSeparacao(_sepAtual.id);
@@ -434,7 +434,8 @@ async function sepEntregar(){
 async function sepCancelar(){
   const s = _sepAtual; if(!s || !sepPodeEditar(s)) return;
   if(_sepItens.some(i => i.separado)){ aviso("app-aviso", "Desmarque os itens separados antes de cancelar (a baixa é estornada).", "erro"); return; }
-  if(!confirm(`Cancelar a separação ${s.numero}?`)) return;
+  if(!await uiConfirmar({ titulo: "Cancelar separação", texto: `Cancelar a separação ${s.numero}?`, confirmar: "Cancelar separação", cancelar: "Voltar", perigo: true })) return;
+  if(_sepAtual !== s || _sepItens.some(i => i.separado)) return;
   const { error } = await sb.from("separacoes").update({ status: "cancelada" }).eq("id", s.id);
   if(error){ aviso("app-aviso", "Não foi possível: " + error.message, "erro"); return; }
   aviso("app-aviso", "Separação cancelada.", "ok");

@@ -400,8 +400,9 @@ async function rhhLiberar(estornar){
   const eIds = linhas.filter(l => l.tipo === "rdo").map(l => l.id);
   const vIds = linhas.filter(l => l.tipo === "viagem").map(l => l.id);
   const horas = linhas.reduce((s, l) => s + l.he + l.noturnas + l.viagem, 0);
-  const txt = `${estornar ? "Estornar a liberação de" : "Liberar para a folha"} ${linhas.length} linha(s) (${rhhHz(horas)} h de HE, noturnas e viagem) de ${new Set(linhas.map(l => l.funcionario_id)).size} funcionário(s)?${foraTxt ? "\n\n" + foraTxt : ""}`;
-  if(!confirm(txt)) return;
+  const txt = `${estornar ? "Estornar a liberação de" : "Liberar para a folha"} ${linhas.length} linha(s) (${rhhHz(horas)} h de HE, noturnas e viagem) de ${new Set(linhas.map(l => l.funcionario_id)).size} funcionário(s)?${foraTxt ? " " + foraTxt : ""}`;
+  if(!(await uiConfirmar({ titulo: estornar ? "Estornar liberação" : "Liberar para a folha", texto: txt,
+    confirmar: estornar ? "Estornar" : "Liberar", perigo: !!estornar }))) return;
   let n = 0, erro = null;
   if(eIds.length){
     const r = await sb.rpc(estornar ? "rh_estornar_liberacao" : "rh_liberar_horas", { p_ids: eIds });
@@ -508,7 +509,8 @@ async function rhhLancarFolha(){
   const funcs = new Set(_rhhMes.map(r => r.funcionario_id)).size;
   if(!_rhhMes.length){ aviso("app-aviso", `Nenhuma hora liberada em ${comp} para lançar.`, "erro"); return; }
   const debito = _rhhMes.reduce((s, r) => s + Number(r.horas_debito_folga || 0), 0);
-  if(!confirm(`Lançar na folha de ${comp} as horas liberadas de ${funcs} funcionário(s)?\n\nRubricas HE 100 % (bruta), adicional noturno, horas de viagem e débito de folga (${rhhHz(debito)} h de folga, falta e meio período × jornada, em rubrica própria com valor negativo = desconto), por funcionário e obra. O que este botão gerou antes para esta competência é substituído; lançamento manual não muda.${_rhhPendMes ? `\n\nAtenção: ${_rhhPendMes} linha(s) do RDO ainda sem liberação ficam de fora.` : ""}`)) return;
+  if(!(await uiConfirmar({ titulo: "Lançar na folha", confirmar: "Lançar",
+    texto: `Lançar na folha de ${comp} as horas liberadas de ${funcs} funcionário(s)? Rubricas HE 100 % (bruta), adicional noturno, horas de viagem e débito de folga (${rhhHz(debito)} h de folga, falta e meio período × jornada, em rubrica própria com valor negativo = desconto), por funcionário e obra. O que este botão gerou antes para esta competência é substituído; lançamento manual não muda.${_rhhPendMes ? ` Atenção: ${_rhhPendMes} linha(s) do RDO ainda sem liberação ficam de fora.` : ""}` }))) return;
   await comBotaoTravado("btn-rhh-folha", async () => {
     const { data, error } = await sb.rpc("rh_lancar_horas_folha", { p_competencia: mesIni });
     if(error){
@@ -930,7 +932,7 @@ async function rhvSalvar(){
 
 async function rhvExcluir(id){
   const v = _rhvLista.find(x => x.id === id); if(!v) return;
-  if(!confirm(`Excluir a viagem de ${dataBR(v.data)} (${rhhHz(v.horas)} h)?`)) return;
+  if(!(await uiConfirmar({ titulo: "Excluir viagem", texto: `Excluir a viagem de ${dataBR(v.data)} (${rhhHz(v.horas)} h)?`, confirmar: "Excluir", perigo: true }))) return;
   const { error } = await sb.from("horas_viagem").delete().eq("id", id);
   if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
   aviso("app-aviso", "Viagem excluída.", "ok");

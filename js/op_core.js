@@ -536,7 +536,7 @@ function pedirSenhaDeNovo(){
 
 async function sair(){
   const fila = OP.db ? await lerFila() : [];
-  if(fila.length && !confirm(`Há ${fila.length} registro(s) no aparelho ainda não enviados. Eles ficam guardados e sobem no próximo acesso. Sair mesmo assim?`)) return;
+  if(fila.length && !await uiConfirmar({ titulo: "Sair do app", texto: `Há ${fila.length} registro(s) no aparelho ainda não enviados. Eles ficam guardados e sobem no próximo acesso. Sair mesmo assim?`, confirmar: "Sair", cancelar: "Ficar" })) return;
   try { if(OP.db){ await idbLimpar("dia"); await idbLimpar("cache"); } } catch(_){}
   prefGravar("cpf", null);
   prefGravar("rdo_atual", null);

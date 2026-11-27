@@ -215,7 +215,8 @@ async function funcAcSalvar(){
   const x = _funcAc; if(!x) return;
   const data = $("func-ac-data").value || null, motivo = $("func-ac-motivo").value.trim();
   if(motivo.length < 5){ aviso("func-ac-aviso", "Informe o motivo (pelo menos 5 letras).", "erro"); $("func-ac-motivo").focus(); return; }
-  if(data && data < hojeISO() && !confirm("A data acordada já passou. Gravar assim mesmo?")) return;
+  if(data && data < hojeISO() && !(await uiConfirmar({ titulo: "Data já passou", texto: "A data acordada já passou. Gravar assim mesmo?", confirmar: "Gravar assim mesmo" }))) return;
+  if(_funcAc !== x) return;
   const { error } = await sb.from("funcionario_baixada_acordos").insert({ funcionario_id: x.id, data_acordada: data, motivo });
   if(error){ aviso("func-ac-aviso", "Erro ao gravar: " + error.message, "erro"); return; }
   $("func-ac-modal").style.display = "none";
@@ -490,7 +491,8 @@ async function funcLotConfirmarSelecionadas(){
   const linhas = (_funcLotConf || []).filter(r => _funcLotSel.has(r.funcionario_id) && funcLotAcao(r));
   if(!linhas.length) return;
   const nDiario = linhas.filter(r => funcLotAcao(r) === "diario").length;
-  if(!confirm(`Confirmar ${linhas.length} pessoa(s)? ${nDiario} abrem período novo com a obra e a TAG do último diário; as outras ficam como estão.`)) return;
+  if(!(await uiConfirmar({ titulo: "Confirmar alocação", confirmar: "Confirmar",
+    texto: `Confirmar ${linhas.length} pessoa(s)? ${nDiario} abrem período novo com a obra e a TAG do último diário; as outras ficam como estão.` }))) return;
   await funcLotGravar(linhas);
 }
 

@@ -122,8 +122,11 @@ function repRenderCustoHora(){
   el.innerHTML = `Hora da oficina: <strong>${_repCustoHora ? brl(_repCustoHora) + "/h" : "não definida"}</strong>${pode ? ` <a href="#" id="rep-custo-hora-ed">alterar</a>` : ""}`;
   $("rep-custo-hora-ed")?.addEventListener("click", async e => {
     e.preventDefault();
-    const v = prompt("Custo da hora da oficina (R$/h). Vale para os lançamentos de horas daqui em diante e para o recálculo dos reparos abertos:", _repCustoHora || "");
-    if(v === null) return;
+    const r = await uiPedirValores({ titulo: "Custo da hora da oficina", confirmar: "Salvar",
+      texto: "Vale para os lançamentos de horas daqui em diante e para o recálculo dos reparos abertos.",
+      campos: [{ id: "valor", rotulo: "Custo da hora da oficina (R$/h)", tipo: "number", valor: _repCustoHora || "" }] });
+    if(!r) return;
+    const v = r.valor;
     const n = Number(String(v).replace(",", "."));
     if(!(n >= 0)){ aviso("app-aviso", "Valor inválido.", "erro"); return; }
     const { error } = await sb.from("empresa_config").update({ custo_hora_oficina: n }).eq("id", 1);
@@ -519,13 +522,14 @@ async function repAcao(acao){
     if(typeof carregarProdutos === "function") carregarProdutos();
     return abrirReparo(r.id);
   }
-  if(acao === "cancelado" && !confirm("Cancelar este reparo?")) return;
+  if(acao === "cancelado" && !(await uiConfirmar({ titulo: "Cancelar reparo", texto: "Cancelar este reparo?", confirmar: "Cancelar reparo", cancelar: "Voltar", perigo: true }))) return;
   const upd = { status: acao };
   if(acao === "em_execucao" && !r.data_inicio) upd.data_inicio = hojeISO();
   if(acao === "concluido"){
     upd.data_conclusao = r.data_conclusao || hojeISO();
     const pend = _repItens.filter(i => i.tipo === "consumo" && !i.movimentacao_estoque_id && !i.codigo_externo && i.produto_id).length;
-    if(pend && !confirm(`${pend} peça(s) consumida(s) ainda sem baixa no estoque. Concluir assim mesmo? (dá para dar baixa depois)`)) return;
+    if(pend && !(await uiConfirmar({ titulo: "Concluir reparo", confirmar: "Concluir assim mesmo",
+      texto: `${pend} peça(s) consumida(s) ainda sem baixa no estoque. Concluir assim mesmo? (dá para dar baixa depois)` }))) return;
   }
   const { error } = await sb.from("reparos_caldeiraria").update(upd).eq("id", r.id);
   if(error){ aviso("app-aviso", "Não foi possível: " + error.message, "erro"); return; }
@@ -723,7 +727,8 @@ async function repSalvarOrcamento(){
 }
 async function repGerarPedido(){
   const r = _repAtual; if(!r?.id) return;
-  if(!confirm(`Gerar o pedido de compra do conserto (${brl(r.orcamento_valor || 0)}) para ${repFornNome(r) || "o fornecedor"}? Ele nasce em rascunho e segue o fluxo de Compras.`)) return;
+  if(!(await uiConfirmar({ titulo: "Gerar pedido do conserto", confirmar: "Gerar pedido",
+    texto: `Gerar o pedido de compra do conserto (${brl(r.orcamento_valor || 0)}) para ${repFornNome(r) || "o fornecedor"}? Ele nasce em rascunho e segue o fluxo de Compras.` }))) return;
   const { error } = await sb.rpc("reparo_externo_gerar_pedido", { p_reparo: r.id });
   if(error){ aviso("app-aviso", "Pedido não gerado: " + error.message.replace(/^.*?: /, ""), "erro"); return; }
   aviso("app-aviso", "Pedido de compra gerado em rascunho. O custo do reparo passa a ser o total do pedido.", "ok");
@@ -731,8 +736,11 @@ async function repGerarPedido(){
 }
 async function repRegistrarRetorno(){
   const r = _repAtual; if(!r?.id) return;
-  const nf = prompt("Retorno da peça hoje. Número da NF de retorno do fornecedor (deixe em branco se não houver):", r.nf_retorno_numero || "");
-  if(nf === null) return;
+  const v = await uiPedirValores({ titulo: "Registrar retorno", confirmar: "Registrar retorno",
+    texto: "Retorno da peça hoje. Deixe a NF em branco se não houver.",
+    campos: [{ id: "nf", rotulo: "Número da NF de retorno do fornecedor", valor: r.nf_retorno_numero || "" }] });
+  if(v === null) return;
+  const nf = v.nf || "";
   const { error } = await sb.from("reparos_caldeiraria").update({ retornou_em: hojeISO(), nf_retorno_numero: nf.trim() || null }).eq("id", r.id);
   if(error){ aviso("app-aviso", "Retorno não registrado: " + error.message, "erro"); return; }
   aviso("app-aviso", "Retorno registrado: a peça volta para a oficina. Conclua o reparo quando terminar.", "ok");

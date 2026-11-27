@@ -494,10 +494,14 @@ function rgdAdicionarLinha(focar){
   }
 }
 
-function rgdAceitarColagem(substituir){
+async function rgdAceitarColagem(substituir){
   if(!_rgdColagem) return;
-  const novas = _rgdColagem.linhas;
-  if(substituir && _rgdLinhas.length && !confirm(`Trocar as ${_rgdLinhas.length} linha(s) da grade pelas ${novas.length} coladas?\nAs estacas que não estiverem nas linhas coladas saem do diário ao salvar.`)) return;
+  const colagem = _rgdColagem, novas = colagem.linhas;
+  if(substituir && _rgdLinhas.length){
+    const ok = await uiConfirmar({ titulo: "Trocar linhas da grade", confirmar: "Trocar", perigo: true,
+      texto: `Trocar as ${_rgdLinhas.length} linha(s) da grade pelas ${novas.length} coladas? As estacas que não estiverem nas linhas coladas saem do diário ao salvar.` });
+    if(!ok || _rgdColagem !== colagem) return;
+  }
   _rgdLinhas = substituir ? novas : [..._rgdLinhas, ...novas];
   _rgdColagem = null;
   renderGradeRDO();

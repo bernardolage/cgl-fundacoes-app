@@ -102,8 +102,10 @@ async function tirarFoto(arquivo){
 
 async function desconsiderarFoto(id){
   if(!navigator.onLine){ avisar("Desconsiderar foto precisa de sinal.", "aviso"); return; }
-  const motivo = prompt("Por que desconsiderar esta foto?");
-  if(motivo == null) return;
+  const r = await uiPedirValores({ titulo: "Desconsiderar foto", texto: "Por que desconsiderar esta foto?", confirmar: "Desconsiderar",
+    campos: [{ id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+  if(!r) return;
+  const motivo = r.motivo || "";
   if(motivo.trim().length < 5){ avisar("Escreva o motivo (pelo menos 5 letras).", "aviso"); return; }
   const { error } = await sb.rpc("rdo_campo_foto_desconsiderar", { p_id: id, p_motivo: motivo.trim() });
   if(error){ avisar(mensagemDoBanco(error), "erro"); return; }

@@ -782,19 +782,20 @@ async function mudarStatusMobilizacao(novo, btn){
   if(novo === "em_transito"){
     const equip = $("mob-equip")?.value || m.equipamento_id;
     if(!equip){ aviso("app-aviso", "Defina a TAG principal antes de registrar a saída.", "erro"); $("mob-equip")?.focus(); return; }
-    if(abertas && !confirm(`Ainda há ${abertas} pendência(s) aberta(s). Registrar a saída mesmo assim?`)) return;
+    if(abertas && !await uiConfirmar({ titulo: "Registrar saída", texto: `Ainda há ${abertas} pendência(s) aberta(s). Registrar a saída mesmo assim?`, confirmar: "Registrar saída" })) return;
 
     naoLiberados = mobEquipeNaoLiberados(m.id);
-    if(naoLiberados.length && !confirm(`${naoLiberados.length} pessoa(s) da equipe ainda sem liberação do SESMT: ${naoLiberados.map(e => `${mobNomeEq(e)} (${(MOB_EQ_SITUACAO[e.situacao] || {}).rot || e.situacao})`).join(", ")}.\n\nRegistrar a saída mesmo assim? A confirmação fica registrada na conversa da máquina.`)) return;
-    if(!confirm("Registrar saída para a obra? A viagem de ida passa a 'em trânsito' em Logística com a nota de remessa (rascunho), e a TAG passa a 'em trânsito'.")) return;
+    if(naoLiberados.length && !await uiConfirmar({ titulo: "Equipe sem liberação", texto: `${naoLiberados.length} pessoa(s) da equipe ainda sem liberação do SESMT: ${naoLiberados.map(e => `${mobNomeEq(e)} (${(MOB_EQ_SITUACAO[e.situacao] || {}).rot || e.situacao})`).join(", ")}. Registrar a saída mesmo assim? A confirmação fica registrada na conversa da máquina.`, confirmar: "Registrar saída" })) return;
+    if(!await uiConfirmar({ titulo: "Registrar saída", texto: "Registrar saída para a obra? A viagem de ida passa a 'em trânsito' em Logística com a nota de remessa (rascunho), e a TAG passa a 'em trânsito'.", confirmar: "Registrar saída" })) return;
   } else if(novo === "desmobilizada"){
     abrirDesmobilizacaoMob(); return;
   } else if(novo === "cancelada"){
-    if(!confirm("Cancelar esta mobilização?")) return;
+    if(!await uiConfirmar({ titulo: "Cancelar mobilização", texto: "Cancelar esta mobilização?", confirmar: "Cancelar mobilização", cancelar: "Voltar", perigo: true })) return;
   } else if(novo === "em_preparacao"){
     const st = _mobAbertaCard?.contrato_status;
-    if(st && !["aguardando_assinatura", "vigente"].includes(st) && !confirm(`O contrato está "${st}". Iniciar a preparação mesmo assim?`)) return;
+    if(st && !["aguardando_assinatura", "vigente"].includes(st) && !await uiConfirmar({ titulo: "Iniciar preparação", texto: `O contrato está "${st}". Iniciar a preparação mesmo assim?`, confirmar: "Iniciar preparação" })) return;
   }
+  if(_mobAberta?.id !== m.id) return;
   if(btn) btn.disabled = true;
   try {
 

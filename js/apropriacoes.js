@@ -179,7 +179,7 @@ async function renderFuncAprop(){
   $("aprop-imp-arquivo")?.addEventListener("change", e => { const fs = [...e.target.files]; if(fs.length) apropImpLer(fs); e.target.value = ""; });
   $("btn-aprop-rub-xlsx")?.addEventListener("click", () => apropRubricasXlsx(obraDe));
   cont.querySelectorAll(".aprop-lanc-del").forEach(b => b.addEventListener("click", async () => {
-    if(!confirm("Excluir este lançamento?")) return;
+    if(!(await uiConfirmar({ titulo: "Excluir lançamento", texto: "Excluir este lançamento?", confirmar: "Excluir", perigo: true }))) return;
     const { error } = await sb.from("folha_lancamentos").delete().eq("id", b.dataset.id);
     if(error){ aviso("app-aviso", "Erro: " + error.message, "erro"); return; }
     await renderFuncAprop();
@@ -253,7 +253,8 @@ async function renderFuncApropTotais(){
 async function apropCalcular(){
 
   if(_aprop.comp < hojeISO().slice(0, 7) + "-01"
-     && !confirm(`Os salários e benefícios usados são os de hoje, não os de ${apropCompLabel(_aprop.comp)}. As linhas atuais do mês serão substituídas. Calcular?`)) return;
+     && !(await uiConfirmar({ titulo: "Calcular mês passado", confirmar: "Calcular",
+       texto: `Os salários e benefícios usados são os de hoje, não os de ${apropCompLabel(_aprop.comp)}. As linhas atuais do mês serão substituídas. Calcular?` }))) return;
   const { data, error } = await sb.rpc("fn_apropriar_competencia", { p_comp: _aprop.comp });
   if(error){ aviso("app-aviso", "Erro ao apropriar: " + error.message, "erro"); return; }
   _aprop.res = data;
@@ -261,7 +262,8 @@ async function apropCalcular(){
   await renderFuncAprop();
 }
 async function apropFechar(reabrir){
-  if(!reabrir && !confirm(`Fechar a competência ${apropCompLabel(_aprop.comp)}? Depois disso só a diretoria reabre.`)) return;
+  if(!reabrir && !(await uiConfirmar({ titulo: "Fechar competência", confirmar: "Fechar competência", perigo: true,
+    texto: `Fechar a competência ${apropCompLabel(_aprop.comp)}? Depois disso só a diretoria reabre.` }))) return;
   const { error } = await sb.rpc("fn_fechar_competencia", { p_comp: _aprop.comp, p_reabrir: !!reabrir });
   if(error){ aviso("app-aviso", "Erro: " + error.message, "erro"); return; }
   aviso("app-aviso", reabrir ? "Competência reaberta." : "Competência fechada.", "ok");
@@ -485,7 +487,8 @@ function apropImpRender(){
 async function apropImpGravar(){
   const { linhas, semCasamento } = apropImpLinhas();
   if(!linhas.length){ aviso("app-aviso", "Nada para gravar: marque ao menos uma coluna com rubrica.", "erro"); return; }
-  if(!confirm(`Gravar a importação em ${apropCompLabel(_aprop.comp)}? A importação anterior desta competência é substituída.${semCasamento.length ? `\n\n${semCasamento.length} pessoa(s) sem casamento ficam de fora.` : ""}`)) return;
+  if(!(await uiConfirmar({ titulo: "Gravar importação", confirmar: "Gravar",
+    texto: `Gravar a importação em ${apropCompLabel(_aprop.comp)}? A importação anterior desta competência é substituída.${semCasamento.length ? ` ${semCasamento.length} pessoa(s) sem casamento ficam de fora.` : ""}` }))) return;
   const { data, error } = await sb.rpc("folha_importar_competencia", { p_comp: _aprop.comp, p_linhas: linhas });
   if(error){
     const mfa = error.hint === "mfa_obrigatorio" || /dois fatores/i.test(error.message || "");

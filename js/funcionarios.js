@@ -656,7 +656,7 @@ async function salvarDocFuncionario(){
 }
 
 async function excluirDocFuncionario(id){
-  if(!confirm("Excluir este documento?")) return;
+  if(!(await uiConfirmar({ titulo: "Excluir documento", texto: "Excluir este documento?", confirmar: "Excluir", perigo: true }))) return;
   const { error } = await sb.from("funcionario_documentos").delete().eq("id",id);
   if(error){ aviso("app-aviso","Erro ao excluir: "+error.message,"erro"); return; }
   await carregarDocsFuncionario();
@@ -799,7 +799,8 @@ async function funcSalvarAgora(novoStatus){
 
 async function excluirFuncionario(){
   if(!funcEditId) return;
-  if(!confirm("Excluir este funcionário? Esta ação não pode ser desfeita.")) return;
+  if(!(await uiConfirmar({ titulo: "Excluir funcionário", texto: "Excluir este funcionário? Esta ação não pode ser desfeita.", confirmar: "Excluir", perigo: true }))) return;
+  if(!funcEditId) return;
   const { error } = await sb.from("funcionarios").delete().eq("id",funcEditId);
   if(error){
     aviso("app-aviso","Não foi possível excluir. Tente alterar para 'Demitido'.","erro"); return;
@@ -862,7 +863,7 @@ function ligarFuncionarios(){
   $("btn-func-ff-salvar")?.addEventListener("click", () => comBotaoTravado("btn-func-ff-salvar", funcSalvarFuncao));
   $("btn-func-ff-cancelar")?.addEventListener("click", () => { $("func-ff-form").style.display = "none"; });
   $("btn-admitir-func")?.addEventListener("click", funcAdmAbrir);
-  $("btn-adm-voltar")?.addEventListener("click", () => { if(confirm("Sair da admissão? O que foi digitado se perde.")) mostrarPainelFunc(); });
+  $("btn-adm-voltar")?.addEventListener("click", async () => { if(await uiConfirmar({ titulo: "Sair da admissão", texto: "Sair da admissão? O que foi digitado se perde.", confirmar: "Sair", cancelar: "Continuar", perigo: true })) mostrarPainelFunc(); });
   $("btn-adm-anterior")?.addEventListener("click", () => funcAdmIr(_admEtapa - 1));
   $("btn-adm-proximo")?.addEventListener("click", () => funcAdmIr(_admEtapa + 1));
   $("btn-adm-concluir")?.addEventListener("click", () => comBotaoTravado("btn-adm-concluir", funcAdmConcluir));
@@ -1161,7 +1162,7 @@ async function funcSalvarFuncao(){
   await funcAtualizarFuncaoEspelho();
 }
 async function funcExcluirFuncao(id){
-  if(!confirm("Apagar este registro do hist\u00f3rico de fun\u00e7\u00e3o?")) return;
+  if(!(await uiConfirmar({ titulo: "Apagar registro de fun\u00e7\u00e3o", texto: "Apagar este registro do hist\u00f3rico de fun\u00e7\u00e3o?", confirmar: "Apagar", perigo: true }))) return;
   const { error } = await sb.from("funcionario_funcoes").delete().eq("id", id);
   if(error){ aviso("func-funcoes-aviso", "Erro ao apagar: " + error.message, "erro"); return; }
   await funcAtualizarFuncaoEspelho();
@@ -1596,7 +1597,7 @@ async function funcAcessoCriarComLink(){
 }
 async function funcAcessoGerarLink(){
   if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
-  if(_funcAcesso.link?.situacao === "pendente" && !confirm("Gerar outro link? O anterior deixa de valer.")) return;
+  if(_funcAcesso.link?.situacao === "pendente" && !(await uiConfirmar({ titulo: "Gerar outro link", texto: "Gerar outro link? O anterior deixa de valer.", confirmar: "Gerar link", perigo: true }))) return;
   try {
     _funcAcesso.gerado = await funcAcessoChamar({ acao: "gerar_link_funcionario" });
     aviso("func-acesso-aviso", "Link gerado. Envie ao funcionário.", "ok");
@@ -1605,7 +1606,7 @@ async function funcAcessoGerarLink(){
 }
 async function funcAcessoCancelarLink(){
   if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
-  if(!confirm("Cancelar o link de acesso? Ele deixa de valer na hora.")) return;
+  if(!(await uiConfirmar({ titulo: "Cancelar link de acesso", texto: "Cancelar o link de acesso? Ele deixa de valer na hora.", confirmar: "Cancelar link", cancelar: "Voltar", perigo: true }))) return;
   try {
     await funcAcessoChamar({ acao: "revogar_link_funcionario" });
     _funcAcesso.gerado = null;
@@ -1746,7 +1747,8 @@ async function funcAcessoNovaSenha(){
   if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
   const senha = funcAcessoLerSenha("-nova");
   if(!senha) return;
-  if(!confirm("Definir a nova senha? A senha atual deixa de valer e o funcionário sai do sistema em todos os aparelhos.")) return;
+  if(!(await uiConfirmar({ titulo: "Definir nova senha", confirmar: "Definir senha", perigo: true,
+    texto: "Definir a nova senha? A senha atual deixa de valer e o funcionário sai do sistema em todos os aparelhos." }))) return;
   try {
     await funcAcessoChamar({ acao: "nova_senha_funcionario", senha });
     aviso("func-acesso-aviso", "Nova senha definida (provisória: ele troca no primeiro acesso). Repasse ao funcionário.", "ok");
@@ -1757,7 +1759,8 @@ async function funcAcessoNovaSenha(){
 
 async function funcAcessoDesativar(){
   if(!funcAcessoPodeOperar() || !_funcAcesso.perfil) return;
-  if(!confirm(`Desativar o login de ${$("func-nome")?.value || "este funcionário"}? Ele sai do sistema agora e não entra mais até ser reativado. O cadastro do funcionário não muda.`)) return;
+  if(!(await uiConfirmar({ titulo: "Desativar login", confirmar: "Desativar", perigo: true,
+    texto: `Desativar o login de ${$("func-nome")?.value || "este funcionário"}? Ele sai do sistema agora e não entra mais até ser reativado. O cadastro do funcionário não muda.` }))) return;
   try {
     await funcAcessoChamar({ acao: "desativar_login_funcionario" });
     aviso("func-acesso-aviso", "Login desativado.", "ok");

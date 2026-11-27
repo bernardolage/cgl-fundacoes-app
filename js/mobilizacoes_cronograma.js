@@ -278,7 +278,7 @@ async function mcrSalvarReserva(){
 
 async function mcrCancelarReserva(){
   if(!_mcrRes || !_mcrRes.reserva || !mcrPodeEditar()) return;
-  if(!confirm(`Cancelar a reserva da ${_mcrRes.linha.codigo}? Ela sai do cronograma.`)) return;
+  if(!await uiConfirmar({ titulo: "Cancelar reserva", texto: `Cancelar a reserva da ${_mcrRes.linha.codigo}? Ela sai do cronograma.`, confirmar: "Cancelar reserva", cancelar: "Voltar", perigo: true })) return;
   const { error } = await sb.from("equipamento_reservas").update({ status: "cancelada" }).eq("id", _mcrRes.reserva.id);
   if(error){ aviso("app-aviso", "Não foi possível cancelar a reserva: " + error.message, "erro"); return; }
   aviso("app-aviso", "Reserva cancelada.", "ok");

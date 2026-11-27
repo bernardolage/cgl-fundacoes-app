@@ -310,14 +310,14 @@ async function salvarFerramenta(){
 async function frmMudarAtivo(stage){
   const a = _frmAtual; if(!a || !a.reg.id || !frmPodeOperar()) return;
   const ativo = stage === "ativa"; if(ativo === !!a.reg.ativo) return;
-  if(!ativo && !confirm("Tirar a ferramenta do cadastro? Ela some da lista de empréstimo, mas o histórico fica.")) return;
+  if(!ativo && !await uiConfirmar({ titulo: "Tirar do cadastro", texto: "Tirar a ferramenta do cadastro? Ela some da lista de empréstimo, mas o histórico fica.", confirmar: "Tirar do cadastro", perigo: true })) return;
   const { error } = await sb.from("ferramentas").update({ ativo }).eq("id", a.reg.id);
   if(error){ aviso("app-aviso", error.message, "erro"); return; }
   await frmRecarregar();
 }
 async function excluirFerramenta(){
   const a = _frmAtual; if(!a || !a.reg.id || !frmPodeOperar()) return;
-  if(!confirm(`Excluir a ferramenta ${a.reg.codigo}? Só sai quem não tem empréstimo nem ocorrência.`)) return;
+  if(!await uiConfirmar({ titulo: "Excluir ferramenta", texto: `Excluir a ferramenta ${a.reg.codigo}? Só sai quem não tem empréstimo nem ocorrência.`, confirmar: "Excluir", perigo: true })) return;
   const { error } = await sb.from("ferramentas").delete().eq("id", a.reg.id);
   if(error){ aviso("app-aviso", error.code === "23503" ? "A ferramenta tem histórico: tire do cadastro em vez de excluir." : error.message, "erro"); return; }
   aviso("app-aviso", "Ferramenta excluída.", "ok");
@@ -424,7 +424,7 @@ async function salvarOcorrenciaFrm(){
   await frmRecarregar("ocorrencias");
 }
 async function excluirOcorrenciaFrm(id){
-  if(!frmPodeOperar() || !confirm("Excluir esta ocorrência lançada à mão? O saldo volta ao que era antes dela.")) return;
+  if(!frmPodeOperar() || !await uiConfirmar({ titulo: "Excluir ocorrência", texto: "Excluir esta ocorrência lançada à mão? O saldo volta ao que era antes dela.", confirmar: "Excluir", perigo: true })) return;
   const { error } = await sb.from("ferramenta_ocorrencias").delete().eq("id", id);
   if(error){ aviso("app-aviso", error.message, "erro"); return; }
   await frmRecarregar("ocorrencias");
@@ -578,7 +578,7 @@ async function frmKitAtualizar(id, campos){
 }
 async function frmKitRemover(id){
   const k = _frmKitEqp; if(!k || !frmPodeOperar()) return;
-  if(!confirm("Tirar esta ferramenta do modelo do kit? O que já está emprestado à máquina continua aberto.")) return;
+  if(!await uiConfirmar({ titulo: "Tirar do kit", texto: "Tirar esta ferramenta do modelo do kit? O que já está emprestado à máquina continua aberto.", confirmar: "Tirar do kit", perigo: true })) return;
   const { error } = await sb.from("ferramenta_kit_itens").delete().eq("id", id);
   if(error){ aviso("app-aviso", error.message, "erro"); return; }
   await frmKitEquipamento(k.e);
@@ -662,7 +662,7 @@ function renderFrmKitMob(){
 async function frmKitEnviar(){
   const k = _frmKitMob; if(!k || !frmPodeOperar()) return;
   const tag = _frmEqps[k.eqpId] || "?";
-  if(!confirm(`Enviar o kit de ferramentas da ${tag} nesta mobilização? Cada item com disponível vira empréstimo à máquina.`)) return;
+  if(!await uiConfirmar({ titulo: "Enviar kit", texto: `Enviar o kit de ferramentas da ${tag} nesta mobilização? Cada item com disponível vira empréstimo à máquina.`, confirmar: "Enviar kit" })) return;
   const { data, error } = await sb.rpc("ferramenta_kit_enviar", { p_equipamento: k.eqpId, p_mobilizacao: k.m.id, p_obs: null });
   if(error){ aviso("app-aviso", error.message, "erro"); return; }
   const lista = (data && data.faltou) || [];

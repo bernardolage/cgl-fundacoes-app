@@ -204,7 +204,8 @@ async function aqAposGravar(usadas){
 async function aqCancelar(){
   if(!_aqImport) return;
   const pendentes = _aptGrade.filter(l => l.quadro).length;
-  if(!confirm(`Descartar as ${pendentes} linha(s) do quadro que ainda estão na grade? As já gravadas continuam.`)) return;
+  if(!await uiConfirmar({ titulo: "Descartar quadro", texto: `Descartar as ${pendentes} linha(s) do quadro que ainda estão na grade? As já gravadas continuam.`, confirmar: "Descartar", perigo: true })) return;
+  if(!_aqImport) return;
   const { error } = await sb.from("apontamento_importacoes").update({ status: _aqImport.gravadas.length ? "conferida" : "cancelada" }).eq("id", _aqImport.id);
   if(error){ aviso("app-aviso", "Não foi possível cancelar: " + error.message, "erro"); return; }
   _aptGrade = _aptGrade.filter(l => !l.quadro);

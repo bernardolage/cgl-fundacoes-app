@@ -146,7 +146,7 @@ async function exportarTitulos(){
   const pend = _capTitulos.filter(t => !t.exportado_em);
   if(!pend.length) return;
   const arquivo = `titulos_a_pagar_${hojeISO()}_${new Date().toTimeString().slice(0, 5).replace(":", "")}.csv`;
-  if(!confirm(`Exportar ${pend.length} título(s)? Depois de confirmar, eles ficam registrados como um lote na visão Exportações e o arquivo ${arquivo} é gerado.`)) return;
+  if(!await uiConfirmar({ titulo: "Exportar títulos", texto: `Exportar ${pend.length} título(s)? Depois de confirmar, eles ficam registrados como um lote na visão Exportações e o arquivo ${arquivo} é gerado.`, confirmar: "Exportar" })) return;
   const { data: lote, error } = await sb.rpc("titulos_exportar_lote", { p_ids: pend.map(t => t.id), p_arquivo: arquivo });
   if(error){ aviso("app-aviso", "Não foi possível exportar; nenhum arquivo foi gerado: " + error.message, "erro"); return; }
   const marcados = new Set(lote?.ids || []);
@@ -189,7 +189,7 @@ async function renderCustosAvulsosCap(){
       ${podeApagar ? `<td><button type="button" class="btn-sec btn-sm" data-del-av="${esc(c.id)}" title="excluir">✕</button></td>` : ""}</tr>`).join("")}</tbody>
     <tfoot><tr><td colspan="8"><strong>Total</strong></td><td class="num"><strong>${brl(data.reduce((s, c) => s + Number(c.valor || 0), 0))}</strong></td>${podeApagar ? "<td></td>" : ""}</tr></tfoot></table></div>`;
   cont.querySelectorAll("[data-del-av]").forEach(b => b.addEventListener("click", async () => {
-    if(!confirm("Excluir este custo avulso?")) return;
+    if(!await uiConfirmar({ titulo: "Excluir custo avulso", texto: "Excluir este custo avulso?", confirmar: "Excluir", perigo: true })) return;
     const { error } = await sb.from("custos_avulsos").delete().eq("id", b.dataset.delAv);
     if(error){ aviso("app-aviso", "Não foi possível excluir: " + error.message, "erro"); return; }
     renderCustosAvulsosCap();

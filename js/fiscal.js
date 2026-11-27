@@ -507,7 +507,7 @@ async function fiscalCertificadoEnviar(pref){
   if(!/\.(pfx|p12)$/i.test(arquivo.name)){ aviso("app-aviso", "O certificado A1 é um arquivo .pfx ou .p12.", "erro"); return; }
   if(arquivo.size > 150 * 1024){ aviso("app-aviso", "Arquivo grande demais para um certificado A1 (até 150 KB).", "erro"); return; }
   if(!inpSenha?.value){ aviso("app-aviso", "Informe a senha do certificado.", "erro"); return; }
-  if(!confirm("Enviar o certificado A1 da CGL para a Focus NFe? O arquivo e a senha não ficam guardados no app.")) return;
+  if(!await uiConfirmar({ titulo: "Enviar certificado", texto: "Enviar o certificado A1 da CGL para a Focus NFe? O arquivo e a senha não ficam guardados no app.", confirmar: "Enviar" })) return;
   let r;
   try {
     const base64 = await fiscalLerArquivoBase64(arquivo);
@@ -570,7 +570,7 @@ async function fiscalEmpresaSalvar(pref){
   if(erros.length){ aviso("app-aviso", "Confira: " + erros.join("; ") + ".", "erro"); return; }
   const antes = _fiscalEmpresa[pref] || {};
   if(reg.fiscal_ambiente === "producao" && antes.fiscal_ambiente !== "producao"
-     && !confirm("Trocar para PRODUÇÃO: as notas emitidas pelo app passam a ter valor fiscal na SEFAZ e na prefeitura. Só depois das remessas de teste conferidas em homologação. Confirmar?")) return;
+     && !await uiConfirmar({ titulo: "Trocar para produção", texto: "Trocar para PRODUÇÃO: as notas emitidas pelo app passam a ter valor fiscal na SEFAZ e na prefeitura. Só depois das remessas de teste conferidas em homologação. Confirmar?", confirmar: "Trocar para produção", perigo: true })) return;
   const { error } = await sb.from("empresa_config").update({ ...reg, updated_at: new Date().toISOString() }).eq("id", 1);
   if(error){ aviso("app-aviso", "Não foi possível salvar os dados fiscais: " + error.message, "erro"); return; }
   aviso("app-aviso", "Dados fiscais da empresa salvos.", "ok");

@@ -275,7 +275,9 @@ async function salvarAso(){
   if(novo) sstAtivarTab("aso-ficha", "aso-notebook", "exames");
 }
 async function excluirAso(){
-  if(!_asoEditId || !confirm("Excluir este ASO, os exames e o documento ASO gerado na ficha da pessoa (e o laudo)?")) return;
+  if(!_asoEditId || !(await uiConfirmar({ titulo: "Excluir ASO", confirmar: "Excluir", perigo: true,
+    texto: "Excluir este ASO, os exames e o documento ASO gerado na ficha da pessoa (e o laudo)?" }))) return;
+  if(!_asoEditId) return;
   const path = _asoAso && _asoAso.storage_path;
   const { error } = await sb.from("sst_asos").delete().eq("id", _asoEditId);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não exclui ASO."), "erro"); return; }
@@ -342,7 +344,7 @@ async function asoAcrescentarExame(){
   await asoRecarregarAso();
 }
 async function asoTirarExame(e){
-  if(!confirm("Tirar este exame do ASO?")) return;
+  if(!(await uiConfirmar({ titulo: "Tirar exame", texto: "Tirar este exame do ASO?", confirmar: "Tirar", perigo: true }))) return;
   const { error } = await sb.from("sst_aso_exames").delete().eq("id", e.id);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não tira exame."), "erro"); return; }
   await asoRecarregarAso();
@@ -377,7 +379,8 @@ async function asoEnviarLaudo(file){
   sstAtivarTab("aso-ficha", "aso-notebook", "laudo");
 }
 async function asoTirarLaudo(){
-  if(!_asoAso || !_asoAso.storage_path || !confirm("Tirar o laudo deste ASO (o arquivo é apagado)?")) return;
+  if(!_asoAso || !_asoAso.storage_path || !(await uiConfirmar({ titulo: "Tirar laudo", texto: "Tirar o laudo deste ASO (o arquivo é apagado)?", confirmar: "Tirar laudo", perigo: true }))) return;
+  if(!_asoAso || !_asoAso.storage_path) return;
   const path = _asoAso.storage_path;
   const { error } = await sb.from("sst_asos").update({ storage_path: null }).eq("id", _asoEditId);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não tira laudo."), "erro"); return; }
@@ -464,7 +467,7 @@ async function asoFornSalvarPreco(fid){
   await asoFornCarregar();
 }
 async function asoFornExcluirPreco(p){
-  if(!p || !confirm("Excluir este preço? ASO já lançado não muda.")) return;
+  if(!p || !(await uiConfirmar({ titulo: "Excluir preço", texto: "Excluir este preço? ASO já lançado não muda.", confirmar: "Excluir", perigo: true }))) return;
   const { error } = await sb.from("sst_clinica_precos").delete().eq("id", p.id);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não exclui preço de clínica."), "erro"); return; }
   await asoFornCarregar();

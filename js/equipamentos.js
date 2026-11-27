@@ -1035,7 +1035,9 @@ async function salvarOsManutencao(){
     horimetro_km: $("eqp-os-hor").value === "" ? null : Number($("eqp-os-hor").value), fornecedor_id: $("eqp-os-forn").value || null,
     custo: $("eqp-os-custo").value === "" ? null : Number($("eqp-os-custo").value), observacoes: $("eqp-os-obs").value.trim() || null };
   if(!reg.descricao){ aviso("app-aviso", "Descreva o serviço da OS.", "erro"); return; }
-  if(reg.status === "concluida" && reg.fornecedor_id && (reg.custo == null) && !confirm("OS concluída com fornecedor e sem custo: o serviço não vai aparecer no custo da máquina. Salvar assim mesmo?")) return;
+  if(reg.status === "concluida" && reg.fornecedor_id && (reg.custo == null) && !(await uiConfirmar({ titulo: "OS sem custo", confirmar: "Salvar assim mesmo",
+    texto: "OS concluída com fornecedor e sem custo: o serviço não vai aparecer no custo da máquina. Salvar assim mesmo?" }))) return;
+  if(!_eqpAtual?.id || _eqpAtual.id !== reg.equipamento_id) return;
   const q = _eqpOsId ? sb.from("manutencoes").update(reg).eq("id", _eqpOsId) : sb.from("manutencoes").insert(reg)
   const { error } = await q;
   if(error){ aviso("app-aviso", "Não foi possível salvar a OS: " + error.message, "erro"); return; }
@@ -1187,7 +1189,8 @@ async function eqpMudarStatus(novo){
   if(novo === "vendido"){ if(typeof vbAbrirRegistro === "function") vbAbrirRegistro(_eqpAtual, null); return; }
   if(!eqpPodeEditar()) return;
   const lbl = eqpLbl(novo);
-  if(novo === "inativo" && !confirm(`Marcar ${_eqpAtual.codigo} como INATIVO? A TAG some das listas de mobilização e remessa.`)) return;
+  if(novo === "inativo" && !(await uiConfirmar({ titulo: "Marcar como inativo", confirmar: "Marcar inativo", perigo: true,
+    texto: `Marcar ${_eqpAtual.codigo} como INATIVO? A TAG some das listas de mobilização e remessa.` }))) return;
   const { error } = await sb.from("equipamentos").update({ status: novo }).eq("id", _eqpEditId);
   if(error){ aviso("app-aviso", "Não foi possível mudar o status: " + error.message, "erro"); return; }
   aviso("app-aviso", `${_eqpAtual.codigo}: ${lbl}.`, "ok");
@@ -1349,7 +1352,8 @@ async function eqpTiposServicoMudou(ev){
   if(!padrao){ aviso("app-aviso", "Escolha antes o tipo de serviço padrão.", "erro"); chk.checked = !chk.checked; return; }
   const tipos = [...new Set([...document.querySelectorAll("#eqp-tipos-servico input[type=checkbox]:checked")].map(i => i.value).concat(padrao))];
   const rot = tipos.map(t => TIPO_SERVICO[t]?.label || t).join(", ");
-  if(!confirm(`Gravar os serviços desta máquina: ${rot}? Fica no histórico. A chegada do Geodigitus passa a escolher o diário entre eles.`)){ chk.checked = !chk.checked; return; }
+  if(!(await uiConfirmar({ titulo: "Gravar serviços da máquina", confirmar: "Gravar",
+    texto: `Gravar os serviços desta máquina: ${rot}? Fica no histórico. A chegada do Geodigitus passa a escolher o diário entre eles.` }))){ chk.checked = !chk.checked; return; }
   const ok = await eqpGravarTipoServico(_eqpEditId, padrao, tipos);
   if(ok) aviso("app-aviso", `Serviços gravados: ${rot}.`, "ok"); else chk.checked = !chk.checked;
 }
@@ -1362,7 +1366,8 @@ async function eqpTipoServicoMudou(ev){
   const ant = _eqpAtual?.tipo_servico_padrao || "", novo = sel.value || "";
   if(!novo){ aviso("app-aviso", "Escolha um tipo de serviço: a máquina sem tipo não abre diário nem recebe estacas do Geodigitus.", "erro"); sel.value = ant; return; }
   const rot = (typeof TIPO_SERVICO === "object" && TIPO_SERVICO[novo]?.label) || novo;
-  if(!confirm(`Gravar "${rot}" como tipo de serviço do diário desta máquina? Fica no histórico.`)){ sel.value = ant; return; }
+  if(!(await uiConfirmar({ titulo: "Gravar tipo de serviço", confirmar: "Gravar",
+    texto: `Gravar "${rot}" como tipo de serviço do diário desta máquina? Fica no histórico.` }))){ sel.value = ant; return; }
   sel.disabled = true;
   const ok = await eqpGravarTipoServico(_eqpEditId, novo);
   sel.disabled = false;
@@ -1373,10 +1378,12 @@ async function eqpTipoServicoMudou(ev){
 async function eqpDefinirTipoServicoPrompt(equipId, codigo){
   if(!eqpPodeDefinirTipoServico()){ aviso("app-aviso", "Seu perfil não define o tipo de serviço da máquina.", "erro"); return false; }
   const ops = Object.entries(typeof TIPO_SERVICO === "object" ? TIPO_SERVICO : {});
-  const r = prompt(`Tipo de serviço do diário da máquina ${codigo || ""}:\n\n${ops.map(([, o], i) => `${i + 1}. ${o.label}`).join("\n")}\n\nDigite o número:`);
-  if(r === null) return false;
-  const op = ops[parseInt(r, 10) - 1];
-  if(!op){ aviso("app-aviso", "Número fora da lista.", "erro"); return false; }
+  const v = await uiPedirValores({ titulo: "Tipo de serviço da máquina", confirmar: "Gravar",
+    campos: [{ id: "tipo", rotulo: `Tipo de serviço do diário da máquina ${codigo || ""}`, tipo: "select", obrigatorio: true,
+      opcoes: ops.map(([, o], i) => [String(i + 1), o.label]) }] });
+  if(v === null) return false;
+  const op = ops[parseInt(v.tipo, 10) - 1];
+  if(!op){ aviso("app-aviso", "Escolha um tipo de serviço da lista.", "erro"); return false; }
   const ok = await eqpGravarTipoServico(equipId, op[0]);
   if(ok) aviso("app-aviso", `Tipo de serviço da ${codigo || "máquina"} gravado: ${op[1].label}. Use "Resolver" no grupo para reprocessar as estacas.`, "ok");
   return ok;

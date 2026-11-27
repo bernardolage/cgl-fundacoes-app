@@ -215,7 +215,8 @@ async function salvarCentroCusto(){
 }
 async function ccuMudarAtivo(ativo){
   if(!ccuPodeEditar() || !_ccuAtual?.id || _ccuAtual.ativo === ativo) return;
-  if(!ativo && !confirm(`Inativar ${_ccuAtual.nome}? O histórico continua; o centro some das listas de lançamento novo.`)) return;
+  if(!ativo && !await uiConfirmar({ titulo: "Inativar centro de custo", texto: `Inativar ${_ccuAtual.nome}? O histórico continua; o centro some das listas de lançamento novo.`, confirmar: "Inativar", perigo: true })) return;
+  if(!_ccuAtual?.id || _ccuAtual.ativo === ativo) return;
   const { data, error } = await sb.from("centros_custo").update({ ativo }).eq("id", _ccuAtual.id).select("*").single();
   if(error){ aviso("app-aviso", "Erro: " + error.message, "erro"); return; }
   const i = _ccuLista.findIndex(x => x.id === data.id); if(i >= 0) _ccuLista[i] = data;

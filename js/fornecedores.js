@@ -49,7 +49,7 @@ async function fornConferirDuplicidade(){
   if(iguais.length){ fornMostrarDup(iguais[0]); return false; }
   const raiz = d.length === 14 ? (data || []).filter(f => String(f.cpf_cnpj || "").length === 14) : [];
   if(raiz.length && _fornRaizConfirmada !== d){
-    if(!confirm(`Já existe ${raiz[0].razao_social} com a mesma raiz de CNPJ (filial?). Cadastrar mesmo assim?`)){
+    if(!await uiConfirmar({ titulo: "Mesma raiz de CNPJ", texto: `Já existe ${raiz[0].razao_social} com a mesma raiz de CNPJ (filial?). Cadastrar mesmo assim?`, confirmar: "Cadastrar assim mesmo" })){
       fornDocStatus("Mesma raiz de CNPJ de outro fornecedor: confira antes de salvar.", "erro");
       return false;
     }
@@ -524,7 +524,9 @@ async function salvarFornecedor(){
 
 async function excluirFornecedor(){
   if(!fornEditId) return;
-  if(!confirm("Excluir este fornecedor?")) return;
+  const idExcluir = fornEditId;
+  if(!await uiConfirmar({ titulo: "Excluir fornecedor", texto: "Excluir este fornecedor?", confirmar: "Excluir", perigo: true })) return;
+  if(fornEditId !== idExcluir) return;
   const { error } = await sb.from("fornecedores").delete().eq("id", fornEditId);
   if(error){ aviso("app-aviso","Não foi possível excluir: "+error.message,"erro"); return; }
   aviso("app-aviso","Fornecedor excluído.","ok");

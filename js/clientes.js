@@ -84,7 +84,7 @@ async function cliResolverGrupo(){
   if(!txt) return null;
   const g = cliGrupoPorNome(txt);
   if(g) return g.id;
-  if(!confirm(`Criar o grupo econômico "${txt}"?`)) return undefined;
+  if(!await uiConfirmar({ titulo: "Criar grupo econômico", texto: `Criar o grupo econômico "${txt}"?`, confirmar: "Criar grupo" })) return undefined;
   const raiz = cliRaiz($("cli-doc")?.value);
   const ja = raiz && _cliGrupos.some(x => x.cnpj_raiz === raiz);
   const { data, error } = await sb.from("grupos_economicos").insert({ nome: txt, cnpj_raiz: raiz && !ja ? raiz : null }).select("id").single();
@@ -547,7 +547,7 @@ async function salvarCliente(){
 
 async function excluirCliente(){
   if(!cliEditId) return;
-  if(!confirm("Excluir este cliente? A ação não pode ser desfeita.")) return;
+  if(!await uiConfirmar({ titulo: "Excluir cliente", texto: "Excluir este cliente? A ação não pode ser desfeita.", confirmar: "Excluir", perigo: true })) return;
   const { error } = await sb.from("clientes").delete().eq("id", cliEditId);
   if(error){ aviso("app-aviso","Não foi possível excluir: "+error.message,"erro"); return; }
   aviso("app-aviso","Cliente excluído.","ok");
