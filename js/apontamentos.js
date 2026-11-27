@@ -29,6 +29,7 @@ let _aptDiaAprov = {};
 let _aptAtiv = {};
 let _aptExp = null;
 let _aptDivSeq = 0;
+let _aptRedesenhando = false;
 
 const APT_TIPO = {
   RP: { rotulo: "RP (reparo)", tabela: "reparo_horas", col: "reparo_id", secao: "reparos" },
@@ -549,7 +550,9 @@ function aptRenderGrade(){
   const funcs = `<option value="">— funcionário —</option>` + _aptFuncs.map(f => `<option value="${esc(f.id)}">${esc(f.nome)}</option>`).join("");
   const centros = `<option value="">— centro de trabalho * —</option>` + _aptCentros.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
   const tagEst = { gravada: "verde", aguardando: "ambar", recusada: "vermelho", repetida: "cinza" };
-  $("apt-grade").innerHTML = _aptGrade.map((l, i) => {
+
+  _aptRedesenhando = true;
+  try { $("apt-grade").innerHTML = _aptGrade.map((l, i) => {
     const d = l.doc;
     let extra = "";
 
@@ -576,7 +579,8 @@ function aptRenderGrade(){
         ${l.msg ? `<div class="meta">${esc(l.msg)}</div>` : ""}
         ${l.estado === "repetida" && l.existente && aptHora(l.existente.fim) !== l.fim ? `<button type="button" class="btn-sec btn-sm apt-atualizar-fim" data-i="${i}">Atualizar o fim para ${esc(l.fim)}</button>` : ""}</td>
       <td class="col-acao"><button type="button" class="btn-sec btn-sm txt-perigo apt-linha-rem" data-i="${i}" title="tirar a linha" aria-label="tirar a linha">×</button></td></tr>`;
-  }).join("") || `<tr><td colspan="9" class="vazio">Sem linhas. Use "+ Linha".</td></tr>`;
+  }).join("") || `<tr><td colspan="9" class="vazio">Sem linhas. Use "+ Linha".</td></tr>`; }
+  finally { _aptRedesenhando = false; }
   _aptGrade.forEach((l, i) => {
     const tr = $("apt-grade").querySelector(`tr[data-i="${i}"]`); if(!tr) return;
     tr.querySelector('[data-c="funcionario_id"]').value = l.funcionario_id || "";
@@ -611,6 +615,7 @@ async function aptGradeMudou(el){
 }
 
 async function aptGradeSaiuHora(e){
+  if(_aptRedesenhando) return;
   const el = e.target.closest('[data-c="inicio"], [data-c="fim"]'); if(!el) return;
   const i = Number(el.dataset.i), l = _aptGrade[i]; if(!l) return;
   l[el.dataset.c] = el.value;
