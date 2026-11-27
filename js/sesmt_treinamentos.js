@@ -324,8 +324,10 @@ async function trnConcluir(){
   const semCert = presentes.filter(p => !p.certificado_path).length;
   const msg = `Concluir a turma ${_trnTurma.numero}? ${presentes.length} participante(s) presente(s) e aprovado(s) recebem o documento do treinamento` +
     (semCert ? ` (${semCert} sem certificado anexado).` : ".") + " Depois de concluída a turma não volta.";
-  if(!presentes.length && !confirm("Nenhum participante presente e aprovado: concluir mesmo assim, sem gerar documento?")) return;
-  if(presentes.length && !confirm(msg)) return;
+  const ok = await uiConfirmar(presentes.length
+    ? { titulo: "Concluir turma", texto: msg, confirmar: "Concluir turma" }
+    : { titulo: "Concluir sem documento", texto: "Nenhum participante presente e aprovado: concluir mesmo assim, sem gerar documento? Depois de concluída a turma não volta.", confirmar: "Concluir sem documento", perigo: true });
+  if(!ok) return;
   const { data, error } = await sb.rpc("sst_turma_concluir", { p_turma: _trnEditId });
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não conclui turma do SESMT."), "erro"); return; }
   aviso("app-aviso", `Turma concluída: ${Number(data) || 0} documento(s) gerado(s).`, "ok");
@@ -333,7 +335,8 @@ async function trnConcluir(){
   await trnAbrirTurma(_trnEditId);
 }
 async function trnCancelar(){
-  if(!_trnEditId || !confirm(`Cancelar a turma ${_trnTurma.numero}? Ninguém recebe documento.`)) return;
+  if(!_trnEditId) return;
+  if(!await uiConfirmar({ titulo: "Cancelar turma", texto: `Cancelar a turma ${_trnTurma.numero}? Ninguém recebe documento.`, confirmar: "Cancelar turma", cancelar: "Voltar", perigo: true })) return;
   const { error } = await sb.from("sst_turmas").update({ status: "cancelada" }).eq("id", _trnEditId);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não cancela turma do SESMT."), "erro"); return; }
   aviso("app-aviso", "Turma cancelada.", "ok");
@@ -390,7 +393,8 @@ async function trnAcrescentarPart(){
   trnRenderFichaVisual(); sstAtivarTab("trn-ficha", "trn-notebook", "participantes");
 }
 async function trnTirarPart(p){
-  if(!p || !confirm(`Tirar ${trnFuncNome(p.funcionario_id)} da turma?`)) return;
+  if(!p) return;
+  if(!await uiConfirmar({ titulo: "Tirar da turma", texto: `Tirar ${trnFuncNome(p.funcionario_id)} da turma?`, confirmar: "Tirar", perigo: true })) return;
   const { error } = await sb.from("sst_turma_participantes").delete().eq("id", p.id);
   if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não tira participante."), "erro"); return; }
   if(p.certificado_path) await sb.storage.from("sst-documentos").remove([p.certificado_path]);
@@ -433,7 +437,8 @@ function trnRenderAnexos(){
   const item = el => _trnAnexos[Number(el.closest("tr").dataset.i)];
   cont.querySelectorAll(".trn-a-abrir").forEach(a => a.addEventListener("click", async e => { e.preventDefault(); await sstAbrirArquivo("sst-documentos", `${_trnEditId}/anexos/${item(a).name}`); }));
   cont.querySelectorAll(".trn-a-del").forEach(b => b.addEventListener("click", async () => {
-    const a = item(b); if(!a || !confirm("Excluir este anexo?")) return;
+    const a = item(b); if(!a) return;
+    if(!await uiConfirmar({ titulo: "Excluir anexo", texto: `Excluir o anexo ${a.name.replace(/^[0-9a-f-]{36}_/, "")}? Não dá para desfazer.`, confirmar: "Excluir", perigo: true })) return;
     const { error } = await sb.storage.from("sst-documentos").remove([`${_trnEditId}/anexos/${a.name}`]);
     if(error){ aviso("app-aviso", sstErroMsg(error, "Seu perfil não exclui anexo."), "erro"); return; }
     await trnCarregarAnexos();

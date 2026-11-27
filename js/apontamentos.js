@@ -213,8 +213,11 @@ async function aptAprovar(ids){
   await aptCarregarAprovacoes(); await aptCarregarHoras(); aptRender();
 }
 async function aptRecusar(ids){
-  const motivo = prompt(`Recusar ${ids.length} hora(s) de fim de semana ou feriado.\n\nMotivo (obrigatório; quem lançou vê):`, "");
-  if(motivo === null) return;
+  const v = await uiPedirValores({ titulo: "Recusar hora extra", confirmar: "Recusar",
+    texto: `Recusar ${ids.length} hora(s) extra(s). Quem lançou vê o motivo.`,
+    campos: [{ id: "motivo", rotulo: "Motivo da recusa", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+  if(!v) return;
+  const motivo = v.motivo || "";
   if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo da recusa.", "erro"); return; }
   let ok = 0; const erros = [];
   for(const id of ids){
@@ -420,15 +423,21 @@ async function aptAplicarDivisao(i){
   _aptGrade.splice(i, 1, ...novas);
   return true;
 }
-function aptManterUmaLinha(i){
+async function aptManterUmaLinha(i){
   const l = _aptGrade[i]; if(!l?.div) return;
-  const grupo = l.div, idx = _aptGrade.map((x, k) => x.div === grupo ? k : -1).filter(k => k >= 0);
-  if(idx.some(k => ["gravada", "aguardando"].includes(_aptGrade[k].estado))){
+  const grupo = l.div;
+  if(_aptGrade.some(x => x.div === grupo && ["gravada", "aguardando"].includes(x.estado))){
     aviso("app-aviso", "Parte desta linha já foi gravada: apague a hora na ficha do documento antes de juntar.", "erro"); return;
   }
-  const motivo = prompt(`Manter ${l.divOrig.inicio}–${l.divOrig.fim} numa linha só, sem separar a hora extra.\n\nMotivo (obrigatório; fica na observação da hora):`, "");
-  if(motivo === null) return;
+  const v = await uiPedirValores({ titulo: "Manter numa linha", confirmar: "Manter numa linha",
+    texto: `Manter ${l.divOrig.inicio}–${l.divOrig.fim} numa linha só, sem separar a hora extra. O motivo fica na observação da hora.`,
+    campos: [{ id: "motivo", rotulo: "Motivo", tipo: "textarea", linhas: 2, obrigatorio: true }] });
+  if(!v) return;
+  const motivo = v.motivo || "";
   if(!motivo.trim()){ aviso("app-aviso", "Informe o motivo para manter numa linha.", "erro"); return; }
+
+  const idx = _aptGrade.map((x, k) => x.div === grupo ? k : -1).filter(k => k >= 0);
+  if(!idx.length || idx.some(k => ["gravada", "aguardando"].includes(_aptGrade[k].estado))) return;
   const base = _aptGrade[idx[0]];
   const una = { ...base, inicio: base.divOrig.inicio, fim: base.divOrig.fim, hora_extra: false, div: null, divOrig: null,
     semDividir: true, motivoUmaLinha: motivo.trim(), estado: "", msg: `Mantida numa linha: ${motivo.trim()}`, existente: null };
@@ -768,7 +777,7 @@ function ligarApontamentos(){
   grade.addEventListener("focusout", e => { aptGradeSaiuHora(e).catch(err => aviso("app-aviso", err.message, "erro")); });
   grade.addEventListener("click", e => {
     const um = e.target.closest(".apt-uma-linha");
-    if(um){ aptManterUmaLinha(Number(um.dataset.i)); return; }
+    if(um){ aptManterUmaLinha(Number(um.dataset.i)).catch(err => aviso("app-aviso", err.message, "erro")); return; }
     const rem = e.target.closest(".apt-linha-rem");
     if(rem){ _aptGrade.splice(Number(rem.dataset.i), 1); aptRenderGrade(); return; }
     const up = e.target.closest(".apt-atualizar-fim");
